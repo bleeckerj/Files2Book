@@ -33,12 +33,12 @@ def main():
         "--page-orientation", "portrait",
         "--image-fit-mode", "scale",
         "--gap", "0.125",
-        "--hairline-width", "0.006",
+        "--hairline-width", "0.008",
         "--hairline-color", "gray",
         "--padding", "0.125",
-        "--page-margin", "0.35",
+        "--page-margin", "0.15",
         "--output-pdf",
-        "--exclude-video-frames",
+        "--exclude-video-stills",
         "--flipbook-mode",
         "--video-fps", "1"
     ]

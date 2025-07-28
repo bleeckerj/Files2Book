@@ -159,7 +159,7 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
                 img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 
                 # Position image at right side
-                margin_flip = int(0.08 * 300.0)  # Convert inches to pixels
+                margin_flip = int(0.1 * 300.0)  # Convert inches to pixels
                 x = page_size[0] - img.width - margin_flip
                 y = (page_size[1] - img.height) // 2
                 
