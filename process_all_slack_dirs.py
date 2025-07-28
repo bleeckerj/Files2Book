@@ -27,7 +27,7 @@ def main():
     # Common command arguments
     common_args = [
         "--layout", "grid",
-        "--grid-rows", "3",
+        "--grid-rows", "2",
         "--grid-cols", "1",
         "--page-size", "A5",
         "--page-orientation", "portrait",
@@ -38,6 +38,7 @@ def main():
         "--padding", "0.125",
         "--page-margin", "0.35",
         "--output-pdf",
+        "--exclude-video-frames",
         "--flipbook-mode",
         "--video-fps", "1"
     ]

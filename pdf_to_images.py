@@ -163,12 +163,18 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
 
         if image_paths and idx < len(image_paths):
             filename = os.path.basename(image_paths[idx])
-            try:
-                font = ImageFont.truetype("Input Sans Compressed", 9)
-            except IOError:
-                font = ImageFont.load_default()
+            # Calculate text position first
             text_y = img_y + img.height + 5
             text_x = img_x + img.width // 2
+            
+            #print(f"Drawing filename: {filename} at position ({text_x}, {text_y})")
+            try:
+                font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 30)
+            except IOError:
+                print("Using default font due to IOError")
+                font = ImageFont.load_default()
+                
+            # Draw text shadow and then text
             draw.text((text_x+1, text_y+1), filename, fill='gray', font=font, anchor="mt")
             draw.text((text_x, text_y), filename, fill='black', font=font, anchor="mt")
 
@@ -176,42 +182,96 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
 
 def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, padding, 
                     image_fit_mode, inner_margin_px=0, outer_margin_px=0, 
-                    side='recto', is_flipbook=False):
+                    side='recto', is_flipbook=False, image_paths=None):
     page_w, page_h = page_size
     left_margin = inner_margin_px if side == 'recto' else outer_margin_px
     right_margin = outer_margin_px if side == 'recto' else inner_margin_px
-    usable_width = page_w - left_margin - right_margin
-    usable_width = int(usable_width * 0.7) if is_flipbook else usable_width
-
-    content_h = page_h - inner_margin_px - outer_margin_px
-    cols = math.ceil(math.sqrt(n))
-    col_w = (usable_width - gap * (cols - 1)) // cols
-
+    
+    # Create page and drawing context
     page_img = Image.new('RGB', (page_w, page_h), 'white')
     draw = ImageDraw.Draw(page_img)
 
+    # Calculate usable dimensions
+    usable_width = page_w - left_margin - right_margin
+    if is_flipbook:
+        usable_width = int(usable_width * 0.7)
+
+    content_h = page_h - inner_margin_px - outer_margin_px
+    cols = math.ceil(math.sqrt(n))
+    
+    # Calculate max image width for column sizing
+    max_image_width = 0
+    for img in images:
+        if img.width > max_image_width:
+            max_image_width = img.width
+    
+    # Base column width on actual image dimensions plus padding
+    col_w = max_image_width + 2 * (padding + hairline_width)
+    if is_flipbook:
+        col_w = int(col_w * 3)
+    
+    # Ensure columns fit within usable width
+    total_width_needed = (col_w * cols) + (gap * (cols - 1))
+    if total_width_needed > usable_width:
+        available_width = usable_width - (gap * (cols - 1))
+        col_w = available_width // cols
+
+    # Initialize column tracking
     col_y_offsets = [0] * cols
-    offset_x = left_margin
+    
+    # Calculate starting x position based on side
+    if side == 'recto':
+        offset_x = page_w - right_margin - (cols * col_w + (cols - 1) * gap)
+    else:
+        offset_x = left_margin
+    
     offset_y = inner_margin_px
 
+    # Position images within columns
     for idx in range(n):
         if idx >= len(images):
             break
+            
         img = images[idx]
         max_w = col_w - 2 * (padding + hairline_width)
         img = fit_image(img, max_w, content_h, image_fit_mode, is_flipbook)
 
+        # Find shortest column
         col = col_y_offsets.index(min(col_y_offsets))
         x = offset_x + col * (col_w + gap)
         y = offset_y + col_y_offsets[col]
 
-        img_x = x + padding + hairline_width
+        # Align image within column based on page side
+        if side == 'recto':
+            img_x = x + (col_w - img.width - 2 * (padding + hairline_width))
+        else:
+            img_x = x + padding + hairline_width
+            
         img_y = y + padding + hairline_width
 
+        # Place image and draw border
         page_img.paste(img, (img_x, img_y))
-        draw_hairline_border(draw, (img_x, img_y, img_x + img.width - 1, img_y + img.height - 1), hairline_width, hairline_color)
+        draw_hairline_border(draw, (img_x, img_y, img_x + img.width - 1, img_y + img.height - 1), 
+                           hairline_width, hairline_color)
 
-        col_y_offsets[col] += img.height + gap
+        # Add filename caption if paths provided
+        if image_paths and idx < len(image_paths):
+            filename = os.path.basename(image_paths[idx])
+            text_y = img_y + img.height + 5
+            text_x = img_x + img.width // 2
+            
+            try:
+                font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 30)
+            except IOError:
+                print("Using default font due to IOError")
+                font = ImageFont.load_default()
+            
+            # Draw text shadow and then text
+            draw.text((text_x+1, text_y+1), filename, fill='gray', font=font, anchor="mt")
+            draw.text((text_x, text_y), filename, fill='black', font=font, anchor="mt")
+
+        # Update column height
+        col_y_offsets[col] += img.height + gap + 20  # Extra space for filename
         if col_y_offsets[col] > content_h:
             break
 
