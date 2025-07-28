@@ -113,13 +113,24 @@ def create_blank_page(page_size, color='white'):
 
 def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_color, padding,
                     image_fit_mode, grid_rows=None, grid_cols=None, page_margin=0, output_pdf=False,
-                    output_dir='output_pages', flipbook_mode=False, video_frames_map=None, parent_prefix='output'):
-    # Use parent_prefix for naming
+                    output_dir='output_pages', flipbook_mode=False, video_frames_map=None, parent_prefix='output',
+                    image_paths=None):
+    
+    # Convert output_dir to a Path object if it's a string
     output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
-    output_images = []
-    chunk_size = (grid_rows or 2) * (grid_cols or 2)
-
+    
+    # Create the output directory if it doesn't exist
+    output_dir.mkdir(exist_ok=True, parents=True)
+    
+    # If image_paths isn't provided, create dummy paths
+    if image_paths is None:
+        image_paths = []
+        for idx, img in enumerate(images):
+            if hasattr(img, 'filename') and img.filename:
+                image_paths.append(img.filename)
+            else:
+                image_paths.append(f"image_{idx+1}")
+    
     # Flipbook pages per video
     if flipbook_mode and video_frames_map:
         for video_name, frames in video_frames_map.items():
@@ -129,9 +140,23 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
             for idx, img in enumerate(frames):
                 page_img = Image.new('RGB', page_size, 'white')
                 img = img.copy()
-                img.thumbnail(page_size, Image.Resampling.LANCZOS)
-                x = page_size[0] - img.width
+                
+                # Calculate 70% of page width
+                max_width = int(page_size[0] * 0.7)
+                max_height = page_size[1]
+                
+                # Scale the image to fit within 70% of page width
+                original_width, original_height = img.width, img.height
+                scale_factor = min(max_width / original_width, max_height / original_height)
+                new_width = int(original_width * scale_factor)
+                new_height = int(original_height * scale_factor)
+                
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
+                # Position image at right side
+                x = page_size[0] - img.width - page_margin
                 y = (page_size[1] - img.height) // 2
+                
                 page_img.paste(img, (x, y))
                 border_xy = (x, y, x + img.width - 1, y + img.height - 1)
                 draw = ImageDraw.Draw(page_img)
@@ -146,19 +171,23 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
                 print(f'Saved PDF {pdf_path_out}')
 
     # Generate standard pages for all images
+    chunk_size = (grid_rows or 2) * (grid_cols or 2)
+    output_images = []  # Collect page images for PDF output
     for i in range(0, len(images), chunk_size):
         chunk = images[i:i + (chunk_size or len(images))]
         page_num = i // (chunk_size or len(images)) + 1
         side = 'recto' if page_num % 2 == 1 else 'verso'
         if layout == 'grid':
             page_img = arrange_grid(chunk, page_size, len(chunk), gap, hairline_width, hairline_color,
-                                    padding, image_fit_mode, grid_rows, grid_cols, page_margin, side=side)
+                                    padding, image_fit_mode, grid_rows, grid_cols, page_margin, 
+                                    side=side, is_flipbook=flipbook_mode, image_paths=image_paths[i:i+chunk_size])
         else:
             page_img = arrange_masonry(chunk, page_size, len(chunk), gap, hairline_width, hairline_color,
                                        padding, image_fit_mode, page_margin, side=side)
         filename = f'{parent_prefix}_output_page_{page_num:03d}.png'
         output_path = output_dir / filename
         page_img.save(output_path)
+        output_images.append(page_img)
         print(f'Saved {output_path}')
     if output_pdf and output_images:
         pdf_path_out = output_dir / f'{parent_prefix}_output_combined.pdf'
@@ -230,11 +259,38 @@ def main():
         print('No images or PDFs found in the input directory.')
         sys.exit(1)
 
-    images_to_pages(
-        images, args.layout, page_size, gap_px, hairline_width_px, args.hairline_color,
-        padding_px, args.image_fit_mode, grid_rows, grid_cols, page_margin_px,
-        args.output_pdf, output_dir, flipbook_mode=args.flipbook_mode, video_frames_map=video_frames_map, parent_prefix=parent_dir_name
-    )
+    # New code to track file paths
+    image_paths = []  # Add this to track file paths
+
+    # Modify this loop to also store file paths
+    for file_path in sorted(Path(args.input_dir).glob('*')):
+        ext = file_path.suffix.lower()
+        if ext in IMAGE_EXTENSIONS:
+            img = Image.open(file_path).convert('RGB')
+            images.append(img)
+            image_paths.append(str(file_path))  # Store the full path
+        elif ext == '.pdf':
+            pdf_images = convert_from_path(str(file_path))
+            images.extend(pdf_images)
+            image_paths.extend([str(file_path)] * len(pdf_images))  # Store the PDF file path for each page
+        elif ext in VIDEO_EXTENSIONS:
+            video_name = file_path.stem.replace(' ', '_')
+            if args.flipbook_mode:
+                frames = extract_frames_from_video_fps(file_path, args.video_fps)
+                images.extend(frames)
+                video_frames_map[video_name] = frames
+                image_paths.extend([str(file_path)] * len(frames))  # Store the video file path for each frame
+            else:
+                frames = extract_frames_from_video(file_path, num_frames=12)
+                images.extend(frames)
+                image_paths.extend([str(file_path)] * len(frames))  # Store the video file path for each frame
+
+    # Then modify the call to images_to_pages
+    images_to_pages(images, args.layout, page_size, gap_px, hairline_width_px, 
+                   args.hairline_color, padding_px, args.image_fit_mode, 
+                   grid_rows, grid_cols, page_margin_px, args.output_pdf,
+                   output_dir, args.flipbook_mode, video_frames_map, parent_dir_name,
+                   image_paths=image_paths)  # Pass the paths
 
 if __name__ == '__main__':
     main()
