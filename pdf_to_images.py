@@ -57,30 +57,68 @@ def fit_image(img, max_w, max_h, fit_mode):
     return img
 
 
-def arrange_grid(images, page_size, gap, hairline_width, hairline_color, padding, image_fit_mode, grid_rows=None, grid_cols=None, page_margin=0):
+def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padding, image_fit_mode, grid_rows=None, grid_cols=None, page_margin=0, side='recto'):
     page_w, page_h = page_size
-    content_w = page_w - 2 * page_margin
-    content_h = page_h - 2 * page_margin
-
+    
+    print(f"[INIT DEBUG] arrange_grid called with side={side}, page_margin={page_margin}, page_w={page_w}")
+    
+    # Important: For proper recto/verso layout, we need different content widths for each page type
+    # For recto pages: leave wide left margin, narrow right margin
+    # For verso pages: leave narrow left margin, wide right margin
+    
+    # First, decide the actual grid width we want - smaller than full page width
+    usable_width = int(page_w * 0.6)  # Use 60% of page width for the grid
+    
     if grid_rows and grid_cols:
         rows = grid_rows
         cols = grid_cols
     else:
-        cols = math.ceil(math.sqrt(len(images)))
-        rows = math.ceil(len(images) / cols)
+        cols = math.ceil(math.sqrt(n))
+        rows = math.ceil(n / cols)
 
     total_gap_w = gap * (cols - 1)
     total_gap_h = gap * (rows - 1)
-    cell_w = (content_w - total_gap_w) // cols
+    
+    # Calculate cell width based on the usable width
+    cell_w = (usable_width - total_gap_w) // cols
+    
+    # For vertical layout, still use the standard content height
+    content_h = page_h - 2 * page_margin
     cell_h = (content_h - total_gap_h) // rows
 
     page_img = Image.new('RGB', (page_w, page_h), 'white')
     draw = ImageDraw.Draw(page_img)
 
-    offset_x = page_margin
+    # For book-style layout: 
+    # - For verso (left) pages: left edge of content is exactly page_margin from left edge
+    # - For recto (right) pages: right edge of content is exactly page_margin from right edge
+    
+    # Calculate the total width needed for the grid
+    grid_width = cols * cell_w + (cols - 1) * gap
+    
+    # CRITICAL DEBUG CHECK - verify our calculations work as expected
+    print(f"[CRITICAL DEBUG] grid_width={grid_width}, cols={cols}, cell_w={cell_w}, gap={gap}")
+    
+    if side == 'recto':
+        # For recto (right) pages, right edge of content is page_margin from right edge
+        recto_offset_x = page_w - page_margin - grid_width
+        print(f"[CRITICAL DEBUG] RECTO page: page_w={page_w}, page_margin={page_margin}, calc: {page_w} - {page_margin} - {grid_width} = {recto_offset_x}")
+        offset_x = recto_offset_x
+    else:
+        # For verso (left) pages, left edge of content is page_margin from left edge
+        verso_offset_x = page_margin
+        print(f"[CRITICAL DEBUG] VERSO page: page_margin={page_margin}, offset_x={verso_offset_x}")
+        offset_x = verso_offset_x
+    
+    print(f"[CRITICAL DEBUG] FINAL offset_x = {offset_x}")
+    
     offset_y = page_margin
-
-    for idx, img in enumerate(images):
+    
+    print(f"[DEBUG] arrange_grid: side={side}, page_w={page_w}, page_margin={page_margin}, usable_width={usable_width}, grid_width={grid_width}, offset_x={offset_x}, offset_y={offset_y}, cols={cols}, rows={rows}, n={n}")
+    for idx in range(n):
+        if idx >= len(images):
+            break
+        img = images[idx]
         max_w = cell_w - 2 * (padding + hairline_width)
         max_h = cell_h - 2 * (padding + hairline_width)
 
@@ -102,23 +140,59 @@ def arrange_grid(images, page_size, gap, hairline_width, hairline_color, padding
     return page_img
 
 
-def arrange_masonry(images, page_size, gap, hairline_width, hairline_color, padding, image_fit_mode, page_margin=0):
+def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, padding, image_fit_mode, page_margin=0, side='recto'):
     page_w, page_h = page_size
-    content_w = page_w - 2 * page_margin
+    
+    print(f"[INIT DEBUG] arrange_masonry called with side={side}, page_margin={page_margin}, page_w={page_w}")
+    
+    # Important: For proper recto/verso layout, we need different content widths for each page type
+    # For recto pages: leave wide left margin, narrow right margin
+    # For verso pages: leave narrow left margin, wide right margin
+    
+    # First, decide the actual grid width we want - smaller than full page width
+    usable_width = int(page_w * 0.6)  # Use 60% of page width for the grid
+    
+    # For vertical layout, still use the standard content height
     content_h = page_h - 2 * page_margin
 
-    cols = math.ceil(math.sqrt(len(images)))
-    col_w = (content_w - gap * (cols - 1)) // cols
+    cols = math.ceil(math.sqrt(n))
+    col_w = (usable_width - gap * (cols - 1)) // cols
 
     page_img = Image.new('RGB', (page_w, page_h), 'white')
     draw = ImageDraw.Draw(page_img)
 
     col_y_offsets = [0] * cols
 
-    offset_x = page_margin
+    # For book-style layout: 
+    # - For verso (left) pages: left edge of content is exactly page_margin from left edge
+    # - For recto (right) pages: right edge of content is exactly page_margin from right edge
+    
+    # Calculate the total width needed for the masonry grid
+    grid_width = cols * col_w + (cols - 1) * gap
+    
+    # CRITICAL DEBUG CHECK - verify our calculations work as expected
+    print(f"[CRITICAL DEBUG MASONRY] grid_width={grid_width}, cols={cols}, col_w={col_w}, gap={gap}")
+    
+    if side == 'recto':
+        # For recto (right) pages, right edge of content is page_margin from right edge
+        recto_offset_x = page_w - page_margin - grid_width
+        print(f"[CRITICAL DEBUG MASONRY] RECTO page: page_w={page_w}, page_margin={page_margin}, calc: {page_w} - {page_margin} - {grid_width} = {recto_offset_x}")
+        offset_x = recto_offset_x
+    else:
+        # For verso (left) pages, left edge of content is page_margin from left edge
+        verso_offset_x = page_margin
+        print(f"[CRITICAL DEBUG MASONRY] VERSO page: page_margin={page_margin}, offset_x={verso_offset_x}")
+        offset_x = verso_offset_x
+    
+    print(f"[CRITICAL DEBUG MASONRY] FINAL offset_x = {offset_x}")
+    
     offset_y = page_margin
-
-    for idx, img in enumerate(images):
+    
+    print(f"[DEBUG] arrange_masonry: side={side}, page_w={page_w}, page_margin={page_margin}, usable_width={usable_width}, grid_width={grid_width}, offset_x={offset_x}, offset_y={offset_y}, cols={cols}, n={n}")
+    for idx in range(n):
+        if idx >= len(images):
+            break
+        img = images[idx]
         max_w = col_w - 2 * (padding + hairline_width)
 
         img = fit_image(img, max_w, content_h, image_fit_mode)
@@ -155,17 +229,23 @@ def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_col
     if grid_rows and grid_cols:
         chunk_size = grid_rows * grid_cols
 
+    side = 'recto'  # Default to recto; you can modify this logic if needed
+
     for i in range(0, len(images), chunk_size or len(images)):
         chunk = images[i:i+(chunk_size or len(images))]
+        page_num = (i // (chunk_size or len(images))) + 1
+        side = 'recto' if page_num % 2 == 1 else 'verso'
+        
+        print(f"[CRITICAL DEBUG PDF] Processing page {page_num}, side={side}, i={i}, chunk_size={chunk_size or len(images)}")
 
         if layout == 'grid':
-            page_img = arrange_grid(chunk, page_size, gap, hairline_width, hairline_color, padding, image_fit_mode, grid_rows, grid_cols, page_margin)
+            page_img = arrange_grid(chunk, page_size, len(chunk), gap, hairline_width, hairline_color, padding, image_fit_mode, grid_rows, grid_cols, page_margin, side=side)
         else:
-            page_img = arrange_masonry(chunk, page_size, gap, hairline_width, hairline_color, padding, image_fit_mode, page_margin)
+            page_img = arrange_masonry(chunk, page_size, len(chunk), gap, hairline_width, hairline_color, padding, image_fit_mode, page_margin, side=side)
 
         output_images.append(page_img)
 
-        output_path = Path(output_dir) / f'output_page_{i//(chunk_size or len(images)) + 1}.png'
+        output_path = Path(output_dir) / f'output_page_{page_num}.png'
         page_img.save(output_path)
         print(f'Saved {output_path}')
 
