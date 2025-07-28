@@ -78,29 +78,31 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
     usable_width = page_w - left_margin - right_margin
     usable_width = int(usable_width * 0.7) if is_flipbook else usable_width
 
-    # For single column, calculate width based on ACTUAL image dimensions
-    if cols == 1:
-        # Calculate maximum image width in this chunk
-        max_image_width = 0
-        for img in images:
-            if img.width > max_image_width:
-                max_image_width = img.width
+    # Calculate column width based on image dimensions for all layouts
+    max_image_width = 0
+    for img in images:
+        if img.width > max_image_width:
+            max_image_width = img.width
+    
+    # Add minimal padding and hairlines
+    cell_w = max_image_width + 2 * (padding + hairline_width)
+    
+    # If flipbook mode, scale up the cell width
+    if is_flipbook:
+        cell_w = int(cell_w * 3)
         
-        # Add minimal padding and hairlines
-        cell_w = max_image_width + 2 * (padding + hairline_width)
-        
-        # If flipbook mode, scale up the cell width
-        if is_flipbook:
-            cell_w = int(cell_w * 3)
-            
-        # Ensure cell doesn't exceed usable width
-        max_allowed_width = page_w - left_margin - right_margin
-        if is_flipbook:
-            max_allowed_width = int(max_allowed_width * 0.7)
-        cell_w = min(cell_w, max_allowed_width)
-    else:
-        # Original calculation for multi-column layouts
-        cell_w = (usable_width - total_gap_w) // cols
+    # Ensure cell doesn't exceed usable width
+    max_allowed_width = page_w - left_margin - right_margin
+    if is_flipbook:
+        max_allowed_width = int(max_allowed_width * 0.7)
+    
+    # For multi-column layouts, ensure all columns fit
+    if cols > 1:
+        total_width_needed = (cell_w * cols) + (gap * (cols - 1))
+        if total_width_needed > max_allowed_width:
+            # Scale down cell width to fit if needed
+            available_width = max_allowed_width - (gap * (cols - 1))
+            cell_w = available_width // cols
 
     # Update grid width calculation
     grid_width = cols * cell_w + (cols - 1) * gap
@@ -115,21 +117,21 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
     cell_h = (content_h - total_gap_h) // rows
     offset_y = inner_margin_px
 
-    # Draw debug rectangles for column boundaries
-    for col in range(cols):
-        x = offset_x + col * (cell_w + gap)
-        # Draw a red rectangle outline for each column's boundaries
-        draw.rectangle([x, offset_y, x + cell_w, offset_y + content_h], 
-                      outline='red', fill=(255, 0, 0, 25))  # Very light red fill
-        # Print column positions
-        print(f"[DEBUG] Column {col}: x={x}, width={cell_w}, right edge={x + cell_w}")
+    # # Draw debug rectangles for column boundaries
+    # for col in range(cols):
+    #     x = offset_x + col * (cell_w + gap)
+    #     # Draw a red rectangle outline for each column's boundaries
+    #     draw.rectangle([x, offset_y, x + cell_w, offset_y + content_h], 
+    #                   outline='red', fill=(255, 0, 0, 25))  # Very light red fill
+    #     # Print column positions
+    #     print(f"[DEBUG] Column {col}: x={x}, width={cell_w}, right edge={x + cell_w}")
     
-    # Draw page margins for debugging
-    draw.line([(left_margin, 0), (left_margin, page_h)], fill='blue', width=2)  # Left margin
-    draw.line([(page_w - right_margin, 0), (page_w - right_margin, page_h)], fill='blue', width=2)  # Right margin
+    # # Draw page margins for debugging
+    # draw.line([(left_margin, 0), (left_margin, page_h)], fill='blue', width=2)  # Left margin
+    # draw.line([(page_w - right_margin, 0), (page_w - right_margin, page_h)], fill='blue', width=2)  # Right margin
 
-    # Draw a vertical line at offset_x to show where grid starts
-    draw.line([(offset_x, 0), (offset_x, page_h)], fill='green', width=2)  # Grid start position
+    # # Draw a vertical line at offset_x to show where grid starts
+    # draw.line([(offset_x, 0), (offset_x, page_h)], fill='green', width=2)  # Grid start position
 
     # Position images within columns with proper alignment
     for idx in range(n):
