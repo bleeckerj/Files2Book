@@ -25,7 +25,7 @@ def get_parent_of_parent_name(input_dir):
     return input_path.parent.name.replace(' ', '_')
 
 
-def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1):
+def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1, exclude_video_stills=False):
     input_path = Path(input_dir)
     if not input_path.is_dir():
         raise ValueError(f'Input path {input_dir} is not a directory')
@@ -46,11 +46,16 @@ def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1):
             video_name = file_path.stem.replace(' ', '_')
             if flipbook_mode:
                 frames = extract_frames_from_video_fps(file_path, video_fps)
-            else:
-                frames = extract_frames_from_video(file_path, num_frames=12)
-            images.extend(frames)
-            if flipbook_mode:
+                # Only add frames to main images list if not excluding video stills
+                if not exclude_video_stills:
+                    images.extend(frames)
+                # Always add to video_frames_map for flipbook generation
                 video_frames_map[video_name] = frames
+            elif not exclude_video_stills:
+                # Only add video frames if not excluding them
+                frames = extract_frames_from_video(file_path, num_frames=12)
+                images.extend(frames)
+    
     return images, video_frames_map
 
 
@@ -218,6 +223,8 @@ def main():
     parser.add_argument('--output-dir', default=None, help='Directory to save output pages (default: <parent_of_parent>_output_pages)')
     parser.add_argument('--flipbook-mode', action='store_true', help='Enable flipbook layout for videos')
     parser.add_argument('--video-fps', type=int, default=1, help='Frames per second to extract from videos in flipbook mode')
+    parser.add_argument('--exclude-video-stills', action='store_true',
+                   help='Exclude video frames from standard grid pages (but keep flipbook pages if enabled)')
     args = parser.parse_args()
     grid_rows = args.grid_rows
     grid_cols = args.grid_cols
@@ -250,47 +257,40 @@ def main():
     output_dir = args.output_dir or str(script_dir / f'{parent_dir_name}_output_pages')
 
     try:
-        images, video_frames_map = load_images_from_dir(args.input_dir, flipbook_mode=args.flipbook_mode, video_fps=args.video_fps)
+        # Get images and video frames from the main loader function
+        images, video_frames_map = load_images_from_dir(
+            args.input_dir, 
+            flipbook_mode=args.flipbook_mode, 
+            video_fps=args.video_fps,
+            exclude_video_stills=args.exclude_video_stills
+        )
+
+        # Create image_paths list matching ONLY the images that were actually loaded
+        image_paths = []
+        for file_path in sorted(Path(args.input_dir).glob('*')):
+            ext = file_path.suffix.lower()
+            if ext in IMAGE_EXTENSIONS:
+                image_paths.append(str(file_path))
+            elif ext == '.pdf':
+                pdf_images = convert_from_path(str(file_path))
+                image_paths.extend([f"{file_path} (Page {i+1})" for i in range(len(pdf_images))])
+
+        if not images:
+            print('No images or PDFs found in the input directory.')
+            sys.exit(1)
+
+        # Process the images
+        images_to_pages(
+            images, args.layout, page_size, gap_px, hairline_width_px,
+            args.hairline_color, padding_px, args.image_fit_mode,
+            grid_rows, grid_cols, page_margin_px, args.output_pdf,
+            output_dir, args.flipbook_mode, video_frames_map, parent_dir_name,
+            image_paths=image_paths
+        )
+
     except Exception as e:
-        print(f'Error loading images: {e}')
+        print(f'Error processing images: {e}')
         sys.exit(1)
-
-    if not images:
-        print('No images or PDFs found in the input directory.')
-        sys.exit(1)
-
-    # New code to track file paths
-    image_paths = []  # Add this to track file paths
-
-    # Modify this loop to also store file paths
-    for file_path in sorted(Path(args.input_dir).glob('*')):
-        ext = file_path.suffix.lower()
-        if ext in IMAGE_EXTENSIONS:
-            img = Image.open(file_path).convert('RGB')
-            images.append(img)
-            image_paths.append(str(file_path))  # Store the full path
-        elif ext == '.pdf':
-            pdf_images = convert_from_path(str(file_path))
-            images.extend(pdf_images)
-            image_paths.extend([str(file_path)] * len(pdf_images))  # Store the PDF file path for each page
-        elif ext in VIDEO_EXTENSIONS:
-            video_name = file_path.stem.replace(' ', '_')
-            if args.flipbook_mode:
-                frames = extract_frames_from_video_fps(file_path, args.video_fps)
-                images.extend(frames)
-                video_frames_map[video_name] = frames
-                image_paths.extend([str(file_path)] * len(frames))  # Store the video file path for each frame
-            else:
-                frames = extract_frames_from_video(file_path, num_frames=12)
-                images.extend(frames)
-                image_paths.extend([str(file_path)] * len(frames))  # Store the video file path for each frame
-
-    # Then modify the call to images_to_pages
-    images_to_pages(images, args.layout, page_size, gap_px, hairline_width_px, 
-                   args.hairline_color, padding_px, args.image_fit_mode, 
-                   grid_rows, grid_cols, page_margin_px, args.output_pdf,
-                   output_dir, args.flipbook_mode, video_frames_map, parent_dir_name,
-                   image_paths=image_paths)  # Pass the paths
 
 if __name__ == '__main__':
     main()
