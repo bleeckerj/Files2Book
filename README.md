@@ -12,6 +12,10 @@ A Python utility that converts PDFs, images, and video files into organized grid
 - Option to exclude video stills from main grid pages
 - PDF output support
 
+## Usage Note
+
+This utility has been used to create the shelf books of the Slack channels for OMATA. The extraction of all content from those Slack channels is handled by the separate repository [SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata).
+
 ## Requirements
 
 ```bash
@@ -81,5 +85,16 @@ python3 directory_to_images.py /path/to/files/ \
     --flipbook-mode \
     --video-fps 1 \
     --exclude-video-stills \
-    --
+    --output-pdf
 ```
+
+## Batch Processing All Slack Channels
+
+To process all Slack channel directories at once (for example, to generate shelf books for every channel), use the provided `process_all_slack_dirs.py` script. This script will automatically run `directory_to_images.py` for every channel directory (with a `files/` subdirectory) in your exported Slack workspace folder.
+
+Example usage:
+```bash
+python3 process_all_slack_dirs.py
+```
+
+This will generate output pages and flipbooks for every channel in your Slack export, using the options specified in the script.

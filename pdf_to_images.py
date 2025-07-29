@@ -113,7 +113,9 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
     else:
         offset_x = left_margin
 
-    content_h = page_h - inner_margin_px - outer_margin_px
+    # Add bottom margin for captions
+    bottom_margin_px = int(0.14 * 300)  # 0.14 inch in pixels
+    content_h = page_h - inner_margin_px - outer_margin_px - bottom_margin_px
     cell_h = (content_h - total_gap_h) // rows
     offset_y = inner_margin_px
 
@@ -139,7 +141,8 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
             break
         img = images[idx]
         max_w = cell_w - 2 * (padding + hairline_width)
-        max_h = cell_h - 2 * (padding + hairline_width) - 20
+        filename_space = 40  # Allow more space for filename text
+        max_h = cell_h - 2 * (padding + hairline_width) - filename_space
         img = fit_image(img, max_w, max_h, image_fit_mode, is_flipbook)
 
         col = idx % cols
@@ -196,7 +199,9 @@ def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, p
     if is_flipbook:
         usable_width = int(usable_width * 0.7)
 
-    content_h = page_h - inner_margin_px - outer_margin_px
+    # Add bottom margin for captions
+    bottom_margin_px = int(0.14 * 300)  # 0.14 inch in pixels
+    content_h = page_h - inner_margin_px - outer_margin_px - bottom_margin_px
     cols = math.ceil(math.sqrt(n))
     
     # Calculate max image width for column sizing
@@ -271,7 +276,8 @@ def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, p
             draw.text((text_x, text_y), filename, fill='black', font=font, anchor="mt")
 
         # Update column height
-        col_y_offsets[col] += img.height + gap + 20  # Extra space for filename
+        filename_space = 40  # Allow more space for filename text
+        col_y_offsets[col] += img.height + gap + filename_space
         if col_y_offsets[col] > content_h:
             break
 
