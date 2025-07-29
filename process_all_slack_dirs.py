@@ -3,13 +3,22 @@ import os
 import subprocess
 from pathlib import Path
 import sys
+import argparse
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Process all Slack directories with the PDF to grid of images tool')
+    parser.add_argument('--base-dir', default="../SlackExporterForOmata",
+                      help='Base directory containing all the Slack export directories')
+    parser.add_argument('--script-path', default="./directory_to_images.py",
+                      help='Path to the directory_to_images.py script')
+    args = parser.parse_args()
+    
     # Base directory containing all the Slack export directories
-    base_dir = Path("/Users/julian/Code/SlackExporterForOmata")
+    base_dir = Path(args.base_dir)
     
     # Script to run
-    script_path = Path("/Users/julian/Code/pdf-to-grid-of-images/directory_to_images.py")
+    script_path = Path(args.script_path)
     
     # Check if script exists
     if not script_path.exists():
@@ -41,6 +50,8 @@ def main():
         "--exclude-video-stills",
         "--flipbook-mode",
         "--video-fps", "1",
+        "--cmyk-background", "0,0,0,0",  # CMYK page background color
+        "--cmyk-flipbook-background", "22,0,93,0",  # CMYK blank page background color Omata acid color
         "--cmyk-mode"
     ]
     

@@ -17,6 +17,12 @@ A Python utility that converts PDFs, images, and video files into organized grid
 
 This utility has been used to create the shelf books of the Slack channels for OMATA. The extraction of all content from those Slack channels is handled by the separate repository [SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata).
 
+The steps are to first use SlackExporterForOmata to extract all the messages and files and everything from the channels. The messages appear as gigantic structured data JSON files and the data files that have been shared in the channel appear in a sidecar directory called, you know ``“files”``.
+
+Then running `process_all_slack_dirs.py` (here from this repo) will churn on all of that and make pages and combined PDFs for each Slack channel suitable for printing books and putting them on your shelf. (It will not create the covers and spine..you have to do that by hand at the moment.)
+
+Oh, the `SlackExporterForOmata` will also create an `avatar` directory containing tiny avatar icons, and a few other json files like `channels.json` and `users.json`. `user.json is used here to create tables and indices of various sorts.
+
 ## Requirements
 
 ```bash
@@ -32,6 +38,13 @@ Basic usage:
 ```bash
 python3 directory_to_images.py /path/to/input/directory [options]
 ```
+
+Or:
+```bash
+python3 process_all_slack_dirs.py
+```
+
+This, when pointed appropriately, will create all the stuff.
 
 ### Command Line Arguments
 
@@ -58,6 +71,7 @@ Optional:
 - `--exclude-video-stills`: Exclude video frames from main grid pages
 - `--cmyk-mode`: Output images in CMYK color mode instead of RGB
 - `--cmyk-background`: CMYK background color as C,M,Y,K values (0-255, comma-separated, defaults to 0,0,0,0 which is white)
+- `--cmyk-flipbook-background`: CMYK background color for flipbook blank pages as C,M,Y,K values (0-255, comma-separated, defaults to 22,0,93,0 which is Omata acid green)
 
 ### Example Commands
 
@@ -99,7 +113,21 @@ python3 directory_to_images.py /path/to/files/ \
     --grid-cols 1 \
     --page-size A5 \
     --cmyk-mode \
-    --cmyk-background 22,0,93,0 \
+    --cmyk-background 0,0,0,0 \
+    --output-pdf
+```
+
+Create flipbooks with custom background colors for both content pages and blank pages:
+```bash
+python3 directory_to_images.py /path/to/files/ \
+    --layout grid \
+    --grid-rows 2 \
+    --grid-cols 1 \
+    --page-size A5 \
+    --flipbook-mode \
+    --cmyk-mode \
+    --cmyk-background 0,0,0,0 \
+    --cmyk-flipbook-background 22,0,93,0 \
     --output-pdf
 ```
 
@@ -107,9 +135,23 @@ python3 directory_to_images.py /path/to/files/ \
 
 To process all Slack channel directories at once (for example, to generate shelf books for every channel), use the provided `process_all_slack_dirs.py` script. This script will automatically run `directory_to_images.py` for every channel directory (with a `files/` subdirectory) in your exported Slack workspace folder.
 
-Example usage:
+### Command Line Arguments for Batch Processing
+
+- `--base-dir`: Path to the base directory containing all Slack export directories (default: "/Users/julian/Code/SlackExporterForOmata")
+- `--script-path`: Path to the directory_to_images.py script (default: "/Users/julian/Code/pdf-to-grid-of-images/directory_to_images.py")
+
+### Example Usage
+
+Basic usage with default paths:
 ```bash
 python3 process_all_slack_dirs.py
+```
+
+Specifying custom paths:
+```bash
+python3 process_all_slack_dirs.py \
+    --base-dir /path/to/slack/exports \
+    --script-path /path/to/directory_to_images.py
 ```
 
 This will generate output pages and flipbooks for every channel in your Slack export, using the options specified in the script.
@@ -124,12 +166,19 @@ The tool supports CMYK (Cyan, Magenta, Yellow, Black) color mode for professiona
 
 CMYK mode is particularly useful when preparing documents for professional printing services where precise color reproduction is important.
 
+### Background Colors
+
+You can set different CMYK background colors for both regular pages and flipbook blank pages:
+
+- `--cmyk-background`: Sets the background color for all regular content pages
+- `--cmyk-flipbook-background`: Sets the background color specifically for blank pages inserted in flipbook mode to ensure all flipbook frames appear on recto (right) pages
+
 Example CMYK values:
 - `0,0,0,0`: White
 - `0,0,0,100`: Black
 - `100,0,0,0`: Cyan
 - `0,100,0,0`: Magenta
 - `0,0,100,0`: Yellow
-- `22,0,93,0`: Greenish-yellow
+- `22,0,93,0`: Omata acid green (default for flipbook blank pages)
 
 Note: When using CMYK mode, the output files will be larger due to the TIFF format.
