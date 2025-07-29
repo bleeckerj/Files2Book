@@ -687,7 +687,27 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         outline='black',
         width=1
     )
-    # FIT summary: render only once, with medium font, and return early ONLY for .fit
+    # FIT: show GPS map if present, then summary text below
+    if ext == '.fit' and fit_gps_thumb is not None:
+        img_w, img_h = fit_gps_thumb.size
+        box_w = preview_box_right - preview_box_left - preview_box_padding * 2
+        box_h = preview_box_height - preview_box_padding * 2
+        x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
+        y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
+        img.paste(fit_gps_thumb, (int(x0), int(y0)))
+        # Draw summary below the map if space allows
+        try:
+            fit_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 12)
+        except:
+            fit_font = ImageFont.load_default()
+        text_y = y0 + img_h + 10
+        for line in preview_lines:
+            if text_y + line_height > preview_box_bottom - preview_box_padding:
+                break
+            draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=fit_font, anchor="lt")
+            text_y += line_height
+        return img
+    # If no GPS map, just show summary text as before
     if ext == '.fit' and preview_lines:
         try:
             fit_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 12)
