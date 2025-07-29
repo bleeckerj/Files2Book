@@ -40,7 +40,8 @@ def main():
         "--output-pdf",
         "--exclude-video-stills",
         "--flipbook-mode",
-        "--video-fps", "1"
+        "--video-fps", "1",
+        "--cmyk-mode"
     ]
     
     # Iterate through all directories in the base directory

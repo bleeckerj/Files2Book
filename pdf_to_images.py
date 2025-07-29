@@ -1,10 +1,11 @@
 import sys
 from pathlib import Path
 from pdf2image import convert_from_path
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageCms
 import math
 import argparse
 import os
+import io
 
 STANDARD_SIZES = {
     '8.5x11': (2550, 3300),  # 300 DPI
@@ -21,6 +22,41 @@ STANDARD_SIZES = {
     'ANSI B': (3300, 5100),
     'ANSI C': (5100, 6600),
 }
+
+def create_cmyk_image(width, height, color=(0, 0, 0, 0)):
+    """
+    Create a new CMYK image with the specified dimensions and color.
+    
+    Args:
+        width (int): Image width in pixels
+        height (int): Image height in pixels
+        color (tuple): CMYK color values as a tuple (C, M, Y, K) where each value is in range 0-255
+                       0 means no color (white), 255 means full color
+        
+    Returns:
+        PIL.Image: A CMYK mode image
+    """
+    # Create a CMYK image
+    cmyk_image = Image.new('CMYK', (width, height), color)
+    return cmyk_image
+
+def rgb_to_cmyk_image(rgb_image):
+    """
+    Convert an RGB image to CMYK mode.
+    
+    Args:
+        rgb_image (PIL.Image): RGB mode image
+        
+    Returns:
+        PIL.Image: A CMYK mode image
+    """
+    # Make sure the image is in RGB mode first
+    if rgb_image.mode != 'RGB':
+        rgb_image = rgb_image.convert('RGB')
+        
+    # Convert to CMYK
+    cmyk_image = rgb_image.convert('CMYK')
+    return cmyk_image
 
 def parse_page_size(size_str, orientation='portrait'):
     if size_str in STANDARD_SIZES:
@@ -61,9 +97,12 @@ def fit_image(img, max_w, max_h, fit_mode, is_flipbook=False):
 def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padding, 
                  image_fit_mode, grid_rows=None, grid_cols=None,
                  inner_margin_px=0, outer_margin_px=0, side='recto',
-                 is_flipbook=False, image_paths=None):
+                 is_flipbook=False, image_paths=None, cmyk_mode=False, cmyk_background=(0,0,0,0)):
     page_w, page_h = page_size
-    page_img = Image.new('RGB', page_size, 'white')
+    if cmyk_mode:
+        page_img = create_cmyk_image(page_w, page_h, cmyk_background)
+    else:
+        page_img = Image.new('RGB', page_size, 'white')
     draw = ImageDraw.Draw(page_img)
 
     cols = grid_cols if grid_cols else math.ceil(math.sqrt(n))
@@ -185,13 +224,17 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
 
 def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, padding, 
                     image_fit_mode, inner_margin_px=0, outer_margin_px=0, 
-                    side='recto', is_flipbook=False, image_paths=None):
+                    side='recto', is_flipbook=False, image_paths=None, 
+                    cmyk_mode=False, cmyk_background=(0,0,0,0)):
     page_w, page_h = page_size
     left_margin = inner_margin_px if side == 'recto' else outer_margin_px
     right_margin = outer_margin_px if side == 'recto' else inner_margin_px
     
-    # Create page and drawing context
-    page_img = Image.new('RGB', (page_w, page_h), 'white')
+    # Create page and drawing context - either RGB or CMYK
+    if cmyk_mode:
+        page_img = create_cmyk_image(page_w, page_h, cmyk_background)
+    else:
+        page_img = Image.new('RGB', (page_w, page_h), 'white')
     draw = ImageDraw.Draw(page_img)
 
     # Calculate usable dimensions
@@ -286,7 +329,7 @@ def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, p
 def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_color, 
                  padding, page_orientation, image_fit_mode, grid_rows=None, 
                  grid_cols=None, inner_margin_px=0, outer_margin_px=0, 
-                 output_pdf=False, flipbook_mode=False):
+                 output_pdf=False, flipbook_mode=False, cmyk_mode=False, cmyk_background=(0,0,0,0)):
     images = convert_from_path(pdf_path)
     output_dir = Path(pdf_path).stem + '_output_pages'
     Path(output_dir).mkdir(exist_ok=True)
@@ -298,36 +341,46 @@ def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_col
     for i in range(0, len(images), chunk_size or len(images)):
         chunk = images[i:i+(chunk_size or len(images))]
         
-        # For flipbook mode, ensure all pages are on recto (right) pages
-        if flipbook_mode and page_counter % 2 == 0:  # If we're on a verso page
-            # Insert a blank page
-            blank_img = Image.new('RGB', page_size, 'white')
-            output_images.append(blank_img)
-            output_path = Path(output_dir) / f'output_page_{page_counter}.png'
-            blank_img.save(output_path)
-            print(f'Saved blank page: {output_path}')
-            page_counter += 1
-        
         side = 'recto' if page_counter % 2 == 1 else 'verso'
 
         if layout == 'grid':
             page_img = arrange_grid(chunk, page_size, len(chunk), gap, hairline_width, 
                                      hairline_color, padding, image_fit_mode, grid_rows, 
-                                     grid_cols, inner_margin_px, outer_margin_px, side, is_flipbook=flipbook_mode)
+                                     grid_cols, inner_margin_px, outer_margin_px, side, 
+                                     is_flipbook=flipbook_mode, cmyk_mode=cmyk_mode, 
+                                     cmyk_background=cmyk_background)
         else:
             page_img = arrange_masonry(chunk, page_size, len(chunk), gap, hairline_width, 
                                        hairline_color, padding, image_fit_mode, 
-                                       inner_margin_px, outer_margin_px, side, is_flipbook=flipbook_mode)
+                                       inner_margin_px, outer_margin_px, side, 
+                                       is_flipbook=flipbook_mode, cmyk_mode=cmyk_mode, 
+                                       cmyk_background=cmyk_background)
 
         output_images.append(page_img)
-        output_path = Path(output_dir) / f'output_page_{page_counter}.png'
-        page_img.save(output_path)
+        # Save image - use TIFF for CMYK mode
+        if cmyk_mode:
+            output_path = Path(output_dir) / f'output_page_{page_counter}.tiff'
+            page_img.save(output_path, compression='tiff_lzw')
+        else:
+            output_path = Path(output_dir) / f'output_page_{page_counter}.png'
+            page_img.save(output_path)
         print(f'Saved {output_path}')
         page_counter += 1
 
     if output_pdf:
         pdf_path_out = Path(output_dir) / (Path(pdf_path).stem + '_output.pdf')
-        output_images[0].save(pdf_path_out, save_all=True, append_images=output_images[1:])
+        # For CMYK mode, we need to save with special options
+        if cmyk_mode:
+            output_images[0].save(
+                pdf_path_out, 
+                save_all=True, 
+                append_images=output_images[1:],
+                resolution=300.0,
+                quality=100,
+                compression='tiff_lzw'
+            )
+        else:
+            output_images[0].save(pdf_path_out, save_all=True, append_images=output_images[1:])
         print(f'Saved PDF {pdf_path_out}')
 
 def main():
@@ -348,6 +401,9 @@ def main():
     parser.add_argument('--outer-margin', type=float, default=0.5)
     parser.add_argument('--output-pdf', action='store_true')
     parser.add_argument('--flipbook-mode', action='store_true')
+    parser.add_argument('--cmyk-mode', action='store_true', help='Output images in CMYK color mode')
+    parser.add_argument('--cmyk-background', type=str, default='0,0,0,0', 
+                      help='CMYK background color as C,M,Y,K values (0-255, comma-separated)')
     args = parser.parse_args()
 
     grid_rows = args.grid_rows
@@ -372,12 +428,24 @@ def main():
 
     inner_margin_px = int(args.inner_margin * 300)
     outer_margin_px = int(args.outer_margin * 300)
+    
+    # Parse CMYK background color if provided
+    cmyk_background = (0, 0, 0, 0)  # Default: no color (white)
+    if args.cmyk_background:
+        try:
+            cmyk_values = [int(x.strip()) for x in args.cmyk_background.split(',')]
+            if len(cmyk_values) == 4:
+                cmyk_background = tuple(max(0, min(255, v)) for v in cmyk_values)  # Clamp to 0-255
+            else:
+                print("Warning: CMYK background must have 4 values. Using default.")
+        except ValueError:
+            print("Warning: Invalid CMYK values. Using default.")
 
     pdf_to_images(
         args.input_pdf, args.layout, page_size, args.gap, args.hairline_width,
         args.hairline_color, args.padding, args.page_orientation, args.image_fit_mode,
         grid_rows, grid_cols, inner_margin_px, outer_margin_px,
-        args.output_pdf, args.flipbook_mode
+        args.output_pdf, args.flipbook_mode, args.cmyk_mode, cmyk_background
     )
 
 if __name__ == '__main__':

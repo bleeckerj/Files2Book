@@ -11,6 +11,7 @@ A Python utility that converts PDFs, images, and video files into organized grid
 - Customizable margins, gaps, and borders
 - Option to exclude video stills from main grid pages
 - PDF output support
+- CMYK color mode support with customizable CMYK values
 
 ## Usage Note
 
@@ -55,6 +56,8 @@ Optional:
 - `--flipbook-mode`: Enable flipbook creation from videos
 - `--video-fps`: Frames per second for video extraction (default: 1)
 - `--exclude-video-stills`: Exclude video frames from main grid pages
+- `--cmyk-mode`: Output images in CMYK color mode instead of RGB
+- `--cmyk-background`: CMYK background color as C,M,Y,K values (0-255, comma-separated, defaults to 0,0,0,0 which is white)
 
 ### Example Commands
 
@@ -88,6 +91,18 @@ python3 directory_to_images.py /path/to/files/ \
     --output-pdf
 ```
 
+Create a grid with CMYK color mode using a specific background color:
+```bash
+python3 directory_to_images.py /path/to/files/ \
+    --layout grid \
+    --grid-rows 2 \
+    --grid-cols 1 \
+    --page-size A5 \
+    --cmyk-mode \
+    --cmyk-background 22,0,93,0 \
+    --output-pdf
+```
+
 ## Batch Processing All Slack Channels
 
 To process all Slack channel directories at once (for example, to generate shelf books for every channel), use the provided `process_all_slack_dirs.py` script. This script will automatically run `directory_to_images.py` for every channel directory (with a `files/` subdirectory) in your exported Slack workspace folder.
@@ -98,3 +113,23 @@ python3 process_all_slack_dirs.py
 ```
 
 This will generate output pages and flipbooks for every channel in your Slack export, using the options specified in the script.
+
+## CMYK Color Mode
+
+The tool supports CMYK (Cyan, Magenta, Yellow, Black) color mode for professional printing applications. When CMYK mode is enabled:
+
+- Images are saved as TIFF files instead of PNG for better color space support
+- You can specify custom CMYK background values (0-255 for each channel)
+- PDF output is optimized for print production
+
+CMYK mode is particularly useful when preparing documents for professional printing services where precise color reproduction is important.
+
+Example CMYK values:
+- `0,0,0,0`: White
+- `0,0,0,100`: Black
+- `100,0,0,0`: Cyan
+- `0,100,0,0`: Magenta
+- `0,0,100,0`: Yellow
+- `22,0,93,0`: Greenish-yellow
+
+Note: When using CMYK mode, the output files will be larger due to the TIFF format.

@@ -14,6 +14,8 @@ from pdf_to_images import (
     arrange_masonry,
     fit_image,
     draw_hairline_border,
+    create_cmyk_image,
+    rgb_to_cmyk_image,
 )
 
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff'}
@@ -112,14 +114,18 @@ def extract_frames_from_video_fps(video_path, fps=1):
     return frames
 
 
-def create_blank_page(page_size, color='white'):
-    return Image.new('RGB', page_size, color)
+def create_blank_page(page_size, color='white', cmyk_mode=False, cmyk_color=(0, 0, 0, 0)):
+    if cmyk_mode:
+        return create_cmyk_image(page_size[0], page_size[1], cmyk_color)
+    else:
+        return Image.new('RGB', page_size, color)
 
 
 def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_color, padding,
                     image_fit_mode, grid_rows=None, grid_cols=None, page_margin=0, output_pdf=False,
                     output_dir='output_pages', flipbook_mode=False, video_frames_map=None, parent_prefix='output',
-                    image_paths=None):
+                    image_paths=None, cmyk_mode=False, cmyk_background=(0, 0, 0, 0), cmyk_flipbook_background=(0, 0, 0, 0),
+                    insert_blank_pages_main=False):
     
     # Convert output_dir to a Path object if it's a string
     output_dir = Path(output_dir)
@@ -142,8 +148,29 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
             flipbook_dir = output_dir / f'flipbook_{video_name}'
             flipbook_dir.mkdir(exist_ok=True)
             video_output_images = []
+            page_counter = 1
+            
             for idx, img in enumerate(frames):
-                page_img = Image.new('RGB', page_size, 'white')
+                # For flipbooks, ensure all images appear on recto pages (odd-numbered)
+                if page_counter % 2 == 0:  # If we're on a verso page
+                    # Create and save blank page in CMYK mode with specified values
+                    # just putting in manually the verso blank page for flipbook is omata acid color
+                    blank_page = create_cmyk_image(page_size[0], page_size[1], cmyk_flipbook_background)
+                    video_output_images.append(blank_page)
+                    if cmyk_mode:
+                        output_path = flipbook_dir / f'{video_name}_flipbook_frame_{page_counter:03d}_blank.tiff'
+                        blank_page.save(output_path, compression='tiff_lzw')
+                    else:
+                        output_path = flipbook_dir / f'{video_name}_flipbook_frame_{page_counter:03d}_blank.png'
+                        blank_page.save(output_path)
+                    print(f'Saved blank flipbook page {output_path}')
+                    page_counter += 1
+                
+                # Now create the actual content page (which will be on a recto page)
+                if cmyk_mode:
+                    page_img = create_cmyk_image(page_size[0], page_size[1], cmyk_background)
+                else:
+                    page_img = Image.new('RGB', page_size, 'white')
                 img = img.copy()
                 
                 # Calculate 70% of page width
@@ -168,36 +195,81 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
                 draw = ImageDraw.Draw(page_img)
                 draw_hairline_border(draw, border_xy, hairline_width, hairline_color)
                 video_output_images.append(page_img)
-                output_path = flipbook_dir / f'{video_name}_flipbook_frame_{idx + 1:03d}.png'
-                page_img.save(output_path)
+                if cmyk_mode:
+                    output_path = flipbook_dir / f'{video_name}_flipbook_frame_{page_counter:03d}.tiff'
+                    page_img.save(output_path, compression='tiff_lzw')
+                else:
+                    output_path = flipbook_dir / f'{video_name}_flipbook_frame_{page_counter:03d}.png'
+                    page_img.save(output_path)
                 print(f'Saved flipbook page {output_path}')
+                page_counter += 1
             if output_pdf and video_output_images:
                 pdf_path_out = flipbook_dir / f'{video_name}_flipbook.pdf'
-                video_output_images[0].save(pdf_path_out, save_all=True, append_images=video_output_images[1:])
+                # Save PDF with appropriate settings based on color mode
+                if cmyk_mode:
+                    video_output_images[0].save(
+                        pdf_path_out, 
+                        save_all=True, 
+                        append_images=video_output_images[1:],
+                        resolution=300.0,
+                        quality=100,
+                        compression='tiff_lzw'
+                    )
+                else:
+                    video_output_images[0].save(
+                        pdf_path_out, 
+                        save_all=True, 
+                        append_images=video_output_images[1:]
+                    )
                 print(f'Saved PDF {pdf_path_out}')
 
     # Generate standard pages for all images
     chunk_size = (grid_rows or 2) * (grid_cols or 2)
     output_images = []  # Collect page images for PDF output
+    page_counter = 1
+    
     for i in range(0, len(images), chunk_size):
+            
         chunk = images[i:i + (chunk_size or len(images))]
-        page_num = i // (chunk_size or len(images)) + 1
-        side = 'recto' if page_num % 2 == 1 else 'verso'
+        side = 'recto' if page_counter % 2 == 1 else 'verso'
         if layout == 'grid':
             page_img = arrange_grid(chunk, page_size, len(chunk), gap, hairline_width, hairline_color,
                                     padding, image_fit_mode, grid_rows, grid_cols, page_margin, 
-                                    side=side, is_flipbook=flipbook_mode, image_paths=image_paths[i:i+chunk_size])
+                                    side=side, is_flipbook=flipbook_mode, image_paths=image_paths[i:i+chunk_size],
+                                    cmyk_mode=cmyk_mode, cmyk_background=cmyk_background)
         else:
             page_img = arrange_masonry(chunk, page_size, len(chunk), gap, hairline_width, hairline_color,
-                                       padding, image_fit_mode, page_margin, side=side)
-        filename = f'{parent_prefix}_output_page_{page_num:03d}.png'
-        output_path = output_dir / filename
-        page_img.save(output_path)
+                                       padding, image_fit_mode, page_margin, side=side,
+                                       cmyk_mode=cmyk_mode, cmyk_background=cmyk_background)
+        if cmyk_mode:
+            filename = f'{parent_prefix}_output_page_{page_counter:03d}.tiff'
+            output_path = output_dir / filename
+            page_img.save(output_path, compression='tiff_lzw')
+        else:
+            filename = f'{parent_prefix}_output_page_{page_counter:03d}.png'
+            output_path = output_dir / filename
+            page_img.save(output_path)
         output_images.append(page_img)
         print(f'Saved {output_path}')
+        page_counter += 1
     if output_pdf and output_images:
         pdf_path_out = output_dir / f'{parent_prefix}_output_combined.pdf'
-        output_images[0].save(pdf_path_out, save_all=True, append_images=output_images[1:])
+        # Save PDF with appropriate settings based on color mode
+        if cmyk_mode:
+            output_images[0].save(
+                pdf_path_out, 
+                save_all=True, 
+                append_images=output_images[1:],
+                resolution=300.0,
+                quality=100,
+                compression='tiff_lzw'
+            )
+        else:
+            output_images[0].save(
+                pdf_path_out, 
+                save_all=True, 
+                append_images=output_images[1:]
+            )
         print(f'Saved PDF {pdf_path_out}')
 
 
@@ -226,6 +298,11 @@ def main():
     parser.add_argument('--video-fps', type=int, default=1, help='Frames per second to extract from videos in flipbook mode')
     parser.add_argument('--exclude-video-stills', action='store_true',
                    help='Exclude video frames from standard grid pages (but keep flipbook pages if enabled)')
+    parser.add_argument('--cmyk-mode', action='store_true', help='Output images in CMYK color mode')
+    parser.add_argument('--cmyk-background', type=str, default='0,0,0,0', 
+                   help='CMYK background color as C,M,Y,K values (0-255, comma-separated)')
+    parser.add_argument('--cmyk-flipbook-background', type=str, default='22,0,93,0', 
+                   help='CMYK background color for flipbook pages as C,M,Y,K values (0-255, comma-separated) default is 22,0,93,0 which is Omata acid color')
     args = parser.parse_args()
     grid_rows = args.grid_rows
     grid_cols = args.grid_cols
@@ -256,7 +333,28 @@ def main():
     parent_dir_name = get_parent_of_parent_name(args.input_dir)
     script_dir = Path(__file__).parent.resolve()
     output_dir = args.output_dir or str(script_dir / f'{parent_dir_name}_output_pages')
-
+    
+    # Parse CMYK background color if provided
+    cmyk_background = (0, 0, 0, 0)  # Default: no color (white)
+    if args.cmyk_mode and args.cmyk_background:
+        try:
+            cmyk_values = [int(x.strip()) for x in args.cmyk_background.split(',')]
+            if len(cmyk_values) == 4:
+                cmyk_background = tuple(max(0, min(255, v)) for v in cmyk_values)  # Clamp to 0-255
+            else:
+                print("Warning: CMYK background must have 4 values. Using default.")
+        except ValueError:
+            print("Warning: Invalid CMYK values. Using default.")
+    cmyk_flipbook_background = (22, 0, 93, 0)  # Default Omata acid color
+    if args.cmyk_flipbook_background:
+        try:
+            cmyk_flipbook_values = [int(x.strip()) for x in args.cmyk_flipbook_background.split(',')]
+            if len(cmyk_flipbook_values) == 4:
+                cmyk_flipbook_background = tuple(max(0, min(255, v)) for v in cmyk_flipbook_values)  # Clamp to 0-255
+            else:
+                print("Warning: CMYK flipbook background must have 4 values. Using default.")
+        except ValueError:
+            print("Warning: Invalid CMYK flipbook background values. Using default.")
     try:
         # Get images and video frames from the main loader function
         images, video_frames_map = load_images_from_dir(
@@ -286,7 +384,7 @@ def main():
             args.hairline_color, padding_px, args.image_fit_mode,
             grid_rows, grid_cols, page_margin_px, args.output_pdf,
             output_dir, args.flipbook_mode, video_frames_map, parent_dir_name,
-            image_paths=image_paths
+            image_paths=image_paths, cmyk_mode=args.cmyk_mode, cmyk_background=cmyk_background, cmyk_flipbook_background=cmyk_flipbook_background
         )
 
     except Exception as e:
