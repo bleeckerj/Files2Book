@@ -294,10 +294,21 @@ def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_col
     output_images = []
     chunk_size = grid_rows * grid_cols if grid_rows and grid_cols else None
 
+    page_counter = 1
     for i in range(0, len(images), chunk_size or len(images)):
         chunk = images[i:i+(chunk_size or len(images))]
-        page_num = (i // (chunk_size or len(images))) + 1
-        side = 'recto' if page_num % 2 == 1 else 'verso'
+        
+        # For flipbook mode, ensure all pages are on recto (right) pages
+        if flipbook_mode and page_counter % 2 == 0:  # If we're on a verso page
+            # Insert a blank page
+            blank_img = Image.new('RGB', page_size, 'white')
+            output_images.append(blank_img)
+            output_path = Path(output_dir) / f'output_page_{page_counter}.png'
+            blank_img.save(output_path)
+            print(f'Saved blank page: {output_path}')
+            page_counter += 1
+        
+        side = 'recto' if page_counter % 2 == 1 else 'verso'
 
         if layout == 'grid':
             page_img = arrange_grid(chunk, page_size, len(chunk), gap, hairline_width, 
@@ -309,9 +320,10 @@ def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_col
                                        inner_margin_px, outer_margin_px, side, is_flipbook=flipbook_mode)
 
         output_images.append(page_img)
-        output_path = Path(output_dir) / f'output_page_{page_num}.png'
+        output_path = Path(output_dir) / f'output_page_{page_counter}.png'
         page_img.save(output_path)
         print(f'Saved {output_path}')
+        page_counter += 1
 
     if output_pdf:
         pdf_path_out = Path(output_dir) / (Path(pdf_path).stem + '_output.pdf')

@@ -36,7 +36,7 @@ def main():
         "--hairline-width", "0.008",
         "--hairline-color", "gray",
         "--padding", "0.125",
-        "--page-margin", "0.15",
+        "--page-margin", "0.25",
         "--output-pdf",
         "--exclude-video-stills",
         "--flipbook-mode",
