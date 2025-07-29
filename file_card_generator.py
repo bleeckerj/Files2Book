@@ -8,6 +8,20 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import math
 import textwrap
+import zipfile
+import bz2
+import gzip
+try:
+    from fitparse import FitFile
+    FITPARSE_AVAILABLE = True
+except ImportError:
+    FITPARSE_AVAILABLE = False
+from PIL import Image
+import binascii
+import json
+from pdf2image import convert_from_path
+import gpxpy
+import cv2
 
 # Initialize mimetypes
 mimetypes.init()
@@ -134,8 +148,323 @@ def preview_text_content(file_path, max_lines=5, max_line_length=40):
     except Exception:
         return None
 
+def get_original_timestamp(file_path):
+    """Try to find the original timestamp for a file from messages.json in the parent directory."""
+    parent = file_path.parent
+    messages_json = parent.parent / "messages.json"
+    if not messages_json.exists():
+        return None
+    try:
+        with open(messages_json, 'r', encoding='utf-8', errors='ignore') as f:
+            messages = json.load(f)
+        for msg in messages:
+            if 'files' in msg:
+                for fobj in msg['files']:
+                    # Match by filename
+                    if fobj.get('name') == file_path.name:
+                        ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts')
+                        if ts:
+                            # Slack timestamps are usually in seconds
+                            try:
+                                return datetime.fromtimestamp(float(ts))
+                            except Exception:
+                                pass
+        return None
+    except Exception:
+        return None
+
+def get_zip_preview(file_path, max_files=40):
+    try:
+        with zipfile.ZipFile(file_path, 'r') as z:
+            names = z.namelist()
+            return [f"ZIP: {len(names)} files"] + names[:max_files]
+    except Exception as e:
+        return [f"ZIP error: {e}"]
+
+def get_bz2_preview(file_path, max_bytes=1024):
+    try:
+        with bz2.open(file_path, 'rb') as f:
+            data = f.read(max_bytes)
+        hex_lines = []
+        for i in range(0, len(data), 16):
+            chunk = data[i:i+16]
+            hexstr = ' '.join(f"{b:02X}" for b in chunk)
+            ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
+            hex_lines.append(f"{i:08X}: {hexstr:<48} {ascii_str}")
+        return ["BZ2 (hex preview):"] + hex_lines
+    except Exception as e:
+        return [f"BZ2 error: {e}"]
+
+def get_gz_preview(file_path, max_bytes=1024, preview_box=None):
+    import mimetypes
+    try:
+        with gzip.open(file_path, 'rb') as f:
+            data = f.read(max_bytes * 10)  # Read more for image/text detection
+        # Guess file type from original filename if possible
+        orig_name = Path(file_path).stem
+        ext = Path(orig_name).suffix.lower()
+        # Try image preview
+        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.heic'} and preview_box:
+            try:
+                img = Image.open(io.BytesIO(data))
+                img.thumbnail(preview_box)
+                return None, img, None
+            except Exception:
+                pass
+        # Try text preview
+        mime, _ = mimetypes.guess_type(orig_name)
+        if mime and mime.startswith('text'):
+            try:
+                text = data.decode(errors='ignore')
+                lines = text.splitlines()[:40]
+                return lines, None, None
+            except Exception:
+                pass
+        # Fallback: hex preview
+        hex_lines = []
+        for i in range(0, min(len(data), max_bytes), 16):
+            chunk = data[i:i+16]
+            hexstr = ' '.join(f"{b:02X}" for b in chunk)
+            ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
+            hex_lines.append(f"{i:08X}: {hexstr:<48} {ascii_str}")
+        return hex_lines, None, None
+    except Exception as e:
+        return [f"GZ error: {e}"], None, None
+
+def get_hex_preview(file_path, max_bytes=1024):
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read(max_bytes)
+        hex_lines = []
+        for i in range(0, len(data), 16):
+            chunk = data[i:i+16]
+            hexstr = ' '.join(f"{b:02X}" for b in chunk)
+            ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
+            hex_lines.append(f"{i:08X}: {hexstr:<48} {ascii_str}")
+        return hex_lines
+    except Exception as e:
+        return [f"Hex error: {e}"]
+
+def get_fit_preview(file_path, max_records=40):
+    if not FITPARSE_AVAILABLE:
+        return ["fitparse not installed"]
+    try:
+        fitfile = FitFile(str(file_path))
+        lines = []
+        for i, record in enumerate(fitfile.get_messages()):
+            if i >= max_records:
+                break
+            lines.append(f"{record.get('name', 'Record')}: {record}")
+        if not lines:
+            lines = ["No records found"]
+        return lines
+    except Exception as e:
+        return [f"FIT error: {e}"]
+
+def get_fit_summary_preview(file_path):
+    if not FITPARSE_AVAILABLE:
+        return ["fitparse not installed"], {}
+    try:
+        fitfile = FitFile(str(file_path))
+        summary = []
+        meta = {}
+        # Try to extract session/activity summary
+        for msg in fitfile.get_messages('session'):
+            fields = {d.name: d.value for d in msg}
+            summary.append(f"Session: {fields.get('sport', 'N/A')} {fields.get('sub_sport', '')}")
+            if 'start_time' in fields:
+                summary.append(f"Start: {fields['start_time']}")
+                meta['start_time'] = fields['start_time']
+            if 'total_timer_time' in fields:
+                summary.append(f"Duration: {fields['total_timer_time']:.1f} sec")
+            if 'total_distance' in fields:
+                summary.append(f"Distance: {fields['total_distance']/1000:.2f} km")
+            if 'total_ascent' in fields:
+                summary.append(f"Ascent: {fields['total_ascent']} m")
+            if 'avg_speed' in fields:
+                summary.append(f"Avg Speed: {fields['avg_speed']*3.6:.2f} km/h")
+            if 'max_speed' in fields:
+                summary.append(f"Max Speed: {fields['max_speed']*3.6:.2f} km/h")
+            if 'total_calories' in fields:
+                summary.append(f"Calories: {fields['total_calories']}")
+            summary.append("")
+        # If no session, try activity
+        if not summary:
+            for msg in fitfile.get_messages('activity'):
+                fields = {d.name: d.value for d in msg}
+                summary.append(f"Activity: {fields.get('type', 'N/A')}")
+                if 'timestamp' in fields:
+                    summary.append(f"Timestamp: {fields['timestamp']}")
+                    meta['timestamp'] = fields['timestamp']
+                summary.append("")
+        # Fallback: show number of records
+        n_records = sum(1 for _ in fitfile.get_messages('record'))
+        summary.append(f"Records: {n_records}")
+        meta['records'] = n_records
+        # Add all metadata fields from file header
+        if hasattr(fitfile, 'file_id'):
+            for k, v in fitfile.file_id.items():
+                summary.append(f"{k}: {v}")
+                meta[k] = v
+        return summary[:40], meta
+    except Exception as e:
+        return [f"FIT error: {e}"], {}
+
+def get_pdf_preview(file_path, box_w, box_h, max_pages=4):
+    try:
+        pages = convert_from_path(str(file_path), first_page=1, last_page=max_pages)
+        n = len(pages)
+        if n == 0:
+            return None
+        # Arrange in grid (2x2 or 1xN)
+        grid_cols = 2 if n > 1 else 1
+        grid_rows = (n + 1) // 2 if n > 1 else 1
+        thumb_w = box_w // grid_cols
+        thumb_h = box_h // grid_rows
+        grid_img = Image.new('RGB', (box_w, box_h), (245, 245, 245))
+        for idx, page in enumerate(pages):
+            page.thumbnail((thumb_w, thumb_h))
+            x = (idx % grid_cols) * thumb_w + (thumb_w - page.width)//2
+            y = (idx // grid_cols) * thumb_h + (thumb_h - page.height)//2
+            grid_img.paste(page, (x, y))
+        return grid_img
+    except Exception:
+        return None
+
+def get_image_thumbnail(file_path, thumb_size=(320, 320)):
+    try:
+        img = Image.open(file_path)
+        img.thumbnail(thumb_size)
+        return img
+    except Exception:
+        return None
+
+def get_gpx_preview(file_path, box_w, box_h):
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            gpx = gpxpy.parse(f)
+        points = []
+        for track in gpx.tracks:
+            for segment in track.segments:
+                for p in segment.points:
+                    points.append((p.longitude, p.latitude))
+        if not points:
+            return None
+        lons, lats = zip(*points)
+        min_lon, max_lon = min(lons), max(lons)
+        min_lat, max_lat = min(lats), max(lats)
+        # Normalize and scale
+        def scale(val, minv, maxv, size):
+            if maxv == minv:
+                return size // 2
+            return int((val - minv) / (maxv - minv) * (size - 20) + 10)
+        img = Image.new('RGB', (box_w, box_h), (245, 245, 245))
+        draw = ImageDraw.Draw(img)
+        prev = None
+        for lon, lat in points:
+            x = scale(lon, min_lon, max_lon, box_w)
+            y = box_h - scale(lat, min_lat, max_lat, box_h)
+            if prev:
+                draw.line([prev, (x, y)], fill=(0, 120, 160), width=3)
+            prev = (x, y)
+        return img
+    except Exception:
+        return None
+
+def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=2):
+    try:
+        cap = cv2.VideoCapture(str(file_path))
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_count == 0:
+            cap.release()
+            return None
+        n_frames = grid_cols * grid_rows
+        idxs = [int(i * (frame_count - 1) / (n_frames - 1)) for i in range(n_frames)]
+        thumbs = []
+        for idx in idxs:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(frame)
+            pil_img.thumbnail((box_w // grid_cols, box_h // grid_rows))
+            thumbs.append(pil_img)
+        cap.release()
+        grid_img = Image.new('RGB', (box_w, box_h), (245, 245, 245))
+        for i, thumb in enumerate(thumbs):
+            x = (i % grid_cols) * (box_w // grid_cols) + ((box_w // grid_cols) - thumb.width)//2
+            y = (i // grid_cols) * (box_h // grid_rows) + ((box_h // grid_rows) - thumb.height)//2
+            grid_img.paste(thumb, (x, y))
+        return grid_img
+    except Exception:
+        return None
+
+try:
+    import pyheif
+    PYHEIF_AVAILABLE = True
+except ImportError:
+    PYHEIF_AVAILABLE = False
+
+def get_heic_image(file_path):
+    if not PYHEIF_AVAILABLE:
+        return None
+    try:
+        heif_file = pyheif.read(file_path)
+        img = Image.frombytes(
+            heif_file.mode,
+            heif_file.size,
+            heif_file.data,
+            "raw",
+            heif_file.mode,
+            heif_file.stride,
+        )
+        return img
+    except Exception:
+        return None
+
+def get_fit_gps_preview(file_path, box_w, box_h):
+    if not FITPARSE_AVAILABLE:
+        return None
+    try:
+        fitfile = FitFile(str(file_path))
+        points = []
+        for record in fitfile.get_messages('record'):
+            lat = None
+            lon = None
+            for d in record:
+                if d.name == 'position_lat':
+                    lat = d.value
+                elif d.name == 'position_long':
+                    lon = d.value
+            if lat is not None and lon is not None:
+                # Convert semicircles to degrees
+                lat = lat * (180.0 / 2**31)
+                lon = lon * (180.0 / 2**31)
+                points.append((lon, lat))
+        if not points:
+            return None
+        lons, lats = zip(*points)
+        min_lon, max_lon = min(lons), max(lons)
+        min_lat, max_lat = min(lats), max(lats)
+        def scale(val, minv, maxv, size):
+            if maxv == minv:
+                return size // 2
+            return int((val - minv) / (maxv - minv) * (size - 20) + 10)
+        img = Image.new('RGB', (box_w, box_h), (245, 245, 245))
+        draw = ImageDraw.Draw(img)
+        prev = None
+        for lon, lat in points:
+            x = scale(lon, min_lon, max_lon, box_w)
+            y = box_h - scale(lat, min_lat, max_lat, box_h)
+            if prev:
+                draw.line([prev, (x, y)], fill=(0, 120, 160), width=3)
+            prev = (x, y)
+        return img
+    except Exception:
+        return None
+
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
-    """Create an information card for any file type with dynamic height adjustment for preview content."""
     file_path = Path(file_path)
     
     # Try to load fonts
@@ -150,6 +479,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 
     file_type_info = get_file_type_info(file_path)
     icon = file_type_info['icon']
+    ext = file_path.suffix.lower()
 
     try:
         size = os.path.getsize(file_path)
@@ -160,18 +490,27 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         modified_time = 0
         created_time = 0
 
+    # Try to get original timestamp
+    original_dt = get_original_timestamp(file_path)
     file_info = {
         'Name': file_path.name,
         'Type': f"{file_path.suffix[1:].upper()} ({file_type_info['group']})",
         'Size': format_file_size(size),
-        'Modified': datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S'),
-        'Created': datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S'),
     }
+    if original_dt:
+        file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
+        file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
+
+    if os.path.exists(file_path) and size < 50 * 1024 * 1024:
+        try:
+            file_info['Hash (MD5)'] = get_file_hash(file_path)
+        except:
+            pass
 
     # Fixed card height for 4x5 aspect ratio
     height = int(width * 5 / 4)
-
-    # --- Calculate layout ---
     header_height = 80
     icon_space = 100 + 40
     metadata_lines = len(file_info)
@@ -182,11 +521,9 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     preview_box_left = int(width * 0.1)
     preview_box_right = int(width * 0.9)
     preview_box_top = header_height + icon_space + metadata_height + spacing
-    preview_box_bottom = height - 20  # leave a little bottom margin
+    preview_box_bottom = height - 30  # increase bottom margin
     preview_box_height = preview_box_bottom - preview_box_top
     max_line_width_pixels = preview_box_right - preview_box_left - preview_box_padding * 2
-
-    # Calculate font metrics
     temp_img = Image.new('RGB', (width, height))
     temp_draw = ImageDraw.Draw(temp_img)
     bbox = temp_draw.textbbox((0, 0), 'A', font=preview_font)
@@ -196,27 +533,70 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     max_line_length = max(10, max_line_width_pixels // char_width)
     max_preview_lines = max(1, preview_box_height // line_height)
 
-    # --- Read and wrap preview content ---
+    # --- Preview logic by file type ---
     preview_lines = []
-    if file_type_info['group'] in ['code', 'data', 'document', 'log']:
-        # Read a large chunk of the file
+    fit_meta = {}
+    image_thumb = None
+    pdf_grid_thumb = None
+    gpx_thumb = None
+    video_thumb = None
+    fit_gps_thumb = None
+    zip_file_list = None
+    zip_file_preview_img = None
+    zip_file_preview_lines = None
+    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff'}:
+        # Always scale to fit preview box, then scale down by 10%
+        image = get_image_thumbnail(file_path, thumb_size=(max_line_width_pixels, preview_box_height))
+        if image is not None:
+            img_w, img_h = image.size
+            scale_factor = min((max_line_width_pixels) / img_w, (preview_box_height) / img_h, 1) * 0.95
+            new_w = int(img_w * scale_factor)
+            new_h = int(img_h * scale_factor)
+            image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
+    elif ext in {'.heic', '.heif'}:
+        image = get_heic_image(file_path)
+        if image is not None:
+            img_w, img_h = image.size
+            scale_factor = min((max_line_width_pixels) / img_w, (preview_box_height) / img_h, 1) * 0.95
+            new_w = int(img_w * scale_factor)
+            new_h = int(img_h * scale_factor)
+            image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
+    elif ext == '.pdf':
+        pdf_grid_thumb = get_pdf_preview(file_path, max_line_width_pixels, preview_box_height)
+    elif ext in {'.mp4', '.mov', '.avi', '.mkv'}:
+        video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height)
+    elif ext == '.gpx':
+        gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
+    elif ext == '.zip':
+        zip_file_list, zip_file_preview_img, zip_file_preview_lines = get_zip_preview_with_file_preview(
+            file_path, max_files=max_preview_lines, preview_box=(max_line_width_pixels, preview_box_height))
+    elif ext == '.gz':
+        preview_lines, image_thumb, _ = get_gz_preview(
+            file_path, max_bytes=max_preview_lines * 16, preview_box=(max_line_width_pixels, preview_box_height))
+    elif ext == '.bz2':
+        preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
+    elif ext == '.fit':
+        preview_lines, fit_meta = get_fit_summary_preview(file_path)
+        fit_gps_thumb = get_fit_gps_preview(file_path, max_line_width_pixels, preview_box_height)
+    elif file_type_info['group'] == 'binary' or ext == '.dfu' or file_type_info['group'] == 'unknown':
+        preview_lines = get_hex_preview(file_path, max_bytes=max_preview_lines * 16)
+    elif file_type_info['group'] in ['code', 'data', 'document', 'log']:
+        # Read a large chunk and wrap
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 raw_lines = []
                 for i, line in enumerate(f):
-                    if i > 1000:  # hard limit for performance
+                    if i > 1000:
                         break
                     raw_lines.append(line.rstrip('\n'))
         except Exception:
             raw_lines = []
-        # Wrap lines to fit preview box width
         for raw_line in raw_lines:
             wrapped = textwrap.wrap(raw_line, width=max_line_length)
             if not wrapped:
                 preview_lines.append('')
             else:
                 preview_lines.extend(wrapped)
-        # Only keep as many lines as fit in the preview box
         preview_lines = preview_lines[:max_preview_lines]
 
     # --- Draw card ---
@@ -228,8 +608,6 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         img = Image.new('RGB', (width, height), 'white')
         rgb_mode = True
     draw = ImageDraw.Draw(img)
-
-    # Convert RGB color to CMYK if needed
     if not rgb_mode:
         r, g, b = file_type_info['color']
         if r == 0 and g == 0 and b == 0:
@@ -245,37 +623,26 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             color = (c, m, y, k)
     else:
         color = file_type_info['color']
-
     border_width = 5
     draw.rectangle([0, 0, width-1, height-1], outline='black', width=border_width)
-
-    # Header
     if rgb_mode:
         draw.rectangle([border_width, border_width, width-border_width, header_height], fill=file_type_info['color'])
         text_color = 'white'
     else:
-        draw.rectangle([border_width, border_width, width-border_width, header_height], fill=color)
+        draw.rectangle([border_width, border_width, width-border-width, header_height], fill=color)
         text_color = (0, 0, 0, 0)
     draw.text((width//2, header_height//2), file_path.suffix.upper(), fill=text_color, font=title_font, anchor="mm")
-
-    # Icon
     icon_y = header_height + 40
     icon_color = file_type_info['color'] if rgb_mode else color
     draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
-
-    # Metadata
     y = icon_y + 40
     for key, value in file_info.items():
         line = f"{key}: {value}"
         draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
         y += 30
-
-    # Preview label
     y = preview_box_top - 30
     draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
-
-    # Preview box
     preview_background_color = (245, 245, 245) if rgb_mode else (0, 0, 0, 4)
     draw.rectangle(
         [preview_box_left, preview_box_top, preview_box_right, preview_box_bottom],
@@ -283,11 +650,85 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         outline='black',
         width=1
     )
-    text_y = preview_box_top + preview_box_padding
-    for line in preview_lines:
-        draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
-        text_y += line_height
-
+    # FIT summary: render only once, with medium font, and return early ONLY for .fit
+    if ext == '.fit' and preview_lines:
+        try:
+            fit_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 12)
+        except:
+            fit_font = ImageFont.load_default()
+        text_y = preview_box_top + preview_box_padding
+        for line in preview_lines:
+            if text_y + line_height > preview_box_bottom - preview_box_padding:
+                break
+            draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=fit_font, anchor="lt")
+            text_y += line_height
+        return img
+    # All other previews (images, pdfs, videos, etc.)
+    if pdf_grid_thumb is not None:
+        img_w, img_h = pdf_grid_thumb.size
+        box_w = preview_box_right - preview_box_left - preview_box_padding * 2
+        box_h = preview_box_height - preview_box_padding * 2
+        x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
+        y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
+        img.paste(pdf_grid_thumb, (int(x0), int(y0)))
+    elif gpx_thumb is not None:
+        img_w, img_h = gpx_thumb.size
+        box_w = preview_box_right - preview_box_left - preview_box_padding * 2
+        box_h = preview_box_height - preview_box_padding * 2
+        x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
+        y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
+        img.paste(gpx_thumb, (int(x0), int(y0)))
+    elif video_thumb is not None:
+        img_w, img_h = video_thumb.size
+        box_w = preview_box_right - preview_box_left - preview_box_padding * 2
+        box_h = preview_box_height - preview_box_padding * 2
+        x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
+        y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
+        img.paste(video_thumb, (int(x0), int(y0)))
+    elif image_thumb is not None:
+        img_w, img_h = image_thumb.size
+        box_w = preview_box_right - preview_box_left - preview_box_padding * 2
+        box_h = preview_box_height - preview_box_padding * 2
+        x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
+        y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
+        img.paste(image_thumb, (int(x0), int(y0)))
+    elif fit_gps_thumb is not None:
+        img_w, img_h = fit_gps_thumb.size
+        box_w = preview_box_right - preview_box_left - preview_box_padding * 2
+        box_h = preview_box_height - preview_box_padding * 2
+        x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
+        y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
+        img.paste(fit_gps_thumb, (int(x0), int(y0)))
+    elif zip_file_list is not None:
+        text_y = preview_box_top + preview_box_padding
+        for line in zip_file_list:
+            if text_y + line_height > preview_box_bottom - preview_box_padding:
+                break
+            draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
+            text_y += line_height
+        if zip_file_preview_img is not None:
+            img_w, img_h = zip_file_preview_img.size
+            box_w = preview_box_right - preview_box_left - preview_box_padding * 2
+            box_h = preview_box_height - preview_box_padding * 2
+            x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
+            y0 = text_y + 10
+            if y0 + img_h > preview_box_bottom - preview_box_padding:
+                img_h = preview_box_bottom - preview_box_padding - y0
+                zip_file_preview_img = zip_file_preview_img.crop((0, 0, img_w, img_h))
+            img.paste(zip_file_preview_img, (int(x0), int(y0)))
+        elif zip_file_preview_lines is not None:
+            for line in zip_file_preview_lines:
+                if text_y + line_height > preview_box_bottom - preview_box_padding:
+                    break
+                draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
+                text_y += line_height
+    else:
+        text_y = preview_box_top + preview_box_padding
+        for line in preview_lines:
+            if text_y + line_height > preview_box_bottom - preview_box_padding:
+                break
+            draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
+            text_y += line_height
     return img
 
 def determine_file_type(file_path):
