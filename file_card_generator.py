@@ -297,6 +297,27 @@ def get_fit_summary_preview(file_path):
                     summary.append(f"Timestamp: {fields['timestamp']}")
                     meta['timestamp'] = fields['timestamp']
                 summary.append("")
+        # GPS points summary
+        gps_points = []
+        for record in fitfile.get_messages('record'):
+            lat = None
+            lon = None
+            for d in record:
+                if d.name == 'position_lat':
+                    lat = d.value
+                elif d.name == 'position_long':
+                    lon = d.value
+            if lat is not None and lon is not None:
+                lat = lat * (180.0 / 2**31)
+                lon = lon * (180.0 / 2**31)
+                gps_points.append((lat, lon))
+        if gps_points:
+            summary.append(f"GPS Points: {len(gps_points)}")
+            summary.append(f"Start: ({gps_points[0][0]:.5f}, {gps_points[0][1]:.5f})")
+            summary.append(f"End:   ({gps_points[-1][0]:.5f}, {gps_points[-1][1]:.5f})")
+            # Optionally show a few sample points
+            if len(gps_points) > 2:
+                summary.append(f"Sample: ({gps_points[len(gps_points)//2][0]:.5f}, {gps_points[len(gps_points)//2][1]:.5f})")
         # Fallback: show number of records
         n_records = sum(1 for _ in fitfile.get_messages('record'))
         summary.append(f"Records: {n_records}")
@@ -466,16 +487,34 @@ def get_fit_gps_preview(file_path, box_w, box_h):
 
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     file_path = Path(file_path)
-    
-    # Try to load fonts
+    # Proportional scaling
+    base_width = 800
+    base_height = 1000
+    scale = min(width / base_width, height / base_height)
+    # Proportional font sizes
+    title_font_size = int(48 * scale)
+    info_font_size = int(24 * scale)
+    preview_font_size = int(14 * scale)
+    fit_font_size = int(12 * scale)
+    # Proportional paddings
+    border_width = max(2, int(5 * scale))
+    icon_space = int((100 + 40) * scale)
+    metadata_line_height = int(30 * scale)
+    spacing = int(10 * scale) + int(30 * scale) + int(20 * scale)
+    preview_box_padding = int(15 * scale)
+    header_height = int(80 * scale)
+
+    # Load fonts
     try:
-        title_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 48)
-        info_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 24)
-        preview_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 14)
+        title_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", title_font_size)
+        info_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", info_font_size)
+        preview_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", preview_font_size)
+        fit_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", fit_font_size)
     except:
         title_font = ImageFont.load_default()
         info_font = ImageFont.load_default()
         preview_font = ImageFont.load_default()
+        fit_font = ImageFont.load_default()
 
     file_type_info = get_file_type_info(file_path)
     icon = file_type_info['icon']
@@ -514,20 +553,17 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     header_height = 80
     icon_space = 100 + 40
     metadata_lines = len(file_info)
-    metadata_line_height = 30
     metadata_height = metadata_lines * metadata_line_height
-    spacing = 10 + 30 + 20
-    preview_box_padding = 15
     preview_box_left = int(width * 0.1)
     preview_box_right = int(width * 0.9)
     preview_box_top = header_height + icon_space + metadata_height + spacing
-    preview_box_bottom = height - 30  # increase bottom margin
+    preview_box_bottom = height - int(30 * scale)
     preview_box_height = preview_box_bottom - preview_box_top
     max_line_width_pixels = preview_box_right - preview_box_left - preview_box_padding * 2
     temp_img = Image.new('RGB', (width, height))
     temp_draw = ImageDraw.Draw(temp_img)
     bbox = temp_draw.textbbox((0, 0), 'A', font=preview_font)
-    line_height = bbox[3] - bbox[1] + 3
+    line_height = bbox[3] - bbox[1] + int(3 * scale)
     char_bbox = temp_draw.textbbox((0, 0), 'A', font=preview_font)
     char_width = char_bbox[2] - char_bbox[0]
     max_line_length = max(10, max_line_width_pixels // char_width)
@@ -568,8 +604,9 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     elif ext == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
     elif ext == '.zip':
-        zip_file_list, zip_file_preview_img, zip_file_preview_lines = get_zip_preview_with_file_preview(
-            file_path, max_files=max_preview_lines, preview_box=(max_line_width_pixels, preview_box_height))
+        zip_file_list = get_zip_preview(file_path, max_files=max_preview_lines)
+        zip_file_preview_img = None
+        zip_file_preview_lines = None
     elif ext == '.gz':
         preview_lines, image_thumb, _ = get_gz_preview(
             file_path, max_bytes=max_preview_lines * 16, preview_box=(max_line_width_pixels, preview_box_height))
@@ -629,7 +666,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         draw.rectangle([border_width, border_width, width-border_width, header_height], fill=file_type_info['color'])
         text_color = 'white'
     else:
-        draw.rectangle([border_width, border_width, width-border-width, header_height], fill=color)
+        draw.rectangle([border_width, border_width, width-border_width, header_height], fill=color)
         text_color = (0, 0, 0, 0)
     draw.text((width//2, header_height//2), file_path.suffix.upper(), fill=text_color, font=title_font, anchor="mm")
     icon_y = header_height + 40
