@@ -69,6 +69,8 @@ Optional:
 - `--flipbook-mode`: Enable flipbook creation from videos
 - `--video-fps`: Frames per second for video extraction (default: 1)
 - `--exclude-video-stills`: Exclude video frames from main grid pages
+- `--handle-non-visual`: Create information cards for non-visual files (default: true)
+- `--no-handle-non-visual`: Skip non-visual files (don't create information cards)
 - `--cmyk-mode`: Output images in CMYK color mode instead of RGB
 - `--cmyk-background`: CMYK background color as C,M,Y,K values (0-255, comma-separated, defaults to 0,0,0,0 which is white)
 - `--cmyk-flipbook-background`: CMYK background color for flipbook blank pages as C,M,Y,K values (0-255, comma-separated, defaults to 22,0,93,0 which is Omata acid green)
@@ -182,3 +184,53 @@ Example CMYK values:
 - `22,0,93,0`: Omata acid green (default for flipbook blank pages)
 
 Note: When using CMYK mode, the output files will be larger due to the TIFF format.
+
+## Non-Visual Files Support
+
+The tool can now create visual representations for non-visual file types such as code files, data files, spreadsheets, archives, and more. When enabled, it generates information cards for these files that include:
+
+- File name, type, and size
+- Creation and modification dates
+- File type identification icon
+- Content preview (for text-based files)
+- MD5 hash for file verification
+
+### Supported Non-Visual File Types
+
+The tool automatically categorizes files into these groups:
+
+- **Code**: `.py`, `.js`, `.html`, `.css`, `.java`, `.c`, `.cpp`, `.h`, `.sh`, `.rb`, `.swift`, `.php`, `.go`
+- **Data**: `.json`, `.csv`, `.xml`, `.yaml`, `.yml`, `.toml`, `.ini`
+- **Spreadsheets**: `.xlsx`, `.xls`, `.ods`, `.numbers`
+- **Documents**: `.doc`, `.docx`, `.txt`, `.md`, `.rtf`, `.odt`, `.pdf`, `.tex`
+- **Archives**: `.zip`, `.tar`, `.gz`, `.bz2`, `.rar`, `.7z`
+- **Executables**: `.exe`, `.bin`, `.app`, `.sh`, `.bat`, `.dll`, `.so`, `.dylib`
+- **Binary**: `.hex`, `.bin`, `.dat`, `.dfu`, `.oci`
+- **GPS Data**: `.gpx`, `.fit`, `.tcx`
+- **Log Files**: `.log`, `.txt`, `.out`
+
+Any other file types will be rendered with a generic file information card.
+
+### Example Command with Non-Visual File Support
+
+Process all files in a directory, including creating information cards for non-visual files:
+
+```bash
+python3 directory_to_images.py /path/to/files/ \
+    --layout grid \
+    --grid-rows 2 \
+    --grid-cols 1 \
+    --handle-non-visual \
+    --output-pdf
+```
+
+To process only visual files (images, PDFs, videos) and skip non-visual files:
+
+```bash
+python3 directory_to_images.py /path/to/files/ \
+    --layout grid \
+    --grid-rows 2 \
+    --grid-cols 1 \
+    --no-handle-non-visual \
+    --output-pdf
+```

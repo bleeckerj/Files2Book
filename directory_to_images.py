@@ -18,7 +18,12 @@ from pdf_to_images import (
     rgb_to_cmyk_image,
 )
 
-IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff'}
+from file_card_generator import (
+    create_file_info_card,
+    determine_file_type
+)
+
+IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.heic'}
 VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv'}
 
 
@@ -27,23 +32,29 @@ def get_parent_of_parent_name(input_dir):
     return input_path.parent.name.replace(' ', '_')
 
 
-def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1, exclude_video_stills=False):
+def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1, exclude_video_stills=False, 
+                        handle_non_visual=True, cmyk_mode=False):
     input_path = Path(input_dir)
     if not input_path.is_dir():
         raise ValueError(f'Input path {input_dir} is not a directory')
 
     images = []
+    image_paths = []  # Keep track of original file paths for captions
     video_frames_map = {}  # video_name -> list of frames
     frame_index = 0
 
     for file_path in sorted(input_path.iterdir()):
+        file_type = determine_file_type(file_path)
         ext = file_path.suffix.lower()
+        
         if ext in IMAGE_EXTENSIONS:
             img = Image.open(file_path).convert('RGB')
             images.append(img)
+            image_paths.append(str(file_path))
         elif ext == '.pdf':
             pdf_images = convert_from_path(str(file_path))
             images.extend(pdf_images)
+            image_paths.extend([f"{file_path} (Page {i+1})" for i in range(len(pdf_images))])
         elif ext in VIDEO_EXTENSIONS:
             video_name = file_path.stem.replace(' ', '_')
             if flipbook_mode:
@@ -57,8 +68,21 @@ def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1, exclude_vi
                 # Only add video frames if not excluding them
                 frames = extract_frames_from_video(file_path, num_frames=12)
                 images.extend(frames)
+                image_paths.extend([f"{file_path} (Frame {i+1})" for i in range(len(frames))])
+        
+        # Handle non-visual files by creating info cards
+        elif handle_non_visual and file_path.is_file():
+            try:
+                print(f"Creating info card for non-visual file: {file_path}")
+                # Standard size for info cards (3:2 aspect ratio)
+                card_width, card_height = 900, 600
+                img = create_file_info_card(file_path, card_width, card_height, cmyk_mode=cmyk_mode)
+                images.append(img)
+                image_paths.append(str(file_path))
+            except Exception as e:
+                print(f"Error creating info card for {file_path}: {e}")
     
-    return images, video_frames_map
+    return images, video_frames_map, image_paths
 
 
 def extract_frames_from_video(video_path, num_frames=12):
@@ -298,6 +322,10 @@ def main():
     parser.add_argument('--video-fps', type=int, default=1, help='Frames per second to extract from videos in flipbook mode')
     parser.add_argument('--exclude-video-stills', action='store_true',
                    help='Exclude video frames from standard grid pages (but keep flipbook pages if enabled)')
+    parser.add_argument('--handle-non-visual', action='store_true', default=True,
+                   help='Create information cards for non-visual files like code, data, archives, etc.')
+    parser.add_argument('--no-handle-non-visual', action='store_false', dest='handle_non_visual',
+                   help='Skip non-visual files (no information cards will be created)')
     parser.add_argument('--cmyk-mode', action='store_true', help='Output images in CMYK color mode')
     parser.add_argument('--cmyk-background', type=str, default='0,0,0,0', 
                    help='CMYK background color as C,M,Y,K values (0-255, comma-separated)')
@@ -357,25 +385,17 @@ def main():
             print("Warning: Invalid CMYK flipbook background values. Using default.")
     try:
         # Get images and video frames from the main loader function
-        images, video_frames_map = load_images_from_dir(
+        images, video_frames_map, image_paths = load_images_from_dir(
             args.input_dir, 
             flipbook_mode=args.flipbook_mode, 
             video_fps=args.video_fps,
-            exclude_video_stills=args.exclude_video_stills
+            exclude_video_stills=args.exclude_video_stills,
+            handle_non_visual=args.handle_non_visual,
+            cmyk_mode=args.cmyk_mode
         )
 
-        # Create image_paths list matching ONLY the images that were actually loaded
-        image_paths = []
-        for file_path in sorted(Path(args.input_dir).glob('*')):
-            ext = file_path.suffix.lower()
-            if ext in IMAGE_EXTENSIONS:
-                image_paths.append(str(file_path))
-            elif ext == '.pdf':
-                pdf_images = convert_from_path(str(file_path))
-                image_paths.extend([f"{file_path} (Page {i+1})" for i in range(len(pdf_images))])
-
         if not images:
-            print('No images or PDFs found in the input directory.')
+            print('No visual or non-visual files found in the input directory.')
             sys.exit(1)
 
         # Process the images

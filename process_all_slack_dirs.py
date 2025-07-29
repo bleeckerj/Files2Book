@@ -52,7 +52,8 @@ def main():
         "--video-fps", "1",
         "--cmyk-background", "0,0,0,0",  # CMYK page background color
         "--cmyk-flipbook-background", "22,0,93,0",  # CMYK blank page background color Omata acid color
-        "--cmyk-mode"
+        "--cmyk-mode",
+        "--handle-non-visual"  # Create information cards for non-visual files
     ]
     
     # Iterate through all directories in the base directory
