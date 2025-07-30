@@ -173,18 +173,18 @@ def get_file_hash(file_path, algorithm='md5', block_size=65536):
     return hash_obj.hexdigest()[:10]  # First 10 chars for brevity
 
 def preview_text_content(file_path, max_lines=5, max_line_length=40):
-    """Get a preview of text content if the file is text-based."""
+    """Get a preview of text content if the file is text-based, wrapping long lines."""
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             lines = []
             for i, line in enumerate(f):
                 if i >= max_lines:
                     break
-                # Truncate long lines
-                if len(line) > max_line_length:
-                    lines.append(line[:max_line_length] + '...')
+                wrapped = textwrap.wrap(line.rstrip('\n'), width=max_line_length)
+                if not wrapped:
+                    lines.append('')
                 else:
-                    lines.append(line.rstrip('\n'))
+                    lines.extend(wrapped)
             return lines
     except Exception:
         return None
@@ -931,6 +931,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             else:
                 preview_lines.extend(wrapped)
         preview_lines = preview_lines[:max_preview_lines]
+    elif file_type_info['group'] == 'text':
+        preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length) or []
     elif ext == '.zip':
         zip_file_list = get_zip_preview(file_path, max_files=max_preview_lines)
         zip_file_preview_img = None
@@ -941,25 +943,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         image_thumb = image_thumb  # If image_thumb is None, preview_lines will be used
     elif ext == '.bz2':
         preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
-    elif ext == '.docx':
-        try:
-            from docx import Document
-            doc = Document(file_path)
-            doc_lines = [p.text for p in doc.paragraphs if p.text.strip()]
-            txt_path = file_path.with_suffix('.txt')
-            with open(txt_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(doc_lines))
-            preview_lines = []
-            for raw_line in doc_lines:
-                wrapped = textwrap.wrap(raw_line, width=max_line_length)
-                if not wrapped:
-                    preview_lines.append('')
-                else:
-                    preview_lines.extend(wrapped)
-            preview_lines = preview_lines[:max_preview_lines]
-        except Exception as e:
-            preview_lines = [f"DOCX error: {e}"]
-
+    
     # --- Draw card ---
     if cmyk_mode:
         from pdf_to_images import create_cmyk_image
