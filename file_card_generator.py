@@ -986,7 +986,6 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             preview_lines = [f"KEY error: {e}"]
     elif ext == '.pptx':
         try:
-            import pptx
             logging.info(f"Processing PPTX file: {file_path}")
             # Extract all images from ppt/media
             with zipfile.ZipFile(file_path, 'r') as z:
@@ -1023,6 +1022,39 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"PPTX error: {e}"]
+    elif ext == '.ai':
+        try:
+            # Try PDF-based preview first
+            try:
+                pages = convert_from_path(str(file_path), first_page=1, last_page=1)
+                if pages:
+                    # Scale to fit preview box
+                    img_w, img_h = pages[0].size
+                    scale_factor = min((max_line_width_pixels) / img_w, (preview_box_height) / img_h, 1) * 0.95
+                    new_w = int(img_w * scale_factor)
+                    new_h = int(img_h * scale_factor)
+                    image_thumb = pages[0].resize((new_w, new_h), Image.LANCZOS)
+                else:
+                    preview_lines = ["AI file: PDF preview not available."]
+            except Exception as pdf_e:
+                # If PDF preview fails, try text extraction
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        lines = []
+                        for i, line in enumerate(f):
+                            if i >= max_preview_lines:
+                                break
+                            wrapped = textwrap.wrap(line.rstrip('\n'), width=max_line_length)
+                            if not wrapped:
+                                lines.append('')
+                            else:
+                                lines.extend(wrapped)
+                        preview_lines = ["AI file: Text preview"] + lines
+                except Exception as text_e:
+                    # If text extraction fails, do hex dump
+                    preview_lines = ["AI file: Hex preview"] + get_hex_preview(file_path, max_bytes=max_preview_lines * 16)
+        except Exception as e:
+            preview_lines = [f"AI error: {e}"]
     # --- Draw card ---
     if cmyk_mode:
         from pdf_to_images import create_cmyk_image
