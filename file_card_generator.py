@@ -920,15 +920,19 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 
     if avatar_img is not None:
         try:
-            avatar_x_coordinate = int(outer_padding + border_width + 30 * scale)
-            avatar_y_coordinate = int(outer_padding + header_height + 30 * scale)
+            avatar_x_coordinate = int(outer_padding + border_width + 10 * scale)
+            avatar_y_coordinate = int(outer_padding + header_height + 10 * scale)
             logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
 
     for key, value in file_info.items():
-        line = f"{key}: {value}"
+        if key == 'Name':
+            # For the Name field, don't show the label
+            line = f"{value}"
+        else:
+            line = f"{key}: {value}"
         draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
         y += 25
     y = preview_box_top - 30
