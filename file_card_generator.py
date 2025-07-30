@@ -596,7 +596,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     scale = min(width / base_width, height / base_height)
 
     # Proportional paddings
-    border_width = max(2, int(5 * scale))
+    border_width = max(25, int(5 * scale))
     outer_padding = max(10, int(25 * scale))  # Padding between border and outer edges of content
 
     # Calculate dimensions for the content area
@@ -610,7 +610,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     # Draw the border around the content area
     draw.rectangle(
         [outer_padding, outer_padding, width - outer_padding - 1, height - outer_padding - 1],
-        outline='black',
+        outline=(0, 0, 0), 
         width=border_width
     )
 
@@ -620,7 +620,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     preview_font_size = int(14 * scale)
     fit_font_size = int(12 * scale)
     # Proportional paddings
-    border_width = max(2, int(5 * scale))
+    border_width = max(4, int(5 * scale))
     icon_space = int((100 + 40) * scale)
     metadata_line_height = int(info_font_size * 1.15)  # Reduce line spacing, closer to font size
     spacing = int(10 * scale) + int(10 * scale) + int(10 * scale)
@@ -920,7 +920,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 
     if avatar_img is not None:
         try:
-            avatar_x_coordinate = int(outer_padding + border_width + 10 * scale)
+            avatar_x_coordinate = int(outer_padding + border_width + 5 * scale)
             avatar_y_coordinate = int(outer_padding + header_height + 10 * scale)
             logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)

@@ -23,6 +23,14 @@ Then running `process_all_slack_dirs.py` (here from this repo) will churn on all
 
 Oh, the `SlackExporterForOmata` will also create an `avatar` directory containing tiny avatar icons, and a few other json files like `channels.json` and `users.json`. `user.json is used here to create tables and indices of various sorts.
 
+### Create the cards at LARGE_TAROT size
+
+`python3 test_file_cards.py --page-size LARGE_TAROT --input-dir ../SlackExporterForOmata/omata-backoffice/files --output-dir omata-backoffice_file_cards --cmyk-mode`
+
+### Combines them into a PDF where each pageis A5
+
+`./combine_images_to_pdf.js --input-dir omata-backoffice_file_cards --cmyk-mode --page-size A5 --dpi 300 --output-file omata-backoffice_file_cards/omata-backoffice_file_cards_combined.pdf`
+
 ## Requirements
 
 ```bash
