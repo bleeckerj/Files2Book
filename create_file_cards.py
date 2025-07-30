@@ -67,6 +67,8 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
     logging.debug(f"Starting file card with size {page_size}")
     input_path = Path(input_dir)
     output_path = Path(output_dir)
+    if output_path.exists():
+        shutil.rmtree(output_path)
     output_path.mkdir(exist_ok=True, parents=True)
     width, height = parse_page_size(page_size)
     logging.debug(f"page_size: {page_size} width: {width} height: {height}")
@@ -81,7 +83,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
     # Process each file in the directory
     file_count = 0
     for file_path in sorted(input_path.iterdir()):
-        if file_path.is_file():
+        if file_path.is_file() and file_path.name != '.DS_Store':
             try:
                 file_type = determine_file_type(file_path)
                 logging.info(f"Processing {file_path.name} - Type: {file_type}")

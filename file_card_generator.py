@@ -80,13 +80,13 @@ FILE_TYPE_GROUPS = {
     },
     'presentation': {
         'extensions': {'.ppt', '.pptx', '.odp', '.key'},
-        'icon': "PRESO",
-        'color': (255, 153, 0)  # HEX: ff9900
+        'icon': "DECK OF SLIDES",
+        'color': (166, 0, 245)  # HEX: #a600f5
     },
     'text': {
         'extensions': {'.txt', '.md', '.rtf'},
         'icon': "TEXT",
-        'color': (255, 153, 0)  # HEX: ff9900
+        'color': (101, 0, 237)  # HEX: 6500ed
     },
     'archive': {
         'extensions': {'.zip', '.tar', '.gz', '.bz2', '.rar', '.7z'},
@@ -957,19 +957,30 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                 names = z.namelist()
                 preview_lines = [f"Keynote file: {len(names)} items"]
                 preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
-                # Try to find and show the first image (jpg/png)
-                image_thumb = None
-                for name in names:
-                    if name.lower().endswith(('.jpg', '.jpeg', '.png')):
-                        with z.open(name) as img_file:
-                            img_data = img_file.read()
-                            try:
-                                img = Image.open(io.BytesIO(img_data))
-                                img.thumbnail((max_line_width_pixels, preview_box_height))
-                                image_thumb = img
-                                break
-                            except Exception:
-                                continue
+                # Find up to 4 images (jpg/png)
+                image_files = [name for name in names if name.lower().endswith(('.jpg', '.jpeg', '.png'))][:4]
+                thumbs = []
+                for name in image_files:
+                    with z.open(name) as img_file:
+                        img_data = img_file.read()
+                        try:
+                            img = Image.open(io.BytesIO(img_data))
+                            thumbs.append(img)
+                        except Exception:
+                            continue
+                # Make a grid if images found
+                if thumbs:
+                    grid_cols = 2
+                    grid_rows = 2
+                    thumb_w = max_line_width_pixels // grid_cols
+                    thumb_h = preview_box_height // grid_rows
+                    grid_img = Image.new('RGB', (max_line_width_pixels, preview_box_height), (245, 245, 245))
+                    for idx, thumb in enumerate(thumbs):
+                        thumb.thumbnail((thumb_w, thumb_h))
+                        x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                        y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                        grid_img.paste(thumb, (x, y))
+                    image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"KEY error: {e}"]
     

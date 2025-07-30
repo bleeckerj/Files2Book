@@ -9,7 +9,10 @@
 - **Supports Many File Types:**
   - Images (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif`, `.tiff`, `.heic`)
   - Videos (`.mp4`, `.mov`, `.avi`, `.mkv`)
-  - Documents (`.pdf`, `.docx`, `.txt`, `.md`, etc.)
+  - Documents (`.pdf`, `.docx`, `.key`, `.txt`, `.md`, etc.)
+    - **Keynote (.key):** Lists contents and shows embedded images in a grid
+    - **DOCX (.docx):** Extracts and previews text
+    - **PPTX (.pptx):** Not yet supported for preview (only metadata)
   - Archives (`.zip`, `.gz`, `.bz2`, etc.)
   - GPS Tracks (`.gpx`, `.fit`, `.tcx`) with Mapbox map thumbnails
   - Binary, code, spreadsheet, and more
@@ -21,6 +24,9 @@
   - Archive contents preview
   - PDF grid thumbnails
   - Video frame grids
+  - Keynote: grid of embedded images
+  - DOCX: extracted text
+  - PPTX: metadata only
 - **Mapbox Integration:**
   - Automatically generates map thumbnails for GPS tracks
   - Polyline overlays for routes

@@ -290,3 +290,24 @@ combine_images_to_pdf.js --input-dir general_file_cards --cmyk-mode --page-size 
 - Python 3.7+
 - Pillow (PIL Fork)
 - Additional requirements in requirements.txt
+
+# file_card_generator README
+
+file_card_generator.py generates visual info cards for files of many types.
+
+Supported preview types:
+- Images (PNG, JPG, etc.)
+- PDF
+- Text/code/data files
+- Keynote (.key): Lists contents and shows embedded images in a grid
+- DOCX (.docx): Extracts and previews text
+
+Not yet supported:
+- PPTX (.pptx): No preview, only metadata
+
+Other features:
+- Slack metadata integration
+- GPS/Map previews for GPX/FIT
+- Archive previews (ZIP, GZ, BZ2)
+
+See the code for details on each preview type.
