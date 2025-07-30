@@ -91,6 +91,38 @@ img = create_file_info_card('myfile.pdf', width=1200, height=1500)
 img.save('my_card.png')
 ```
 
+## New Features and Enhancements
+
+### HEIC Image Support
+- Added support for `.heic` and `.heif` image formats using the `pillow-heif` library.
+- Automatically processes HEIC images and generates thumbnails for preview.
+
+### Slack Metadata Integration
+- Extracts metadata from Slack `messages.json` and `users.json` files.
+- Displays the following Slack-specific metadata:
+  - **Slack Channel**: The channel where the file was shared.
+  - **Shared By**: The real name of the user who shared the file.
+  - **Shared Date**: The timestamp when the file was shared.
+
+### Avatar Handling
+- Resolves and displays user avatars from Slack's `avatars` directory.
+- Avatars are resized, rounded, and placed next to the "Shared By" metadata for a polished look.
+- Graceful fallback for missing or invalid avatar images.
+
+### Improved Error Logging
+- Added detailed logging for debugging issues with Slack metadata and avatar processing.
+- Logs include paths checked for avatars and errors encountered during processing.
+
+### Enhanced Metadata Display
+- Metadata font size and spacing have been adjusted for better readability.
+- Metadata now includes both created and modified timestamps if the original timestamp is unavailable.
+
+### Other Improvements
+- Optimized scaling for image previews to fit within the preview box while maintaining aspect ratio.
+- Improved handling of large files and unsupported formats with clear error messages.
+
+---
+
 ## Notes & Tips
 - For best results, use the recommended font. If not available, the script will fall back to the default font.
 - Large files (>50MB) may skip hash calculation for performance.
@@ -114,7 +146,7 @@ Pull requests, bug reports, and feature suggestions are welcome! Just don't ask 
 MIT License
 
 ## A Joke (or a Warning)
-> Working with my co-pilot AI was like herding cats—except the cats are made of code, and they keep suggesting you pip install things you already have. If you ever feel lost, just remember: the AI is probably lost too, but at least it's lost with you!
+> Working with my co-pilot AI was like herding cats, only the cats are made of code, and they keep suggesting you pip install things you already have. If you ever feel lost, just remember: the AI is probably lost too, but at least it's lost with you!
 
 ---
 
