@@ -532,13 +532,15 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         return round(zoom, 2)
     zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height)
     #print("API Key:", api_key)
+    import urllib.parse
     path_str = ""
     if path_points and len(path_points) > 1:
         path_points = downsample_points(path_points, max_points=100)
         # Mapbox expects [lon,lat] pairs for polyline encoding
         poly_points = [(lat, lon) for lon, lat in path_points]
         encoded = polyline.encode(poly_points)
-        path_str = f"/path-5+f44-0.7({encoded})"
+        encoded_url = urllib.parse.quote(encoded, safe='')
+        path_str = f"/path-5+f44-0.7({encoded_url})"
     url = (
         f"https://api.mapbox.com/styles/v1/mapbox/streets-v11/static"
         f"{path_str}/{center_lon},{center_lat},{zoom},0/{width}x{height}"
@@ -550,6 +552,8 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     print("Mapbox status:", resp.status_code)
     if resp.status_code == 200:
         return Image.open(io.BytesIO(resp.content))
+    else:
+        print("Mapbox error:", resp.status_code, resp.text)
     return None
 
 
