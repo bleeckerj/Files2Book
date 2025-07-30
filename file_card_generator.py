@@ -26,6 +26,7 @@ import requests
 import dotenv
 import polyline
 import logging
+import traceback
 
 # Initialize mimetypes
 mimetypes.init()
@@ -663,24 +664,15 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                                     slack_shared_date = datetime.fromtimestamp(float(ts)).strftime('%Y-%m-%d %H:%M:%S')
                                 except Exception:
                                     slack_shared_date = str(ts)
-                            # Always resolve user name and avatar from users.json
-                            if users_json.exists() and slack_user_id:
-                                try:
-                                    with open(users_json, 'r', encoding='utf-8', errors='ignore') as uf:
-                                        users = json.load(uf)
-                                    for user in users:
-                                        if user.get('id') == slack_user_id or user.get('name') == slack_user_id:
-                                            slack_user_name = user.get('real_name') or user.get('profile', {}).get('real_name') or user.get('name')
-                                            avatar_filename = user.get('profile', {}).get('avatar_40')
-                                            if avatar_filename and avatars_dir.exists():
-                                                avatar_path = avatars_dir / avatar_filename
-                                                if avatar_path.exists():
-                                                    slack_avatar = str(avatar_path)
-                                            elif user.get('profile', {}).get('image_72'):
-                                                slack_avatar = user.get('profile', {}).get('image_72')
-                                            break
-                                except Exception:
-                                    pass
+                            # Resolve avatar from local 'avatars' directory
+                            avatars_dir = channel_dir.parent / "avatars"
+                            logging.debug(f"Looking for avatars in: {avatars_dir}")
+                            if slack_user_id and avatars_dir.exists():
+                                avatar_path = avatars_dir / f"{slack_user_id}.jpg"
+                                logging.debug(f"Checking avatar path: {avatar_path}")
+                                if avatar_path.exists():
+                                    slack_avatar = str(avatar_path)
+                                    logging.debug(f"Found avatar for user {slack_user_id}: {slack_avatar}")
                             break
                 if slack_channel:
                     break
@@ -876,27 +868,32 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     avatar_img = None
     if slack_avatar:
         try:
-            if slack_avatar.startswith('/') or slack_avatar.startswith('./'):
-                # Local file path (from avatars_40x40)
-                avatar_img = Image.open(slack_avatar).convert('RGB')
-                avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
-                avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
-            elif slack_avatar.startswith('http'):
-                import requests
-                avatar_resp = requests.get(slack_avatar)
-                if avatar_resp.status_code == 200:
-                    avatar_img = Image.open(io.BytesIO(avatar_resp.content)).convert('RGB')
-                    avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
-                    avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
-
-        except Exception:
+            logging.debug(f"Loading avatar from: {slack_avatar}")
+            avatar_img = Image.open(slack_avatar).convert('RGB')
+            logging.debug(f"Avatar loaded: size={avatar_img.size}, mode={avatar_img.mode}")
+            avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+            logging.debug(f"Avatar resized: size={avatar_img.size}")
+            avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
+            logging.debug(f"Avatar rounded: size={avatar_img.size}")
+        except Exception as e:
+            logging.error(f"Error processing avatar image {slack_avatar}: {e}")
             avatar_img = None
+
+    if avatar_img is not None:
+        try:
+            x_avatar = int(border_width + 10 * scale)
+            y_avatar = int(header_height + 10 * scale)
+            logging.debug(f"Pasting avatar at: x={x_avatar}, y={y_avatar}")
+            img.paste(avatar_img, (x_avatar, y_avatar), mask=avatar_img)
+        except Exception as e:
+            logging.error(f"Error pasting avatar image: {e}")
+
     for key, value in file_info.items():
         if key == 'Shared By' and avatar_img is not None:
             # Draw avatar left of the text
             x_avatar = int(border_width + 10 * scale)
             y_avatar = int(header_height + 10 * scale)
-            img.paste(avatar_img, (int(x_avatar), int(y_avatar)), mask=avatar_img)
+            img.paste(avatar_img, (x_avatar, y_avatar), mask=avatar_img)
             draw.text((width//2, y), f"{key}: {value}", fill='black', font=info_font, anchor="mm")
             y += 25
         else:
