@@ -30,7 +30,17 @@ mimetypes.init()
 
 dotenv.load_dotenv()
 
-
+def round_image_corners(img, radius):
+    # Ensure img is RGBA
+    img = img.convert("RGBA")
+    w, h = img.size
+    # Create mask
+    mask = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle([0, 0, w, h], radius=radius, fill=255)
+    # Apply mask
+    img.putalpha(mask)
+    return img
 
 def scale_image(image, scale_factor):
     """Scale a PIL image by a given scale factor (e.g., 0.95 for 95%)."""
@@ -186,9 +196,16 @@ def get_original_timestamp(file_path):
                 for fobj in msg['files']:
                     # Match by filename
                     if fobj.get('name') == file_path.name:
+                        # Prefer human-readable timestamp if available
+                        ts_human = msg.get('ts_human') or fobj.get('ts_human')
+                        if ts_human:
+                            try:
+                                # Try to parse as datetime
+                                return datetime.strptime(ts_human, "%Y-%m-%d %H:%M:%S")
+                            except Exception:
+                                return ts_human  # Return as string if parsing fails
                         ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts')
                         if ts:
-                            # Slack timestamps are usually in seconds
                             try:
                                 return datetime.fromtimestamp(float(ts))
                             except Exception:
@@ -577,14 +594,14 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     scale = min(width / base_width, height / base_height)
     # Proportional font sizes
     title_font_size = int(48 * scale)
-    info_font_size = int(24 * scale)
+    info_font_size = int(16 * scale)  # Smaller font size for metadata
     preview_font_size = int(14 * scale)
     fit_font_size = int(12 * scale)
     # Proportional paddings
     border_width = max(2, int(5 * scale))
     icon_space = int((100 + 40) * scale)
     metadata_line_height = int(30 * scale)
-    spacing = int(10 * scale) + int(30 * scale) + int(20 * scale)
+    spacing = int(10 * scale) + int(10 * scale) + int(10 * scale)
     preview_box_padding = int(15 * scale)
     header_height = int(80 * scale)
 
@@ -613,24 +630,79 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         modified_time = 0
         created_time = 0
 
-    # Try to get original timestamp
+    # Try to get original timestamp and Slack metadata
     original_dt = get_original_timestamp(file_path)
+    slack_channel = None
+    slack_message_id = None
+    slack_user_id = None
+    slack_user_name = None
+    slack_avatar = None
+    slack_shared_date = None
+    parent = file_path.parent
+    channel_dir = parent.parent
+    messages_json = channel_dir / "messages.json"
+    users_json = channel_dir.parent / "users.json"
+    avatars_dir = channel_dir.parent / "avatars_40x40"
+    user_profile = None
+    if messages_json.exists():
+        try:
+            with open(messages_json, 'r', encoding='utf-8', errors='ignore') as f:
+                messages = json.load(f)
+            for msg in messages:
+                if 'files' in msg:
+                    for fobj in msg['files']:
+                        if fobj.get('name') == file_path.name:
+                            slack_channel = channel_dir.name
+                            slack_message_id = msg.get('client_msg_id') or msg.get('ts')
+                            slack_user_id = msg.get('user') or msg.get('username') or fobj.get('user')
+                            slack_shared_date = None
+                            ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts')
+                            if ts:
+                                try:
+                                    slack_shared_date = datetime.fromtimestamp(float(ts)).strftime('%Y-%m-%d %H:%M:%S')
+                                except Exception:
+                                    slack_shared_date = str(ts)
+                            # Always resolve user name and avatar from users.json
+                            if users_json.exists() and slack_user_id:
+                                try:
+                                    with open(users_json, 'r', encoding='utf-8', errors='ignore') as uf:
+                                        users = json.load(uf)
+                                    for user in users:
+                                        if user.get('id') == slack_user_id or user.get('name') == slack_user_id:
+                                            slack_user_name = user.get('real_name') or user.get('profile', {}).get('real_name') or user.get('name')
+                                            avatar_filename = user.get('profile', {}).get('avatar_40')
+                                            if avatar_filename and avatars_dir.exists():
+                                                avatar_path = avatars_dir / avatar_filename
+                                                if avatar_path.exists():
+                                                    slack_avatar = str(avatar_path)
+                                            elif user.get('profile', {}).get('image_72'):
+                                                slack_avatar = user.get('profile', {}).get('image_72')
+                                            break
+                                except Exception:
+                                    pass
+                            break
+                if slack_channel:
+                    break
+        except Exception:
+            pass
     file_info = {
         'Name': file_path.name,
         'Type': f"{file_path.suffix[1:].upper()} ({file_type_info['group']})",
         'Size': format_file_size(size),
     }
+    if slack_channel:
+        file_info['Slack Channel'] = slack_channel
+    if slack_message_id:
+        file_info['Message ID'] = slack_message_id
+    if slack_user_name:
+        file_info['Shared By'] = slack_user_name
+    if slack_shared_date:
+        file_info['Shared Date'] = slack_shared_date
     if original_dt:
         file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
     else:
         file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
         file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
-
-    if os.path.exists(file_path) and size < 50 * 1024 * 1024:
-        try:
-            file_info['Hash (MD5)'] = get_file_hash(file_path)
-        except:
-            pass
 
     # Fixed card height for 4x5 aspect ratio
     height = int(width * 5 / 4)
@@ -799,10 +871,37 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     icon_color = file_type_info['color'] if rgb_mode else color
     draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
     y = icon_y + 40
+    avatar_size = int(100 * scale)
+    avatar_img = None
+    if slack_avatar:
+        try:
+            if slack_avatar.startswith('/') or slack_avatar.startswith('./'):
+                # Local file path (from avatars_40x40)
+                avatar_img = Image.open(slack_avatar).convert('RGB')
+                avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+                avatar_img = round_image_corners(avatar_img, radius=int(10 * scale))
+            elif slack_avatar.startswith('http'):
+                import requests
+                avatar_resp = requests.get(slack_avatar)
+                if avatar_resp.status_code == 200:
+                    avatar_img = Image.open(io.BytesIO(avatar_resp.content)).convert('RGB')
+                    avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+                    avatar_img = round_image_corners(avatar_img, radius=int(10 * scale))
+
+        except Exception:
+            avatar_img = None
     for key, value in file_info.items():
-        line = f"{key}: {value}"
-        draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
-        y += 30
+        if key == 'Shared By' and avatar_img is not None:
+            # Draw avatar left of the text
+            x_avatar = int(border_width + 20 * scale)
+            y_avatar = int(header_height + 20 * scale)
+            img.paste(avatar_img, (int(x_avatar), int(y_avatar)), mask=avatar_img)
+            draw.text((width//2, y), f"{key}: {value}", fill='black', font=info_font, anchor="mm")
+            y += 30
+        else:
+            line = f"{key}: {value}"
+            draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
+            y += 30
     y = preview_box_top - 30
     draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
