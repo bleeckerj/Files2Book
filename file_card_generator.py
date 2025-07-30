@@ -672,7 +672,18 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                                 logging.debug(f"Checking avatar path: {avatar_path}")
                                 if avatar_path.exists():
                                     slack_avatar = str(avatar_path)
-                                    logging.debug(f"Found avatar for user {slack_user_id}: {slack_avatar}")
+                                    logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
+                            # Resolve user name from users.json
+                            if users_json.exists() and slack_user_id:
+                                try:
+                                    with open(users_json, 'r', encoding='utf-8', errors='ignore') as uf:
+                                        users = json.load(uf)
+                                    for user in users:
+                                        if user.get('id') == slack_user_id or user.get('name') == slack_user_id:
+                                            slack_user_name = user.get('real_name') or user.get('profile', {}).get('real_name') or user.get('name')
+                                            break
+                                except Exception as e:
+                                    logging.error(f"Error reading users.json: {e}")
                             break
                 if slack_channel:
                     break
@@ -1035,3 +1046,17 @@ def determine_file_type(file_path):
     
     # Default to "other" for anything not recognized
     return "other"
+
+def get_slack_user_name(slack_user_id, users_json_path):
+    """Get the Slack user name for a given user ID from the users.json file."""
+    if not slack_user_id or not users_json_path.exists():
+        return None
+    try:
+        with open(users_json_path, 'r', encoding='utf-8', errors='ignore') as uf:
+            users = json.load(uf)
+        for user in users:
+            if user.get('id') == slack_user_id or user.get('name') == slack_user_id:
+                return user.get('real_name') or user.get('profile', {}).get('real_name') or user.get('name')
+    except Exception as e:
+        logging.error(f"Error reading users.json: {e}")
+    return None
