@@ -78,6 +78,11 @@ FILE_TYPE_GROUPS = {
         'icon': "DOC",
         'color': (123, 17, 116)  # HEX: 6b6d67
     },
+    'presentation': {
+        'extensions': {'.ppt', '.pptx', '.odp', '.key'},
+        'icon': "PRESO",
+        'color': (255, 153, 0)  # HEX: ff9900
+    },
     'text': {
         'extensions': {'.txt', '.md', '.rtf'},
         'icon': "TEXT",
@@ -699,6 +704,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         fit_font = ImageFont.load_default()
 
     file_type_info = get_file_type_info(file_path)
+    logging.info(f"Processing {file_path.name} - Type: {file_type_info['group']}")
     icon = file_type_info['icon']
     ext = file_path.suffix.lower()
 
@@ -943,6 +949,29 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         image_thumb = image_thumb  # If image_thumb is None, preview_lines will be used
     elif ext == '.bz2':
         preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
+    elif ext == '.key':
+        logging.info(f"****** Processing Keynote file: {file_path}")
+        try:
+            logging.info(f"Processing Keynote file: {file_path}")
+            with zipfile.ZipFile(file_path, 'r') as z:
+                names = z.namelist()
+                preview_lines = [f"Keynote file: {len(names)} items"]
+                preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
+                # Try to find and show the first image (jpg/png)
+                image_thumb = None
+                for name in names:
+                    if name.lower().endswith(('.jpg', '.jpeg', '.png')):
+                        with z.open(name) as img_file:
+                            img_data = img_file.read()
+                            try:
+                                img = Image.open(io.BytesIO(img_data))
+                                img.thumbnail((max_line_width_pixels, preview_box_height))
+                                image_thumb = img
+                                break
+                            except Exception:
+                                continue
+        except Exception as e:
+            preview_lines = [f"KEY error: {e}"]
     
     # --- Draw card ---
     if cmyk_mode:
