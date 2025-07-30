@@ -596,7 +596,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     scale = min(width / base_width, height / base_height)
 
     # Proportional paddings
-    border_width = max(25, int(5 * scale))
+    border_width = 20  # Using a more reasonable but still very visible border width
     outer_padding = max(10, int(25 * scale))  # Padding between border and outer edges of content
 
     # Calculate dimensions for the content area
@@ -608,19 +608,37 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     draw = ImageDraw.Draw(img)
 
     # Draw the border around the content area
-    draw.rectangle(
-        [outer_padding, outer_padding, width - outer_padding - 1, height - outer_padding - 1],
-        outline=(0, 0, 0), 
-        width=border_width
-    )
+    # Determine the color mode first to avoid variable reference issues
+    rgb_mode = not cmyk_mode
+    
+    if rgb_mode:
+        # For RGB mode, use standard black border
+        draw.rectangle(
+            [outer_padding, outer_padding, width - outer_padding - 1, height - outer_padding - 1],
+            outline=(0, 0, 0), 
+            width=border_width
+        )
+    else:
+        # For CMYK mode, use solid black (K channel only at 100%) for maximum visibility
+        # Draw multiple concentric borders to ensure visibility
+        for i in range(0, min(10, border_width), 2):  # Draw up to 5 concentric borders
+            draw.rectangle(
+                [
+                    outer_padding + i,
+                    outer_padding + i,
+                    width - outer_padding - 1 - i,
+                    height - outer_padding - 1 - i
+                ],
+                outline=(0, 0, 0, 100),  # 100% black in CMYK
+                width=max(5, border_width // 5)  # Make each border line thick
+            )
 
     # Proportional font sizes
     title_font_size = int(40 * scale)
     info_font_size = int(22 * scale)  # Slightly larger font size for metadata
     preview_font_size = int(14 * scale)
     fit_font_size = int(12 * scale)
-    # Proportional paddings
-    border_width = max(4, int(5 * scale))
+    # Proportional paddings (keeping the original border_width value)
     icon_space = int((100 + 40) * scale)
     metadata_line_height = int(info_font_size * 1.15)  # Reduce line spacing, closer to font size
     spacing = int(10 * scale) + int(10 * scale) + int(10 * scale)
@@ -920,9 +938,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 
     if avatar_img is not None:
         try:
-            avatar_x_coordinate = int(outer_padding + border_width + 5 * scale)
+            logging.info(f"outer_padding is {outer_padding} and border_width is {border_width} at scale {scale}")
+            avatar_x_coordinate = int(outer_padding )
             avatar_y_coordinate = int(outer_padding + header_height + 10 * scale)
-            logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
+            logging.info(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
@@ -1084,3 +1103,49 @@ def get_slack_user_name(slack_user_id, users_json_path):
     except Exception as e:
         logging.error(f"Error reading users.json: {e}")
     return None
+
+def save_card_as_tiff(img, output_path, cmyk_mode=False):
+    """
+    Save a card image as a TIFF file with proper handling for CMYK mode.
+    This function ensures borders are preserved during CMYK conversion.
+    
+    Args:
+        img: The PIL Image object to save
+        output_path: The path where the TIFF should be saved
+        cmyk_mode: Whether to save in CMYK mode (True) or RGB mode (False)
+    """
+    try:
+        if cmyk_mode:
+            # For CMYK mode, we need to make sure the border is even more pronounced
+            # Draw an additional solid border around the entire image
+            draw = ImageDraw.Draw(img)
+            w, h = img.size
+            for i in range(0, 5):  # Draw 5 concentric borders for visibility
+                draw.rectangle(
+                    [i, i, w-1-i, h-1-i],
+                    outline=(0, 0, 0, 100),  # Solid black in CMYK
+                    width=4  # Thick line
+                )
+            
+            # Save with LibTIFF and specific compression settings
+            img.save(
+                output_path, 
+                format='TIFF',
+                compression='none',  # No compression for maximum quality
+                dpi=(300, 300)       # Set DPI to 300
+            )
+            logging.debug(f"Saved CMYK TIFF with reinforced border: {output_path}")
+        else:
+            # For RGB mode, add a clear border too
+            draw = ImageDraw.Draw(img)
+            w, h = img.size
+            draw.rectangle([0, 0, w-1, h-1], outline=(0, 0, 0), width=5)
+            
+            # Standard save
+            img.save(output_path, format='TIFF', compression='tiff_deflate')
+            logging.debug(f"Saved RGB TIFF with reinforced border: {output_path}")
+    except Exception as e:
+        logging.error(f"Error saving TIFF image: {e}")
+        # Fall back to basic save method
+        img.save(output_path)
+        logging.warning(f"Used fallback save method for: {output_path}")
