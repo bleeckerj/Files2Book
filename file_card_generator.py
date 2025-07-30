@@ -896,8 +896,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     else:
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=color)
         text_color = (0, 0, 0, 0)
-    draw.text((width//2, header_height//2), file_path.suffix.upper(), fill=text_color, font=title_font, anchor="mm")
-    icon_y = header_height + 40
+    # Position the file type text vertically centered in the header area, accounting for outer padding
+    draw.text((width//2, outer_padding + header_height//2), file_path.suffix.upper(), fill=text_color, font=title_font, anchor="mm")
+    # Position the icon below the header, accounting for outer padding
+    icon_y = outer_padding + header_height + int(20 * scale)
     icon_color = file_type_info['color'] if rgb_mode else color
     draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
     y = icon_y + 40
@@ -918,25 +920,17 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 
     if avatar_img is not None:
         try:
-            x_avatar = int(border_width + 10 * scale)
-            y_avatar = int(header_height + 10 * scale)
-            logging.debug(f"Pasting avatar at: x={x_avatar}, y={y_avatar}")
-            img.paste(avatar_img, (x_avatar, y_avatar), mask=avatar_img)
+            avatar_x_coordinate = int(outer_padding + border_width + 30 * scale)
+            avatar_y_coordinate = int(outer_padding + header_height + 30 * scale)
+            logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
+            img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
 
     for key, value in file_info.items():
-        if key == 'Shared By' and avatar_img is not None:
-            # Draw avatar left of the text
-            x_avatar = int(border_width + 10 * scale)
-            y_avatar = int(header_height + 10 * scale)
-            img.paste(avatar_img, (x_avatar, y_avatar), mask=avatar_img)
-            draw.text((width//2, y), f"{key}: {value}", fill='black', font=info_font, anchor="mm")
-            y += 25
-        else:
-            line = f"{key}: {value}"
-            draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
-            y += 25
+        line = f"{key}: {value}"
+        draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
+        y += 25
     y = preview_box_top - 30
     draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
