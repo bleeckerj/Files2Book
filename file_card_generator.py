@@ -27,6 +27,7 @@ import dotenv
 import polyline
 import logging
 import traceback
+import random
 
 # Initialize mimetypes
 mimetypes.init()
@@ -983,7 +984,45 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"KEY error: {e}"]
-    
+    elif ext == '.pptx':
+        try:
+            import pptx
+            logging.info(f"Processing PPTX file: {file_path}")
+            # Extract all images from ppt/media
+            with zipfile.ZipFile(file_path, 'r') as z:
+                names = z.namelist()
+                preview_lines = [f"PPTX file: {len(names)} items"]
+                preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
+                image_files = [name for name in names if name.startswith('ppt/media/') and name.lower().endswith(('.jpg', '.jpeg', '.png'))]
+                # Pick up to 12 random images
+                num_images = min(12, len(image_files))
+                selected_images = random.sample(image_files, num_images) if num_images > 0 else []
+                thumbs = []
+                for name in selected_images:
+                    with z.open(name) as img_file:
+                        img_data = img_file.read()
+                        try:
+                            img = Image.open(io.BytesIO(img_data))
+                            thumbs.append(img)
+                        except Exception:
+                            continue
+                # Dynamically determine grid_cols and grid_rows
+                if thumbs:
+                    aspect_ratio = max_line_width_pixels / max(preview_box_height, 1)
+                    # Try to make grid as square as possible, but favor more rows for tall preview
+                    grid_rows = int(math.ceil(math.sqrt(num_images / aspect_ratio)))
+                    grid_cols = int(math.ceil(num_images / grid_rows))
+                    thumb_w = max_line_width_pixels // grid_cols
+                    thumb_h = preview_box_height // grid_rows
+                    grid_img = Image.new('RGB', (max_line_width_pixels, preview_box_height), (245, 245, 245))
+                    for idx, thumb in enumerate(thumbs):
+                        thumb.thumbnail((thumb_w, thumb_h))
+                        x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                        y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                        grid_img.paste(thumb, (x, y))
+                    image_thumb = grid_img
+        except Exception as e:
+            preview_lines = [f"PPTX error: {e}"]
     # --- Draw card ---
     if cmyk_mode:
         from pdf_to_images import create_cmyk_image
