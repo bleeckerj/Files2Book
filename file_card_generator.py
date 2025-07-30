@@ -32,6 +32,15 @@ dotenv.load_dotenv()
 
 
 
+def scale_image(image, scale_factor):
+    """Scale a PIL image by a given scale factor (e.g., 0.95 for 95%)."""
+    if image is None or scale_factor <= 0:
+        return None
+    w, h = image.size
+    new_w = max(1, int(w * scale_factor))
+    new_h = max(1, int(h * scale_factor))
+    return image.resize((new_w, new_h), Image.LANCZOS)
+
 # Define file type groups with recognizable icons
 FILE_TYPE_GROUPS = {
     'code': {
@@ -527,10 +536,13 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         lon_fraction = (max_lon - min_lon) / 360.0
         lat_zoom = math.log2(height / WORLD_DIM / lat_fraction) if lat_fraction > 0 else 20
         lon_zoom = math.log2(width / WORLD_DIM / lon_fraction) if lon_fraction > 0 else 20
-        zoom = min(lat_zoom, lon_zoom, 20)
+        zoom = min(lat_zoom, lon_zoom, 22)
         zoom = max(0, zoom)
-        return round(zoom, 2)
+        calculated_zoom = float(zoom)
+        adjusted_zoom = max(0.0, calculated_zoom - 0.2)
+        return adjusted_zoom
     zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height)
+    print("Mapbox zoom level:", zoom)
     #print("API Key:", api_key)
     import urllib.parse
     path_str = ""
@@ -542,8 +554,8 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         encoded_url = urllib.parse.quote(encoded, safe='')
         path_str = f"/path-5+f44-0.7({encoded_url})"
     url = (
-        f"https://api.mapbox.com/styles/v1/mapbox/streets-v11/static"
-        f"{path_str}/{center_lon},{center_lat},{zoom},0/{width}x{height}"
+        f"https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static"
+        f"{path_str}/{center_lon},{center_lat},{zoom},0,45/{width}x{height}"
         f"?access_token={api_key}"
     )
     resp = requests.get(url)
@@ -817,6 +829,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
+        fit_gps_thumb = scale_image(fit_gps_thumb, 0.95)
         img.paste(fit_gps_thumb, (int(x0), int(y0)))
         # Draw summary below the map if space allows
         try:
