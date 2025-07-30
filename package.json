@@ -1,0 +1,26 @@
+{
+  "name": "combine-images-to-pdf",
+  "version": "1.0.0",
+  "description": "Combine images from a directory into a single PDF (RGB or CMYK)",
+  "main": "combine_images_to_pdf.js",
+  "scripts": {
+    "start": "node combine_images_to_pdf.js"
+  },
+  "keywords": [
+    "pdf",
+    "images",
+    "cmyk",
+    "rgb",
+    "conversion"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "pdfkit": "^0.14.0",
+    "sharp": "^0.33.1"
+  },
+  "bin": {
+    "combine-images-to-pdf": "./combine_images_to_pdf.js"
+  }
+}

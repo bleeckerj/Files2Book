@@ -33,7 +33,7 @@ mimetypes.init()
 
 dotenv.load_dotenv()
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def round_image_corners(img, radius):
     # Ensure img is RGBA
@@ -558,7 +558,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         zoom = min(lat_zoom, lon_zoom, 22)
         zoom = max(0, zoom)
         calculated_zoom = float(zoom)
-        adjusted_zoom = max(0.0, calculated_zoom - 0.2)
+        adjusted_zoom = max(0.0, calculated_zoom - 0.4)
         return adjusted_zoom
     zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height)
     print("Mapbox zoom level:", zoom)

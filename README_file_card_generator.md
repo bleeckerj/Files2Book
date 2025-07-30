@@ -43,10 +43,15 @@
 - [opencv-python](https://pypi.org/project/opencv-python/) (for video previews)
 - [python-dotenv](https://pypi.org/project/python-dotenv/)
 - [pyheif](https://pypi.org/project/pyheif/) (optional, for `.heic` images)
+- Node.js 14+ (for PDF assembly with `combine_images_to_pdf.js`)
+- sharp (for Node.js, image processing)
+- pdfkit (for Node.js, PDF generation)
+- commander (for Node.js, command-line interface)
 
 Install requirements:
 ```bash
 pip install Pillow requests gpxpy fitparse polyline pdf2image opencv-python python-dotenv pyheif
+npm install
 ```
 
 ## Mapbox Access Token
@@ -151,3 +156,137 @@ MIT License
 ---
 
 Enjoy your file cards!
+
+# File Card Generator
+
+This tool generates visual information cards for files in a directory, showing metadata, content previews, and other information in a standardized card format. The cards can be output as individual images or combined into a PDF.
+
+## Features
+
+- Creates visually appealing file information cards with previews
+- Supports many file types with specialized previews:
+  - Images (PNG, JPG, TIFF, HEIC, etc.)
+  - PDF (shows thumbnails of first few pages)
+  - Videos (shows frame samples)
+  - Code & Text (shows formatted content preview)
+  - Archive files (ZIP, GZ, BZ2 - shows file listings)
+  - GPS files (GPX, FIT, TCX - shows track maps)
+- Mapbox integration for GPS tracks with beautiful maps
+- Slack integration for files exported from Slack
+- CMYK color mode support for print-ready output
+- Customizable page sizes and scaling
+- Avatar display for Slack-shared files
+- User-friendly command line interface
+
+## Requirements
+
+- Python 3.7+
+- Node.js 14+ (for PDF assembly with `combine_images_to_pdf.js`)
+- Pillow
+- pdf2image (requires poppler)
+- fitparse (optional, for FIT file support)
+- pillow-heif (optional, for HEIC file support)
+- gpxpy
+- polyline
+- cv2
+- requests
+- dotenv
+- For Node.js script:
+  - sharp
+  - pdfkit
+  - commander
+
+## Installation
+
+```bash
+# Install Python dependencies
+pip install pillow pdf2image fitparse gpxpy polyline opencv-python requests python-dotenv pillow-heif
+
+# Install Node.js dependencies
+npm install
+```
+
+## Processing Order
+
+The file card generation and PDF assembly workflow follows these steps:
+
+1. **Card Generation** (`file_card_generator.py`)
+   - Processes individual files and creates information cards
+   - Extracts metadata, generates previews, and creates visual cards
+   - Outputs individual TIFF or JPEG files
+
+2. **Card Assembly** (Choose one option)
+   - **Python Method** (`test_file_cards.py`):
+     - Processes a directory of files, generating cards for each
+     - Optionally combines cards into a PDF using img2pdf or FPDF
+     - Good for simple assemblies but has limitations with TIFF files
+   
+   - **Node.js Method** (`combine_images_to_pdf.js`):
+     - Takes generated card images and combines them into a single PDF
+     - Handles both RGB and CMYK color modes
+     - Better color fidelity and TIFF support
+     - More customization options (sorting, filtering, etc.)
+
+## Usage
+
+### Basic Card Generation
+
+```bash
+python test_file_cards.py --input-dir /path/to/files --output-dir /path/for/cards --cmyk-mode --page-size A4
+```
+
+### Combining Images to PDF (Node.js Method)
+
+After generating individual cards, use the Node.js script for better PDF output:
+
+```bash
+# RGB mode
+./combine_images_to_pdf.js -i ./file_card_tests -o combined_cards.pdf
+
+# CMYK mode (print-ready)
+./combine_images_to_pdf.js -i ./file_card_tests -o combined_cards_cmyk.pdf --cmyk-mode
+
+# Customize sorting order (by name, date, etc.)
+./combine_images_to_pdf.js -i ./file_card_tests -o combined_cards.pdf --sort-by name --sort-order desc
+
+# Suppress verbose output
+./combine_images_to_pdf.js -i ./file_card_tests -o combined_cards.pdf --quiet
+```
+
+The Node.js script offers several advantages:
+- Better handling of TIFF files with CMYK color profiles
+- High-quality image processing with Sharp library
+- Flexible page size options
+- Sorting and filtering capabilities
+- Can handle large collections of images efficiently
+
+## Mapbox Integration
+
+For GPS files (GPX, FIT, TCX), the cards can display beautiful maps using Mapbox:
+
+1. Create a free Mapbox account at https://www.mapbox.com/
+2. Get your API key (access token)
+3. Create a `.env` file with: `MAPBOX_TOKEN=your_token_here`
+4. Run the script and enjoy beautiful map previews!
+
+## Slack Integration
+
+The tool can display additional metadata for files from a Slack export:
+
+- Channel name
+- User who shared the file
+- User's avatar
+- Date shared
+- Message ID
+
+Ensure your Slack export contains the following files:
+- `messages.json` (in each channel directory)
+- `users.json` (in the export root)
+- User avatars in an `avatars` directory
+
+## Troubleshooting
+
+- If HEIC files are not displaying, ensure you have the `pillow-heif` package installed
+- For PDF issues, ensure you have poppler installed
+- For CMYK output, use the Node.js method to combine files into a PDF
+- If Mapbox maps are not showing, check your token and internet connection
