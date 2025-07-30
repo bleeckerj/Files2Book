@@ -509,11 +509,29 @@ def downsample_points(points, max_points=100):
     step = max(1, len(points) // max_points)
     return points[::step]
 
-def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height, api_key, path_points=None):
+def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height, api_key=MAPBOX_TOKEN, path_points=None):
     center_lat = (min_lat + max_lat) / 2
     center_lon = (min_lon + max_lon) / 2
-    zoom = 10  # Fixed zoom for now
-    print("API Key:", api_key)
+    # Calculate zoom level based on bounding box and image size
+    # Reference: https://docs.mapbox.com/help/glossary/zoom-level/
+    def lat_rad(lat):
+        from math import radians, log, tan, pi
+        sin = math.sin(radians(lat))
+        return log((1 + sin) / (1 - sin)) / 2
+    WORLD_DIM = 256  # Mapbox tile size in pixels
+    def zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height):
+        # Clamp latitude to avoid math domain errors
+        min_lat = max(min_lat, -85.05112878)
+        max_lat = min(max_lat, 85.05112878)
+        lat_fraction = (lat_rad(max_lat) - lat_rad(min_lat)) / math.pi
+        lon_fraction = (max_lon - min_lon) / 360.0
+        lat_zoom = math.log2(height / WORLD_DIM / lat_fraction) if lat_fraction > 0 else 20
+        lon_zoom = math.log2(width / WORLD_DIM / lon_fraction) if lon_fraction > 0 else 20
+        zoom = min(lat_zoom, lon_zoom, 20)
+        zoom = max(0, zoom)
+        return round(zoom, 2)
+    zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height)
+    #print("API Key:", api_key)
     path_str = ""
     if path_points and len(path_points) > 1:
         path_points = downsample_points(path_points, max_points=100)
@@ -528,7 +546,8 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     )
     resp = requests.get(url)
     print("Mapbox URL:", url)
-    print("Mapbox status:", resp.status_code, resp.text)
+    print("Mapbox zoom:", zoom)
+    print("Mapbox status:", resp.status_code)
     if resp.status_code == 200:
         return Image.open(io.BytesIO(resp.content))
     return None
@@ -670,10 +689,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                     gpx_thumb = mapbox_img
         except Exception:
             pass
-    elif ext == '.fit':
+    elif ext in {'.fit', '.tcx'}:
         preview_lines, fit_meta = get_fit_summary_preview(file_path)
         fit_gps_thumb = get_fit_gps_preview(file_path, max_line_width_pixels, preview_box_height)
-        # Mapbox integration for FIT with polyline
+        # Mapbox integration for FIT/TCX with polyline
         try:
             fitfile = FitFile(str(file_path))
             points = []
@@ -716,6 +735,16 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             else:
                 preview_lines.extend(wrapped)
         preview_lines = preview_lines[:max_preview_lines]
+    elif ext == '.zip':
+        zip_file_list = get_zip_preview(file_path, max_files=max_preview_lines)
+        zip_file_preview_img = None
+        zip_file_preview_lines = None
+    elif ext == '.gz':
+        preview_lines, image_thumb, _ = get_gz_preview(
+            file_path, max_bytes=max_preview_lines * 16, preview_box=(max_line_width_pixels, preview_box_height))
+        image_thumb = image_thumb  # If image_thumb is None, preview_lines will be used
+    elif ext == '.bz2':
+        preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
 
     # --- Draw card ---
     if cmyk_mode:
@@ -768,6 +797,15 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         outline='black',
         width=1
     )
+    # --- Always show preview_lines for .zip, .gz, .bz2 if present ---
+    if ext in {'.zip', '.gz', '.bz2'} and preview_lines:
+        text_y = preview_box_top + preview_box_padding
+        for line in preview_lines:
+            if text_y + line_height > preview_box_bottom - preview_box_padding:
+                break
+            draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
+            text_y += line_height
+        return img
     # FIT: show GPS map if present, then summary text below
     if ext == '.fit' and fit_gps_thumb is not None:
         img_w, img_h = fit_gps_thumb.size
@@ -844,6 +882,13 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                 break
             draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
             text_y += line_height
+        # Always show preview lines for .zip, .gz, .bz2 if present
+        if zip_file_preview_lines is not None:
+            for line in zip_file_preview_lines:
+                if text_y + line_height > preview_box_bottom - preview_box_padding:
+                    break
+                draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
+                text_y += line_height
         if zip_file_preview_img is not None:
             img_w, img_h = zip_file_preview_img.size
             box_w = preview_box_right - preview_box_left - preview_box_padding * 2
@@ -854,12 +899,6 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                 img_h = preview_box_bottom - preview_box_padding - y0
                 zip_file_preview_img = zip_file_preview_img.crop((0, 0, img_w, img_h))
             img.paste(zip_file_preview_img, (int(x0), int(y0)))
-        elif zip_file_preview_lines is not None:
-            for line in zip_file_preview_lines:
-                if text_y + line_height > preview_box_bottom - preview_box_padding:
-                    break
-                draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
-                text_y += line_height
     else:
         text_y = preview_box_top + preview_box_padding
         for line in preview_lines:
