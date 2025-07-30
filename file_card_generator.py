@@ -223,6 +223,17 @@ def get_zip_preview(file_path, max_files=40):
     try:
         with zipfile.ZipFile(file_path, 'r') as z:
             names = z.namelist()
+            if len(names) == 1:
+                # If only one file, extract and show hex preview
+                with z.open(names[0]) as f:
+                    data = f.read(1024)
+                hex_lines = []
+                for i in range(0, len(data), 16):
+                    chunk = data[i:i+16]
+                    hexstr = ' '.join(f"{b:02X}" for b in chunk)
+                    ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
+                    hex_lines.append(f"{i:08X}: {hexstr:<48} {ascii_str}")
+                return [f"ZIP: 1 file ({names[0]})"] + hex_lines
             return [f"ZIP: {len(names)} files"] + names[:max_files]
     except Exception as e:
         return [f"ZIP error: {e}"]
