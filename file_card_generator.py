@@ -16,7 +16,6 @@ try:
     FITPARSE_AVAILABLE = True
 except ImportError:
     FITPARSE_AVAILABLE = False
-from PIL import Image
 import binascii
 import json
 from pdf2image import convert_from_path
@@ -29,12 +28,18 @@ import logging
 import traceback
 import random
 
+Image.MAX_IMAGE_PIXELS = 500_000_000  # or any large number
+#Image.MAX_IMAGE_PIXELS = None  # disables the limit (use with caution)
+
 # Initialize mimetypes
 mimetypes.init()
 
 dotenv.load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(name)s - %(funcName)s:%(lineno)d - %(message)s'
+)
 
 def round_image_corners(img, radius):
     # Ensure img is RGBA
@@ -75,9 +80,14 @@ FILE_TYPE_GROUPS = {
         'color': (255, 93, 153)  # HEX: 686974
     },
     'document': {
-        'extensions': {'.doc', '.docx','.odt', '.pdf', '.tex'},
+        'extensions': {'.doc', '.docx','.odt','.tex'},
         'icon': "DOC",
         'color': (123, 17, 116)  # HEX: 6b6d67
+    },
+    'pdf': {
+        'extensions': {'.pdf'},
+        'icon': "PDF",
+        'color': (69, 137, 119)  # HEX: 458977
     },
     'presentation': {
         'extensions': {'.ppt', '.pptx', '.odp', '.key'},
@@ -132,6 +142,7 @@ def get_file_type_info(file_path):
     # Check if the extension is in any of our groups
     for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
+            logging.debug(f"DEBUG: Found group {group} for extension {ext} for file {file_path}")
             return {
                 'group': group,
                 'icon': info['icon'],
@@ -410,25 +421,38 @@ def get_fit_summary_preview(file_path):
     except Exception as e:
         return [f"FIT error: {e}"], {}
 
-def get_pdf_preview(file_path, box_w, box_h, max_pages=4):
+def get_pdf_preview(file_path, box_w, box_h, max_pages=6):
     try:
-        pages = convert_from_path(str(file_path), first_page=1, last_page=max_pages)
-        n = len(pages)
+        # First, get the total number of pages
+        from pdf2image import convert_from_path
+        logging.debug(f"Attempting to extract PDF preview: {file_path}")
+        all_pages = convert_from_path(str(file_path))
+        n_total = len(all_pages)
+        logging.info(f"PDF {file_path} has {n_total} pages")
+        n = min(max_pages, n_total)
         if n == 0:
+            logging.warning(f"No pages found in PDF: {file_path}")
             return None
-        # Arrange in grid (2x2 or 1xN)
-        grid_cols = 2 if n > 1 else 1
-        grid_rows = (n + 1) // 2 if n > 1 else 1
+        # Dynamically determine grid layout
+        # Favor more rows for tall preview, more columns for wide preview
+        aspect_ratio = box_w / max(box_h, 1)
+        grid_rows = int(math.ceil(math.sqrt(n / aspect_ratio)))
+        grid_cols = int(math.ceil(n / grid_rows))
         thumb_w = box_w // grid_cols
         thumb_h = box_h // grid_rows
         grid_img = Image.new('RGB', (box_w, box_h), (245, 245, 245))
-        for idx, page in enumerate(pages):
-            page.thumbnail((thumb_w, thumb_h))
-            x = (idx % grid_cols) * thumb_w + (thumb_w - page.width)//2
-            y = (idx // grid_cols) * thumb_h + (thumb_h - page.height)//2
-            grid_img.paste(page, (x, y))
+        for idx, page in enumerate(all_pages[:n]):
+            try:
+                page.thumbnail((thumb_w, thumb_h))
+                x = (idx % grid_cols) * thumb_w + (thumb_w - page.width)//2
+                y = (idx // grid_cols) * thumb_h + (thumb_h - page.height)//2
+                grid_img.paste(page, (x, y))
+                logging.debug(f"Pasted page {idx+1} at ({x}, {y}), size ({page.width}, {page.height})")
+            except Exception as page_e:
+                logging.error(f"Error rendering page {idx+1} of {file_path}: {page_e}")
         return grid_img
-    except Exception:
+    except Exception as e:
+        logging.error(f"PDF preview error for {file_path}: {e}")
         return None
 
 def get_image_thumbnail(file_path, thumb_size=(320, 320)):
@@ -1025,8 +1049,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     elif ext == '.ai':
         try:
             # Try PDF-based preview first
+            logging.debug(f"Attempting to create PDF preview for AI file: {file_path}")
             try:
                 pages = convert_from_path(str(file_path), first_page=1, last_page=1)
+                logging.info(f"PDF preview created for AI file: {file_path}, pages: {len(pages)}")
                 if pages:
                     # Scale to fit preview box
                     img_w, img_h = pages[0].size
@@ -1036,9 +1062,11 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                     image_thumb = pages[0].resize((new_w, new_h), Image.LANCZOS)
                 else:
                     preview_lines = ["AI file: PDF preview not available."]
+                    logging.warning(f"No pages found in AI file PDF preview: {file_path}")
             except Exception as pdf_e:
                 # If PDF preview fails, try text extraction
                 try:
+                    logging.info(f"Attempting to extract text from AI file: {file_path}")
                     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                         lines = []
                         for i, line in enumerate(f):
@@ -1050,9 +1078,11 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                             else:
                                 lines.extend(wrapped)
                         preview_lines = ["AI file: Text preview"] + lines
+                        logging.debug(f"Extracted {len(lines)} lines from AI file: {file_path}")
                 except Exception as text_e:
                     # If text extraction fails, do hex dump
                     preview_lines = ["AI file: Hex preview"] + get_hex_preview(file_path, max_bytes=max_preview_lines * 16)
+                    logging.warning(f"Failed to extract text from AI file: {file_path}, PDF error: {pdf_e}, text error: {text_e}")
         except Exception as e:
             preview_lines = [f"AI error: {e}"]
     # --- Draw card ---
@@ -1252,11 +1282,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 def determine_file_type(file_path):
     """Categorize files into different types for appropriate rendering."""
     ext = file_path.suffix.lower()
-    
-    # Images, videos, PDFs
-    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.mp4', '.mov', '.avi', '.mkv', '.pdf', '.heic', '.PNG', '.JPG', '.JPEG', '.HEIC'}:
-        return "media"
-    
+    # Define file type groups with their extensions and icons
     for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
             return group
