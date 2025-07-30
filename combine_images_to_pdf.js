@@ -17,7 +17,6 @@ async function combineImagesToPdf(options) {
     cmykMode,
     pageSize,
     dpi,
-    sortOrder,
     filter,
     quiet
   } = options;
@@ -78,32 +77,32 @@ async function combineImagesToPdf(options) {
   }
 
   // Sort files
-  switch (sortOrder) {
-    case 'name':
-      files.sort();
-      break;
-    case 'name-desc':
-      files.sort().reverse();
-      break;
-    case 'date':
-      files = await Promise.all(files.map(async file => {
-        const stats = await fs.promises.stat(path.join(inputDir, file));
-        return { file, date: stats.mtime };
-      }));
-      files.sort((a, b) => a.date - b.date);
-      files = files.map(item => item.file);
-      break;
-    case 'date-desc':
-      files = await Promise.all(files.map(async file => {
-        const stats = await fs.promises.stat(path.join(inputDir, file));
-        return { file, date: stats.mtime };
-      }));
-      files.sort((a, b) => b.date - a.date);
-      files = files.map(item => item.file);
-      break;
-    default:
-      files.sort();
-  }
+//   switch (sortOrder) {
+//     case 'name':
+//       files.sort();
+//       break;
+//     case 'name-desc':
+//       files.sort().reverse();
+//       break;
+//     case 'date':
+//       files = await Promise.all(files.map(async file => {
+//         const stats = await fs.promises.stat(path.join(inputDir, file));
+//         return { file, date: stats.mtime };
+//       }));
+//       files.sort((a, b) => a.date - b.date);
+//       files = files.map(item => item.file);
+//       break;
+//     case 'date-desc':
+//       files = await Promise.all(files.map(async file => {
+//         const stats = await fs.promises.stat(path.join(inputDir, file));
+//         return { file, date: stats.mtime };
+//       }));
+//       files.sort((a, b) => b.date - a.date);
+//       files = files.map(item => item.file);
+//       break;
+//     default:
+//       files.sort();
+//   }
 
   if (files.length === 0) {
     // Always show errors, even in quiet mode
@@ -207,7 +206,6 @@ program
   .option('-c, --cmyk-mode', 'Use CMYK color mode', false)
   .option('-p, --page-size <size>', 'Page size (A4, LETTER, TABLOID, WxH in inches)', 'A4')
   .option('-d, --dpi <number>', 'DPI for page size calculations', 300)
-  .option('-s, --sort-order <order>', 'Sort order (name, name-desc, date, date-desc)', 'name')
   .option('-f, --filter <pattern>', 'Filter files by name pattern (regex)')
   .option('-q, --quiet', 'Suppress all non-essential output', false)
   .action((options) => {
