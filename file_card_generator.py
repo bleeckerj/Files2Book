@@ -594,6 +594,26 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     base_width = 800
     base_height = 1000
     scale = min(width / base_width, height / base_height)
+
+    # Proportional paddings
+    border_width = max(2, int(5 * scale))
+    outer_padding = max(10, int(20 * scale))  # New variable for padding between border and outer edges
+
+    # Adjust dimensions to account for outer padding
+    width -= 2 * outer_padding
+    height -= 2 * outer_padding
+
+    # Create the image with adjusted dimensions
+    img = Image.new('RGB', (width + 2 * outer_padding, height + 2 * outer_padding), 'white')
+    draw = ImageDraw.Draw(img)
+
+    # Draw the border with outer padding
+    draw.rectangle(
+        [outer_padding, outer_padding, width + outer_padding - 1, height + outer_padding - 1],
+        outline='black',
+        width=border_width
+    )
+
     # Proportional font sizes
     title_font_size = int(40 * scale)
     info_font_size = int(22 * scale)  # Slightly larger font size for metadata
