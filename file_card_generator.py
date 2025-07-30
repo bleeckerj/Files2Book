@@ -25,10 +25,14 @@ import cv2
 import requests
 import dotenv
 import polyline
+import logging
+
 # Initialize mimetypes
 mimetypes.init()
 
 dotenv.load_dotenv()
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def round_image_corners(img, radius):
     # Ensure img is RGBA
@@ -56,47 +60,47 @@ FILE_TYPE_GROUPS = {
     'code': {
         'extensions': {'.py', '.js', '.html', '.css', '.java', '.c', '.cpp', '.h', '.sh', '.rb', '.swift', '.php', '.go'},
         'icon': "< / >",
-        'color': (0, 80, 180)  # Blue
+        'color': (251, 64, 55)  # HEX: fb4037
     },
     'data': {
         'extensions': {'.json', '.csv', '.xml', '.yaml', '.yml', '.toml', '.ini'},
         'icon': "{ }",
-        'color': (0, 130, 0)  # Green
+        'color': (210, 255, 66)  # HEX: d2ff42
     },
     'spreadsheet': {
         'extensions': {'.xlsx', '.xls', '.ods', '.numbers'},
         'icon': "TABLE",
-        'color': (0, 140, 70)  # Green-blue
+        'color': (104, 105, 116)  # HEX: 686974
     },
     'document': {
         'extensions': {'.doc', '.docx', '.txt', '.md', '.rtf', '.odt', '.pdf', '.tex'},
         'icon': "DOC",
-        'color': (100, 0, 120)  # Purple
+        'color': (107, 109, 103)  # HEX: 6b6d67
     },
     'archive': {
         'extensions': {'.zip', '.tar', '.gz', '.bz2', '.rar', '.7z'},
         'icon': "ZIP",
-        'color': (180, 100, 0)  # Orange
+        'color': (113, 90, 105)  # HEX: 4f9d69 #715AFF
     },
     'executable': {
         'extensions': {'.exe', '.bin', '.app', '.sh', '.bat', '.dll', '.so', '.dylib'},
         'icon': "EXE",
-        'color': (180, 0, 0)  # Red
+        'color': (251, 175, 0)  # HEX: fbaf00
     },
     'binary': {
         'extensions': {'.hex', '.bin', '.dat', '.dfu', '.oci'},
         'icon': "BIN",
-        'color': (80, 80, 80)  # Dark gray
+        'color': (136, 204, 241)  # HEX: 88ccf1
     },
     'gps': {
         'extensions': {'.gpx', '.fit', '.tcx'},
         'icon': "GPS",
-        'color': (0, 120, 160)  # Teal
+        'color': (51, 161, 253)  # HEX: 33A1FD
     },
     'log': {
         'extensions': {'.log', '.txt', '.out'},
         'icon': "LOG",
-        'color': (120, 120, 120)  # Gray
+        'color': (0, 0, 0)  # HEX: 000000
     }
 }
 
@@ -470,6 +474,7 @@ except ImportError:
 
 def get_heic_image(file_path):
     if not PYHEIF_AVAILABLE:
+        logging.warning("pyheif library is not available. Cannot process HEIC files.")
         return None
     try:
         heif_file = pyheif.read(file_path)
@@ -481,8 +486,10 @@ def get_heic_image(file_path):
             heif_file.mode,
             heif_file.stride,
         )
+        logging.info(f"Successfully processed HEIC file: {file_path}")
         return img
-    except Exception:
+    except Exception as e:
+        logging.error(f"Error processing HEIC file {file_path}: {e}")
         return None
 
 def get_fit_gps_preview(file_path, box_w, box_h):
@@ -593,14 +600,14 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     base_height = 1000
     scale = min(width / base_width, height / base_height)
     # Proportional font sizes
-    title_font_size = int(48 * scale)
-    info_font_size = int(16 * scale)  # Smaller font size for metadata
+    title_font_size = int(40 * scale)
+    info_font_size = int(22 * scale)  # Slightly larger font size for metadata
     preview_font_size = int(14 * scale)
     fit_font_size = int(12 * scale)
     # Proportional paddings
     border_width = max(2, int(5 * scale))
     icon_space = int((100 + 40) * scale)
-    metadata_line_height = int(30 * scale)
+    metadata_line_height = int(info_font_size * 1.15)  # Reduce line spacing, closer to font size
     spacing = int(10 * scale) + int(10 * scale) + int(10 * scale)
     preview_box_padding = int(15 * scale)
     header_height = int(80 * scale)
@@ -685,13 +692,13 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                     break
         except Exception:
             pass
-    file_info = {
-        'Name': file_path.name,
-        'Type': f"{file_path.suffix[1:].upper()} ({file_type_info['group']})",
-        'Size': format_file_size(size),
-    }
+    # Build metadata with Slack Channel at the top if present
+    file_info = {}
     if slack_channel:
         file_info['Slack Channel'] = slack_channel
+    file_info['Name'] = file_path.name
+    file_info['Type'] = f"{file_path.suffix[1:].upper()} ({file_type_info['group']})"
+    file_info['Size'] = format_file_size(size)
     if slack_message_id:
         file_info['Message ID'] = slack_message_id
     if slack_user_name:
@@ -879,29 +886,29 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                 # Local file path (from avatars_40x40)
                 avatar_img = Image.open(slack_avatar).convert('RGB')
                 avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
-                avatar_img = round_image_corners(avatar_img, radius=int(10 * scale))
+                avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
             elif slack_avatar.startswith('http'):
                 import requests
                 avatar_resp = requests.get(slack_avatar)
                 if avatar_resp.status_code == 200:
                     avatar_img = Image.open(io.BytesIO(avatar_resp.content)).convert('RGB')
                     avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
-                    avatar_img = round_image_corners(avatar_img, radius=int(10 * scale))
+                    avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
 
         except Exception:
             avatar_img = None
     for key, value in file_info.items():
         if key == 'Shared By' and avatar_img is not None:
             # Draw avatar left of the text
-            x_avatar = int(border_width + 20 * scale)
-            y_avatar = int(header_height + 20 * scale)
+            x_avatar = int(border_width + 10 * scale)
+            y_avatar = int(header_height + 10 * scale)
             img.paste(avatar_img, (int(x_avatar), int(y_avatar)), mask=avatar_img)
             draw.text((width//2, y), f"{key}: {value}", fill='black', font=info_font, anchor="mm")
-            y += 30
+            y += 25
         else:
             line = f"{key}: {value}"
             draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
-            y += 30
+            y += 25
     y = preview_box_top - 30
     draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
@@ -1032,8 +1039,6 @@ def determine_file_type(file_path):
     if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.mp4', '.mov', '.avi', '.mkv', '.pdf', '.heic', '.PNG', '.JPG', '.JPEG', '.HEIC'}:
         return "media"
     
-    # Other types
-    for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
             return group
     
