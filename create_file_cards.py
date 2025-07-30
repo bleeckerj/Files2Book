@@ -192,10 +192,10 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
                 # Direct inclusion for other formats
                 pdf.image(str(card_file), x=0, y=0, w=page_size[0], h=page_size[1])
         except Exception as e:
-            print(f"Error adding {card_file} to PDF: {e}")
+            logging.error(f"Error adding {card_file} to PDF: {e}")
 
     pdf.output(pdf_file)
-    print(f"Combined PDF saved to {pdf_file}")
+    logging.info(f"Combined PDF saved to {pdf_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test file card generation and PDF assembly for various file types')

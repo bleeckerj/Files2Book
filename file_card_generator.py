@@ -74,9 +74,14 @@ FILE_TYPE_GROUPS = {
         'color': (255, 93, 153)  # HEX: 686974
     },
     'document': {
-        'extensions': {'.doc', '.docx', '.txt', '.md', '.rtf', '.odt', '.pdf', '.tex'},
+        'extensions': {'.doc', '.docx','.odt', '.pdf', '.tex'},
         'icon': "DOC",
         'color': (123, 17, 116)  # HEX: 6b6d67
+    },
+    'text': {
+        'extensions': {'.txt', '.md', '.rtf'},
+        'icon': "TEXT",
+        'color': (255, 153, 0)  # HEX: ff9900
     },
     'archive': {
         'extensions': {'.zip', '.tar', '.gz', '.bz2', '.rar', '.7z'},
@@ -117,7 +122,7 @@ def scale_image_by_percent(image, percent):
 def get_file_type_info(file_path):
     """Determine file type group and icon information."""
     ext = file_path.suffix.lower()
-    
+    logging.info(f"DEBUG: ext={ext}")
     # Check if the extension is in any of our groups
     for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
@@ -126,10 +131,8 @@ def get_file_type_info(file_path):
                 'icon': info['icon'],
                 'color': info['color']
             }
-    
     # If not found, try to use mimetype to determine a general type
     mime_type, _ = mimetypes.guess_type(str(file_path))
-    
     if mime_type:
         if mime_type.startswith('text/'):
             return {
@@ -143,7 +146,6 @@ def get_file_type_info(file_path):
                 'icon': "APP",
                 'color': (238, 97, 35)  # Darker red
             }
-    
     # Default for unknown types
     return {
         'group': 'unknown',
@@ -554,8 +556,7 @@ def get_fit_gps_preview(file_path, box_w, box_h):
         return None
 
 MAPBOX_TOKEN = os.getenv('MAPBOX_TOKEN', '').strip()
-logging.info("Using Mapbox token:", MAPBOX_TOKEN)
-
+logging.info("Using Mapbox token: %s", MAPBOX_TOKEN if MAPBOX_TOKEN else "Not set")
 def downsample_points(points, max_points=100):
     if len(points) <= max_points:
         return points
@@ -891,6 +892,25 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                     fit_gps_thumb = mapbox_img
         except Exception:
             pass
+    elif ext == '.docx':
+        try:
+            from docx import Document
+            doc = Document(file_path)
+            doc_lines = [p.text for p in doc.paragraphs if p.text.strip()]
+            logging.info(f"Extracted {len(doc_lines)} lines from DOCX file: {file_path}")
+            txt_path = file_path.with_suffix('.txt')
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(doc_lines))
+            preview_lines = []
+            for raw_line in doc_lines:
+                wrapped = textwrap.wrap(raw_line, width=max_line_length)
+                if not wrapped:
+                    preview_lines.append('')
+                else:
+                    preview_lines.extend(wrapped)
+            preview_lines = preview_lines[:max_preview_lines]
+        except Exception as e:
+            preview_lines = [f"DOCX error: {e}"]
     elif file_type_info['group'] == 'binary' or ext == '.dfu' or file_type_info['group'] == 'unknown':
         preview_lines = get_hex_preview(file_path, max_bytes=max_preview_lines * 16)
     elif file_type_info['group'] in ['code', 'data', 'document', 'log']:
@@ -921,6 +941,24 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         image_thumb = image_thumb  # If image_thumb is None, preview_lines will be used
     elif ext == '.bz2':
         preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
+    elif ext == '.docx':
+        try:
+            from docx import Document
+            doc = Document(file_path)
+            doc_lines = [p.text for p in doc.paragraphs if p.text.strip()]
+            txt_path = file_path.with_suffix('.txt')
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(doc_lines))
+            preview_lines = []
+            for raw_line in doc_lines:
+                wrapped = textwrap.wrap(raw_line, width=max_line_length)
+                if not wrapped:
+                    preview_lines.append('')
+                else:
+                    preview_lines.extend(wrapped)
+            preview_lines = preview_lines[:max_preview_lines]
+        except Exception as e:
+            preview_lines = [f"DOCX error: {e}"]
 
     # --- Draw card ---
     if cmyk_mode:
@@ -1124,6 +1162,7 @@ def determine_file_type(file_path):
     if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.mp4', '.mov', '.avi', '.mkv', '.pdf', '.heic', '.PNG', '.JPG', '.JPEG', '.HEIC'}:
         return "media"
     
+    for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
             return group
     
