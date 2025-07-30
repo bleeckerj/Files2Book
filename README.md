@@ -271,7 +271,7 @@ python create_file_cards.py --input-dir ./files --output-dir ./card_output --cmy
 - `--output-dir`: Directory to save card images (default: file_card_tests)
 - `--cmyk-mode`: Generate cards in CMYK mode (for printing)
 - `--page-size`: Card size (A4, LETTER, TABLOID, POKER, BRIDGE, etc. or WxH in inches)
-- `--pdf-output`: Path to save the combined PDF
+- `--pdf-output-name`: Filename to save for the combined PDF
 
 ## PDF Assembly
 

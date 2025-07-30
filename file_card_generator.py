@@ -529,7 +529,7 @@ def get_fit_gps_preview(file_path, box_w, box_h):
         return None
 
 MAPBOX_TOKEN = os.getenv('MAPBOX_TOKEN', '').strip()
-print("Using Mapbox token:", MAPBOX_TOKEN)
+logging.info("Using Mapbox token:", MAPBOX_TOKEN)
 
 def downsample_points(points, max_points=100):
     if len(points) <= max_points:
@@ -558,11 +558,10 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         zoom = min(lat_zoom, lon_zoom, 22)
         zoom = max(0, zoom)
         calculated_zoom = float(zoom)
-        adjusted_zoom = max(0.0, calculated_zoom - 0.4)
+        adjusted_zoom = max(0.0, calculated_zoom - 0.1)
         return adjusted_zoom
     zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height)
-    print("Mapbox zoom level:", zoom)
-    #print("API Key:", api_key)
+
     import urllib.parse
     path_str = ""
     if path_points and len(path_points) > 1:
@@ -572,19 +571,35 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         encoded = polyline.encode(poly_points)
         encoded_url = urllib.parse.quote(encoded, safe='')
         path_str = f"/path-5+f44-0.7({encoded_url})"
+    # Log style info from Mapbox Styles API
+    style_username = "darthjulian"
+    style_id = "ciwqpkc0s00882qnxuuscegmn"
+    style_api_url = f"https://api.mapbox.com/styles/v1/{style_username}/{style_id}?access_token={api_key}"
+    try:
+        style_resp = requests.get(style_api_url)
+        if style_resp.status_code == 200:
+            style_json = style_resp.json()
+            logging.info(f"Mapbox style name: {style_json.get('name')}")
+            logging.info(f"Mapbox style owner: {style_json.get('owner')}")
+            logging.info(f"Mapbox style visibility: {style_json.get('visibility')}")
+        else:
+            logging.warning(f"Could not fetch Mapbox style info: {style_resp.status_code} {style_resp.text}")
+    except Exception as e:
+        logging.warning(f"Exception fetching Mapbox style info: {e}")
     url = (
-        f"https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static"
-        f"{path_str}/{center_lon},{center_lat},{zoom},0,45/{width}x{height}"
+       # f"https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static"
+        f"https://api.mapbox.com/styles/v1/darthjulian/ciwqpkc0s00882qnxuuscegmn/static"
+        f"{path_str}/{center_lon},{center_lat},{zoom},0,50/{width}x{height}"
         f"?access_token={api_key}"
     )
     resp = requests.get(url)
-    print("Mapbox URL:", url)
-    print("Mapbox zoom:", zoom)
-    print("Mapbox status:", resp.status_code)
+    logging.info("Mapbox URL: %s", url)
+    logging.info("Mapbox zoom: %s", zoom)
+    logging.info("Mapbox status: %s", resp.status_code)
     if resp.status_code == 200:
         return Image.open(io.BytesIO(resp.content))
     else:
-        print("Mapbox error:", resp.status_code, resp.text)
+        logging.error("Mapbox error: %s %s", resp.status_code, resp.text)
     return None
 
 
@@ -600,8 +615,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     outer_padding = max(10, int(25 * scale))  # Padding between border and outer edges of content
 
     # Calculate dimensions for the content area
-    content_width = width - 2 * outer_padding
-    content_height = height - 2 * outer_padding
+    #content_width = width - 2 * outer_padding
+    #content_height = height - 2 * outer_padding
 
     # Create the full-sized image (background)
     img = Image.new('RGB', (width, height), 'white')
@@ -938,10 +953,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 
     if avatar_img is not None:
         try:
-            logging.info(f"outer_padding is {outer_padding} and border_width is {border_width} at scale {scale}")
+            logging.debug(f"outer_padding is {outer_padding} and border_width is {border_width} at scale {scale}")
             avatar_x_coordinate = int(outer_padding )
             avatar_y_coordinate = int(outer_padding + header_height + 10 * scale)
-            logging.info(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
+            logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")

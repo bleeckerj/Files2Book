@@ -7,6 +7,8 @@ import argparse
 from fpdf import FPDF
 import logging
 import time
+import shutil
+import itertools
 
 # Import the file card generator
 from file_card_generator import create_file_info_card, determine_file_type, save_card_as_tiff
@@ -51,7 +53,7 @@ def parse_page_size(size_name):
     logging.warning(f"Unknown page size '{size_name}', defaulting to A4")
     return int(8.3 * dpi), int(11.7 * dpi)
 
-def test_file_cards(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='A4'):
+def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT'):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -69,13 +71,13 @@ def test_file_cards(input_dir, output_dir='file_card_tests', cmyk_mode=False, pa
     width, height = parse_page_size(page_size)
     logging.debug(f"page_size: {page_size} width: {width} height: {height}")
 
-    logging.info(f"Parsed page size: {page_size} -> {width}x{height} pixels")
+    logging.debug(f"Parsed page size: {page_size} -> {width}x{height} pixels")
 
     if not input_path.is_dir():
         print(f"Error: {input_dir} is not a directory")
         return
     
-    logging.debug(f"width: {width}, height: {height}, cmyk_mode: {cmyk_mode}")
+    logging.info(f"width: {width}, height: {height}, cmyk_mode: {cmyk_mode}")
     # Process each file in the directory
     file_count = 0
     for file_path in sorted(input_path.iterdir()):
@@ -102,7 +104,7 @@ def test_file_cards(input_dir, output_dir='file_card_tests', cmyk_mode=False, pa
                 card_size = card.size
                 logging.debug(f"Card size: {card_size}")
 
-                logging.info(f"Created card for {file_path.name} with size: {card.size} width: {card.width}, height: {card.height}")
+                logging.debug(f"Created card for {file_path.name} with size: {card.size} width: {card.width}, height: {card.height}")
 
                 # Save the card
                 output_file = output_path / f"{file_path.stem}_card.png"
@@ -163,11 +165,11 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
                     })
                     
                     f.write(img2pdf.convert(image_files, layout_fun=layout))
-                print(f"Combined PDF saved to {pdf_file}")
+                logging.info(f"Combined PDF saved to {pdf_file}")
                 return
         except Exception as e:
             logging.error(f"Error using img2pdf: {e}")
-            logging.info("Falling back to FPDF")
+            logging.warning("Falling back to FPDF")
     
     # Fallback to FPDF if img2pdf failed or isn't available
     pdf = FPDF(unit="pt", format=(page_size[0], page_size[1]))
@@ -180,7 +182,7 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
             
             # If it's a TIFF file, convert it to JPEG while preserving color profile
             if card_file.suffix.lower() == '.tiff':
-                logging.info(f"Converting TIFF to JPEG for PDF inclusion: {card_file}")
+                #logging.debug(f"Converting TIFF to JPEG for PDF inclusion: {card_file}")
                 img = Image.open(str(card_file))
                 
                 # Create a temporary JPEG file
@@ -203,17 +205,65 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test file card generation and PDF assembly for various file types')
     parser.add_argument('--input-dir', help='Directory containing files to create cards for')
-    parser.add_argument('--output-dir', default='file_card_tests', help='Directory to save card images')
+    parser.add_argument('--output-dir', help='Directory to save card images')
     parser.add_argument('--cmyk-mode', action='store_true', help='Generate cards in CMYK mode')
-    parser.add_argument('--page-size', default='A4', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
-    parser.add_argument('--pdf-output', help='Path to save the combined PDF')
+    parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
+    parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
 
     args = parser.parse_args()
 
+    # Validate and adjust input_dir
+    input_path = Path(args.input_dir)
+    last_component = input_path.name
+    if not input_path.is_dir():
+        print(f"Error: {args.input_dir} is not a directory.")
+        sys.exit(1)
+    if last_component != "files":
+        files_subdir = input_path / "files"
+        if files_subdir.is_dir():
+            args.input_dir = str(files_subdir)
+            print(f"Using 'files' subdirectory: {args.input_dir}")
+        else:
+            print(f"Error: No 'files' subdirectory found in {args.input_dir}.")
+            sys.exit(1)
+
+    # Set default output_dir if not specified
+    if not args.output_dir:
+        parent_dir_name = os.path.basename(os.path.dirname(os.path.normpath(args.input_dir)))
+        args.output_dir = f"{parent_dir_name}_cards_output"
+        logging.info(f"Using default output directory: {args.output_dir}")
+
+    # Set default pdf_output_name if not specified
+    if not args.pdf_output_name:
+        parent_dir_name = os.path.basename(os.path.dirname(os.path.normpath(args.input_dir)))
+        args.pdf_output_name = f"{parent_dir_name}_combined_pdf.pdf"
+        logging.info(f"Using default PDF output name: {args.pdf_output_name}")
+
     # Generate file cards
-    test_file_cards(args.input_dir, args.output_dir, args.cmyk_mode, args.page_size)
+    build_file_cards_from_directory(args.input_dir, args.output_dir, args.cmyk_mode, args.page_size)
+
+    # Report summary
+    output_path = Path(args.output_dir)
+    card_files = sorted(output_path.glob("*_card.*"))
+    print(f"\nSummary:")
+    print(f"Output directory: {os.path.abspath(args.output_dir)}")
+    print(f"Number of card files generated: {len(card_files)}")
+    if card_files:
+        print("Generated card files:")
+        # Print in 3 columns
+        col_count = 3
+        names = [f.name for f in card_files]
+        max_len = max((len(name) for name in names), default=0)
+        term_width = shutil.get_terminal_size((120, 20)).columns
+        col_width = max_len + 2
+        cols = min(col_count, max(1, term_width // col_width))
+        rows = (len(names) + cols - 1) // cols
+        for row in range(rows):
+            line = "".join(names[row + rows * col].ljust(col_width) for col in range(cols) if row + rows * col < len(names))
+            print(line)
 
     # Assemble cards into a PDF if requested
-    if args.pdf_output:
+    if args.pdf_output_name:
         width, height = parse_page_size(args.page_size)
-        assemble_cards_to_pdf(args.output_dir, args.pdf_output, (width, height))
+        pdf_path = str(Path(args.output_dir) / args.pdf_output_name)
+        assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
