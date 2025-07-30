@@ -22,9 +22,15 @@ import json
 from pdf2image import convert_from_path
 import gpxpy
 import cv2
-
+import requests
+import dotenv
+import polyline
 # Initialize mimetypes
 mimetypes.init()
+
+dotenv.load_dotenv()
+
+
 
 # Define file type groups with recognizable icons
 FILE_TYPE_GROUPS = {
@@ -74,6 +80,15 @@ FILE_TYPE_GROUPS = {
         'color': (120, 120, 120)  # Gray
     }
 }
+
+def scale_image_by_percent(image, percent):
+    """Scale a PIL image by a given percentage (e.g., percent=0.95 for 95%)."""
+    if image is None or percent <= 0:
+        return None
+    w, h = image.size
+    new_w = max(1, int(w * percent))
+    new_h = max(1, int(h * percent))
+    return image.resize((new_w, new_h), Image.LANCZOS)
 
 def get_file_type_info(file_path):
     """Determine file type group and icon information."""
@@ -485,6 +500,40 @@ def get_fit_gps_preview(file_path, box_w, box_h):
     except Exception:
         return None
 
+MAPBOX_TOKEN = os.getenv('MAPBOX_TOKEN', '').strip()
+print("Using Mapbox token:", MAPBOX_TOKEN)
+
+def downsample_points(points, max_points=100):
+    if len(points) <= max_points:
+        return points
+    step = max(1, len(points) // max_points)
+    return points[::step]
+
+def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height, api_key, path_points=None):
+    center_lat = (min_lat + max_lat) / 2
+    center_lon = (min_lon + max_lon) / 2
+    zoom = 10  # Fixed zoom for now
+    print("API Key:", api_key)
+    path_str = ""
+    if path_points and len(path_points) > 1:
+        path_points = downsample_points(path_points, max_points=100)
+        # Mapbox expects [lon,lat] pairs for polyline encoding
+        poly_points = [(lat, lon) for lon, lat in path_points]
+        encoded = polyline.encode(poly_points)
+        path_str = f"/path-5+f44-0.7({encoded})"
+    url = (
+        f"https://api.mapbox.com/styles/v1/mapbox/streets-v11/static"
+        f"{path_str}/{center_lon},{center_lat},{zoom},0/{width}x{height}"
+        f"?access_token={api_key}"
+    )
+    resp = requests.get(url)
+    print("Mapbox URL:", url)
+    print("Mapbox status:", resp.status_code, resp.text)
+    if resp.status_code == 200:
+        return Image.open(io.BytesIO(resp.content))
+    return None
+
+
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     file_path = Path(file_path)
     # Proportional scaling
@@ -603,18 +652,50 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height)
     elif ext == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
-    elif ext == '.zip':
-        zip_file_list = get_zip_preview(file_path, max_files=max_preview_lines)
-        zip_file_preview_img = None
-        zip_file_preview_lines = None
-    elif ext == '.gz':
-        preview_lines, image_thumb, _ = get_gz_preview(
-            file_path, max_bytes=max_preview_lines * 16, preview_box=(max_line_width_pixels, preview_box_height))
-    elif ext == '.bz2':
-        preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
+        # Mapbox integration for GPX with polyline
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                gpx = gpxpy.parse(f)
+            points = []
+            for track in gpx.tracks:
+                for segment in track.segments:
+                    for p in segment.points:
+                        points.append((p.longitude, p.latitude))
+            if points:
+                lons, lats = zip(*points)
+                min_lon, max_lon = min(lons), max(lons)
+                min_lat, max_lat = min(lats), max(lats)
+                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, max_line_width_pixels, preview_box_height, MAPBOX_TOKEN, path_points=points)
+                if mapbox_img:
+                    gpx_thumb = mapbox_img
+        except Exception:
+            pass
     elif ext == '.fit':
         preview_lines, fit_meta = get_fit_summary_preview(file_path)
         fit_gps_thumb = get_fit_gps_preview(file_path, max_line_width_pixels, preview_box_height)
+        # Mapbox integration for FIT with polyline
+        try:
+            fitfile = FitFile(str(file_path))
+            points = []
+            for record in fitfile.get_messages('record'):
+                lat = None
+                lon = None
+                for d in record:
+                    if d.name == 'position_lat':
+                        lat = d.value * (180.0 / 2**31)
+                    elif d.name == 'position_long':
+                        lon = d.value * (180.0 / 2**31)
+                if lat is not None and lon is not None:
+                    points.append((lon, lat))
+            if points:
+                lons, lats = zip(*points)
+                min_lon, max_lon = min(lons), max(lons)
+                min_lat, max_lat = min(lats), max(lats)
+                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, max_line_width_pixels, preview_box_height, MAPBOX_TOKEN, path_points=points)
+                if mapbox_img:
+                    fit_gps_thumb = mapbox_img
+        except Exception:
+            pass
     elif file_type_info['group'] == 'binary' or ext == '.dfu' or file_type_info['group'] == 'unknown':
         preview_lines = get_hex_preview(file_path, max_bytes=max_preview_lines * 16)
     elif file_type_info['group'] in ['code', 'data', 'document', 'log']:
