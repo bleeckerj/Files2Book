@@ -597,19 +597,19 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 
     # Proportional paddings
     border_width = max(2, int(5 * scale))
-    outer_padding = max(10, int(20 * scale))  # New variable for padding between border and outer edges
+    outer_padding = max(10, int(25 * scale))  # Padding between border and outer edges of content
 
-    # Adjust dimensions to account for outer padding
-    width -= 2 * outer_padding
-    height -= 2 * outer_padding
+    # Calculate dimensions for the content area
+    content_width = width - 2 * outer_padding
+    content_height = height - 2 * outer_padding
 
-    # Create the image with adjusted dimensions
-    img = Image.new('RGB', (width + 2 * outer_padding, height + 2 * outer_padding), 'white')
+    # Create the full-sized image (background)
+    img = Image.new('RGB', (width, height), 'white')
     draw = ImageDraw.Draw(img)
 
-    # Draw the border with outer padding
+    # Draw the border around the content area
     draw.rectangle(
-        [outer_padding, outer_padding, width + outer_padding - 1, height + outer_padding - 1],
+        [outer_padding, outer_padding, width - outer_padding - 1, height - outer_padding - 1],
         outline='black',
         width=border_width
     )
@@ -729,15 +729,21 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
 
     # Fixed card height for 4x5 aspect ratio
-    height = int(width * 5 / 4)
-    header_height = 80
-    icon_space = 100 + 40
+    header_height = int(80 * scale)
+    icon_space = int((100 + 40) * scale)
     metadata_lines = len(file_info)
     metadata_height = metadata_lines * metadata_line_height
-    preview_box_left = int(width * 0.1)
-    preview_box_right = int(width * 0.9)
-    preview_box_top = header_height + icon_space + metadata_height + spacing
-    preview_box_bottom = height - int(30 * scale)
+    
+    # Content area dimensions, accounting for outer padding
+    content_area_left = outer_padding
+    content_area_right = width - outer_padding
+    content_area_width = content_area_right - content_area_left
+    
+    # Preview box within the content area
+    preview_box_left = content_area_left + int(content_area_width * 0.1)
+    preview_box_right = content_area_right - int(content_area_width * 0.1)
+    preview_box_top = outer_padding + header_height + icon_space + metadata_height + spacing
+    preview_box_bottom = height - outer_padding - int(30 * scale)
     preview_box_height = preview_box_bottom - preview_box_top
     max_line_width_pixels = preview_box_right - preview_box_left - preview_box_padding * 2
     temp_img = Image.new('RGB', (width, height))
@@ -864,7 +870,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         img = create_cmyk_image(width, height, (0, 0, 0, 0))
         rgb_mode = False
     else:
-        img = Image.new('RGB', (width, height), 'white')
+        # We already created the image above, just ensuring it's handled consistently
         rgb_mode = True
     draw = ImageDraw.Draw(img)
     if not rgb_mode:
@@ -882,13 +888,13 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             color = (c, m, y, k)
     else:
         color = file_type_info['color']
-    border_width = 5
-    draw.rectangle([0, 0, width-1, height-1], outline='black', width=border_width)
+    # We already set border_width earlier based on scale
+    # Header within the content area
     if rgb_mode:
-        draw.rectangle([border_width, border_width, width-border_width, header_height], fill=file_type_info['color'])
+        draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=file_type_info['color'])
         text_color = 'white'
     else:
-        draw.rectangle([border_width, border_width, width-border_width, header_height], fill=color)
+        draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=color)
         text_color = (0, 0, 0, 0)
     draw.text((width//2, header_height//2), file_path.suffix.upper(), fill=text_color, font=title_font, anchor="mm")
     icon_y = header_height + 40
