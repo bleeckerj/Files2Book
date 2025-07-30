@@ -25,11 +25,15 @@ Oh, the `SlackExporterForOmata` will also create an `avatar` directory containin
 
 ### Create the cards at LARGE_TAROT size
 
-`python3 test_file_cards.py --page-size LARGE_TAROT --input-dir ../SlackExporterForOmata/omata-backoffice/files --output-dir omata-backoffice_file_cards --cmyk-mode`
+`python3 create_file_cards.py --page-size LARGE_TAROT --input-dir ../SlackExporterForOmata/omata-backoffice/files --output-dir omata-backoffice_file_cards --cmyk-mode`
+
+This will go through all the files in the input directory and generate a card that is a kind of preview of the file contents, varying depending on what kind of data the file represents (image, zip, fit, gpx, etc.)
 
 ### Combines them into a PDF where each pageis A5
 
 `./combine_images_to_pdf.js --input-dir omata-backoffice_file_cards --cmyk-mode --page-size A5 --dpi 300 --output-file omata-backoffice_file_cards/omata-backoffice_file_cards_combined.pdf`
+
+This will get you a PDF combining all of the cards, each one embedded on an A5 sized page.
 
 ## Requirements
 
@@ -242,3 +246,47 @@ python3 directory_to_images.py /path/to/files/ \
     --no-handle-non-visual \
     --output-pdf
 ```
+
+# PDF to Grid of Images
+
+This tool processes files and creates visual file cards, which can be combined into a single PDF.
+
+## Features
+
+- Generates file info cards from various file types
+- Supports both RGB and CMYK color modes
+- Displays file metadata, previews, and visual indicators
+- Handles special file types like GPS files, archives, and more
+- Assembles cards into a single PDF document
+
+## Usage
+
+```bash
+python create_file_cards.py --input-dir ./files --output-dir ./card_output --cmyk-mode --page-size LARGE_TAROT
+```
+
+### Options
+
+- `--input-dir`: Directory containing files to create cards for
+- `--output-dir`: Directory to save card images (default: file_card_tests)
+- `--cmyk-mode`: Generate cards in CMYK mode (for printing)
+- `--page-size`: Card size (A4, LETTER, TABLOID, POKER, BRIDGE, etc. or WxH in inches)
+- `--pdf-output`: Path to save the combined PDF
+
+## PDF Assembly
+
+For highest quality PDF assembly, use the Node.js script:
+
+```bash
+node combine_images_to_pdf.js -i ./card_output -o combined_cards.pdf --cmyk-mode --sort-order name
+```
+
+```bash
+combine_images_to_pdf.js --input-dir general_file_cards --cmyk-mode --page-size A5 --dpi 300 --output-file general_file_cards/general_file_cards_combined.pdf
+```
+
+## Requirements
+
+- Python 3.7+
+- Pillow (PIL Fork)
+- Additional requirements in requirements.txt
