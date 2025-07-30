@@ -5,7 +5,15 @@ __pycache__/
 .env
 # C extensions
 *.so
-
+omata-*/
+id-explorations*/
+node_modules/
+test_samples/*
+test_developers*/
+general*/
+file_card*/
+ambassador*/
+investorrelations_files*/
 # Distribution / packaging
 .Python
 build/
