@@ -70,17 +70,17 @@ FILE_TYPE_GROUPS = {
     'spreadsheet': {
         'extensions': {'.xlsx', '.xls', '.ods', '.numbers'},
         'icon': "TABLE",
-        'color': (104, 105, 116)  # HEX: 686974
+        'color': (255, 93, 153)  # HEX: 686974
     },
     'document': {
         'extensions': {'.doc', '.docx', '.txt', '.md', '.rtf', '.odt', '.pdf', '.tex'},
         'icon': "DOC",
-        'color': (107, 109, 103)  # HEX: 6b6d67
+        'color': (123, 17, 116)  # HEX: 6b6d67
     },
     'archive': {
         'extensions': {'.zip', '.tar', '.gz', '.bz2', '.rar', '.7z'},
         'icon': "ZIP",
-        'color': (113, 90, 105)  # HEX: 4f9d69 #715AFF
+        'color': (244, 0, 145)  # HEX: 4f9d69 #715AFF
     },
     'executable': {
         'extensions': {'.exe', '.bin', '.app', '.sh', '.bat', '.dll', '.so', '.dylib'},
@@ -95,7 +95,7 @@ FILE_TYPE_GROUPS = {
     'gps': {
         'extensions': {'.gpx', '.fit', '.tcx'},
         'icon': "GPS",
-        'color': (51, 161, 253)  # HEX: 33A1FD
+        'color': (123, 156, 116)  # HEX: 33A1FD
     },
     'log': {
         'extensions': {'.log', '.txt', '.out'},
@@ -134,20 +134,20 @@ def get_file_type_info(file_path):
             return {
                 'group': 'text',
                 'icon': "TXT",
-                'color': (70, 70, 70)  # Dark gray
+                'color': (216, 71, 151)  #  
             }
         elif mime_type.startswith('application/'):
             return {
                 'group': 'application',
                 'icon': "APP",
-                'color': (120, 0, 0)  # Darker red
+                'color': (238, 97, 35)  # Darker red
             }
     
     # Default for unknown types
     return {
         'group': 'unknown',
         'icon': "FILE",
-        'color': (100, 100, 100)  # Medium gray
+        'color': (250, 0, 63)  # Medium gray
     }
 
 def format_file_size(size_bytes):
@@ -467,29 +467,23 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=2):
         return None
 
 try:
-    import pyheif
-    PYHEIF_AVAILABLE = True
+    from PIL import Image
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    PILLOW_HEIF_AVAILABLE = True
 except ImportError:
-    PYHEIF_AVAILABLE = False
+    PILLOW_HEIF_AVAILABLE = False
 
 def get_heic_image(file_path):
-    if not PYHEIF_AVAILABLE:
-        logging.warning("pyheif library is not available. Cannot process HEIC files.")
+    if not PILLOW_HEIF_AVAILABLE:
+        logging.warning("pillow-heif library is not available. Cannot process HEIC files.")
         return None
     try:
-        heif_file = pyheif.read(file_path)
-        img = Image.frombytes(
-            heif_file.mode,
-            heif_file.size,
-            heif_file.data,
-            "raw",
-            heif_file.mode,
-            heif_file.stride,
-        )
-        logging.info(f"Successfully processed HEIC file: {file_path}")
+        img = Image.open(file_path)
+        logging.info(f"Successfully processed HEIC file using Pillow: {file_path}")
         return img
     except Exception as e:
-        logging.error(f"Error processing HEIC file {file_path}: {e}")
+        logging.error(f"Error processing HEIC file {file_path} with Pillow: {e}")
         return None
 
 def get_fit_gps_preview(file_path, box_w, box_h):
