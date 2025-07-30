@@ -93,7 +93,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode)
                 
                 # Save the card using specialized TIFF save function
-                card_file_name = f"{file_path.stem}_card_{int(time.time())}.tiff"
+                card_file_name = f"{file_path.stem}_card.tiff"
                 card_path = output_path / card_file_name
                 
                 # Use dedicated function for TIFF saving to preserve borders
@@ -104,17 +104,12 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 card_size = card.size
                 logging.debug(f"Card size: {card_size}")
 
-                logging.debug(f"Created card for {file_path.name} with size: {card.size} width: {card.width}, height: {card.height}")
-
-                # Save the card
-                output_file = output_path / f"{file_path.stem}_card.png"
-                if cmyk_mode:
-                    output_file = output_path / f"{file_path.stem}_card.tiff"
-                    card.save(output_file, compression='tiff_lzw')
-                else:
+                logging.info(f"Created card for {file_path.name} with size: {card.size} width: {card.width}, height: {card.height}")
+                # Save the card as PNG only if not CMYK
+                if not cmyk_mode:
+                    output_file = output_path / f"{file_path.stem}_card.png"
                     card.save(output_file)
-
-                logging.info(f"Saved card to {output_file} with size: {card.size}")
+                    logging.info(f"Saved card to {output_file} with size: {card.size}")
                 file_count += 1
             except Exception as e:
                 logging.error(f"Error processing {file_path.name}: {e}")

@@ -81,17 +81,17 @@ FILE_TYPE_GROUPS = {
     'archive': {
         'extensions': {'.zip', '.tar', '.gz', '.bz2', '.rar', '.7z'},
         'icon': "ZIP",
-        'color': (244, 0, 145)  # HEX: 4f9d69 #715AFF
+        'color': (128, 128, 38)  # HEX: 808026
     },
     'executable': {
         'extensions': {'.exe', '.bin', '.app', '.sh', '.bat', '.dll', '.so', '.dylib'},
         'icon': "EXE",
-        'color': (251, 175, 0)  # HEX: fbaf00
+        'color': (0, 0, 0)  # HEX: 000000
     },
     'binary': {
         'extensions': {'.hex', '.bin', '.dat', '.dfu', '.oci'},
         'icon': "BIN",
-        'color': (136, 204, 241)  # HEX: 88ccf1
+        'color': (252, 252, 75)  # HEX: fcfc4a
     },
     'gps': {
         'extensions': {'.gpx', '.fit', '.tcx'},
@@ -234,7 +234,21 @@ def get_zip_preview(file_path, max_files=40):
                     ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
                     hex_lines.append(f"{i:08X}: {hexstr:<48} {ascii_str}")
                 return [f"ZIP: 1 file ({names[0]})"] + hex_lines
-            return [f"ZIP: {len(names)} files"] + names[:max_files]
+            # More than one file: list all, then hex dump largest
+            file_infos = [(name, z.getinfo(name).file_size) for name in names]
+            file_infos.sort(key=lambda x: x[1], reverse=True)
+            largest_name, largest_size = file_infos[0]
+            with z.open(largest_name) as f:
+                data = f.read(1024)
+            hex_lines = []
+            for i in range(0, len(data), 16):
+                chunk = data[i:i+16]
+                hexstr = ' '.join(f"{b:02X}" for b in chunk)
+                ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
+                hex_lines.append(f"{i:08X}: {hexstr:<48} {ascii_str}")
+            listing = [f"ZIP: {len(names)} files"] + [f"  {name} ({size} bytes)" for name, size in file_infos[:max_files]]
+            listing.append(f"\nLargest file: {largest_name} ({largest_size} bytes) hex preview:")
+            return listing + hex_lines
     except Exception as e:
         return [f"ZIP error: {e}"]
 
@@ -569,7 +583,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         zoom = min(lat_zoom, lon_zoom, 22)
         zoom = max(0, zoom)
         calculated_zoom = float(zoom)
-        adjusted_zoom = max(0.0, calculated_zoom - 0.1)
+        adjusted_zoom = max(0.0, calculated_zoom - 1.0)  # Adjust zoom to avoid too high resolution
         return adjusted_zoom
     zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height)
 

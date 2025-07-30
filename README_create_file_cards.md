@@ -128,3 +128,11 @@ For PDF assembly script:
 ```bash
 npm install sharp pdfkit commander
 ```
+
+## Batch Processing
+
+For batch processing of multiple Slack channels or directories, use the included Node.js script:
+
+`batch_create_file_cards.js` automates running `create_file_cards.py` for every channel directory (with a `files` subdirectory) under a root directory. This is useful for Slack exports or other bulk file sets.
+
+See `README_batch_create_file_cards.md` for details.
