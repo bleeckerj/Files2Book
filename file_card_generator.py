@@ -454,6 +454,8 @@ def get_pdf_preview(file_path, box_w, box_h, max_pages=6):
                 logging.debug(f"Pasted page {idx+1} at ({x}, {y}), size ({page.width}, {page.height})")
             except Exception as page_e:
                 logging.error(f"Error rendering page {idx+1} of {file_path}: {page_e}")
+        logging.debug(f"Preview box: width={box_w}, height={box_h}")
+        logging.debug(f"Grid before rotation: width={grid_img.width}, height={grid_img.height}")
         return grid_img
     except Exception as e:
         logging.error(f"PDF preview error for {file_path}: {e}")
@@ -499,7 +501,7 @@ def get_gpx_preview(file_path, box_w, box_h):
     except Exception:
         return None
 
-def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=2, rotate_if_landscape=True):
+def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=2, rotate_frames_if_portrait=True):
     try:
         cap = cv2.VideoCapture(str(file_path))
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -509,6 +511,9 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=2, rotate_
         n_frames = grid_cols * grid_rows  # Only 4 stills
         idxs = [int(i * (frame_count - 1) / (n_frames - 1)) for i in range(n_frames)]
         thumbs = []
+        thumb_w = box_w // grid_cols
+        thumb_h = box_h // grid_rows
+        portrait_mode = box_h > box_w
         for idx in idxs:
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
@@ -516,25 +521,25 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=2, rotate_
                 continue
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_img = Image.fromarray(frame)
-            pil_img.thumbnail((box_w // grid_cols, box_h // grid_rows))
+            # Rotate individual frame if preview box is portrait
+            if rotate_frames_if_portrait and portrait_mode and pil_img.width > pil_img.height:
+                pil_img = pil_img.rotate(90, expand=True)
+            pil_img.thumbnail((thumb_w, thumb_h))
             thumbs.append(pil_img)
         cap.release()
         grid_img = Image.new('RGB', (box_w, box_h), (245, 245, 245))
         for i, thumb in enumerate(thumbs):
-            x = (i % grid_cols) * (box_w // grid_cols) + ((box_w // grid_cols) - thumb.width)//2
-            y = (i // grid_cols) * (box_h // grid_rows) + ((box_h // grid_rows) - thumb.height)//2
+            x = (i % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+            y = (i // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
             grid_img.paste(thumb, (x, y))
-        # Rotate grid if landscape and requested
-        if rotate_if_landscape and grid_img.width > grid_img.height:
-            grid_img = grid_img.rotate(90, expand=True)
+        logging.debug(f"Grid size: {grid_img.size} for file {file_path}")
         return grid_img
     except Exception:
         return None
 
+# Check for pillow-heif availability
 try:
-    from PIL import Image
     import pillow_heif
-    pillow_heif.register_heif_opener()
     PILLOW_HEIF_AVAILABLE = True
 except ImportError:
     PILLOW_HEIF_AVAILABLE = False
@@ -880,6 +885,26 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             new_w = int(img_w * scale_factor)
             new_h = int(img_h * scale_factor)
             image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
+    elif ext == '.numbers':
+        try:
+            with zipfile.ZipFile(file_path, 'r') as z:
+                names = z.namelist()
+                preview_lines = [f"NUMBERS file: {len(names)} items"]
+                preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
+                # Try to find a preview image
+                image_files = [name for name in names if name.lower().endswith(('.jpg', '.jpeg', '.png'))]
+                image_thumb = None
+                if image_files:
+                    with z.open(image_files[0]) as img_file:
+                        img_data = img_file.read()
+                        try:
+                            img = Image.open(io.BytesIO(img_data))
+                            img.thumbnail((max_line_width_pixels, preview_box_height))
+                            image_thumb = img
+                        except Exception:
+                            pass
+        except Exception as e:
+            preview_lines = [f"NUMBERS error: {e}"]
     elif ext == '.pdf':
         try:
             pages = convert_from_path(str(file_path), first_page=1, last_page=1)
@@ -959,7 +984,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         except Exception as e:
             preview_lines = [f"DOCX error: {e}"]
     elif file_type_info['group'] == 'binary' or ext == '.dfu' or file_type_info['group'] == 'unknown':
-        preview_lines = get_hex_preview(file_path, max_bytes=max_preview_lines * 16)
+        preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
     elif file_type_info['group'] in ['code', 'data', 'document', 'log']:
         # Read a large chunk and wrap
         try:
@@ -1116,21 +1141,21 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         try:
             logging.debug(f"Loading avatar from: {slack_avatar}")
             avatar_img = Image.open(slack_avatar).convert('RGB')
-            logging.debug(f"Avatar loaded: size={avatar_img.size}, mode={avatar_img.mode}")
+            #logging.debug(f"Avatar loaded: size={avatar_img.size}, mode={avatar_img.mode}")
             avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
-            logging.debug(f"Avatar resized: size={avatar_img.size}")
+            #logging.debug(f"Avatar resized: size={avatar_img.size}")
             avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
-            logging.debug(f"Avatar rounded: size={avatar_img.size}")
+            #logging.debug(f"Avatar rounded: size={avatar_img.size}")
         except Exception as e:
             logging.error(f"Error processing avatar image {slack_avatar}: {e}")
             avatar_img = None
 
     if avatar_img is not None:
         try:
-            logging.debug(f"outer_padding is {outer_padding} and border_width is {border_width} at scale {scale}")
+            #logging.debug(f"outer_padding is {outer_padding} and border_width is {border_width} at scale {scale}")
             avatar_x_coordinate = int(outer_padding )
             avatar_y_coordinate = int(outer_padding + header_height + 10 * scale)
-            logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
+            #logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
