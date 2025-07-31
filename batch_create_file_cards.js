@@ -8,10 +8,15 @@ const path = require('path');
 const args = require('minimist')(process.argv.slice(2));
 const pageSize = args['page-size'] || 'LARGE_TAROT';
 const rootDir = args['root-dir'] || '../SlackExporterForOmata';
+const outputDir = args['output-dir'] || 'cards_output';
 
 if (!fs.existsSync(rootDir)) {
   console.error(`Root directory not found: ${rootDir}`);
   process.exit(1);
+}
+
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir, { recursive: true });
 }
 
 const channelDirs = fs.readdirSync(rootDir).filter(dir => {
@@ -21,9 +26,8 @@ const channelDirs = fs.readdirSync(rootDir).filter(dir => {
 
 channelDirs.forEach(channel => {
   const inputDir = path.join(rootDir, channel, 'files');
-  const outputDir = `${channel}_file_cards_output`;
-  const cmd = `python3 create_file_cards.py --page-size ${pageSize} --input-dir ${inputDir} --output-dir ${outputDir} --cmyk-mode`;
-  console.log(`Processing channel: ${channel}`);
+  const channelOutputDir = path.join(outputDir, `${channel}_file_cards_output`);
+  const cmd = `python3 create_file_cards.py --page-size "${pageSize}" --input-dir "${inputDir}" --output-dir "${channelOutputDir}" --cmyk-mode`;
   try {
     execSync(cmd, { stdio: 'inherit' });
   } catch (err) {

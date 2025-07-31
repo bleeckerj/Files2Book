@@ -66,6 +66,8 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
     logging.basicConfig(level=logging.INFO)
     logging.debug(f"Starting file card with size {page_size}")
     input_path = Path(input_dir)
+    logging.info(f"Input directory: {input_path}")
+    logging.info(f"Output directory: {output_dir}")
     output_path = Path(output_dir)
     if output_path.exists():
         shutil.rmtree(output_path)
@@ -165,7 +167,7 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
                 logging.info(f"Combined PDF saved to {pdf_file}")
                 return
         except Exception as e:
-            logging.error(f"Error using img2pdf: {e}")
+            logging.warning(f"Error using img2pdf: {e}")
             logging.warning("Falling back to FPDF")
     
     # Fallback to FPDF if img2pdf failed or isn't available
@@ -208,7 +210,7 @@ if __name__ == "__main__":
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
 
     args = parser.parse_args()
-
+    logging.debug(f"Arguments: {args}")
     # Validate and adjust input_dir
     input_path = Path(args.input_dir)
     last_component = input_path.name

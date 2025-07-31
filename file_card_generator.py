@@ -869,19 +869,44 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     zip_file_preview_img = None
     zip_file_preview_lines = None
     if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff'}:
-        # Always scale to fit preview box, then scale down by 10%
         image = get_image_thumbnail(file_path, thumb_size=(max_line_width_pixels, preview_box_height))
         if image is not None:
             img_w, img_h = image.size
-            scale_factor = min((max_line_width_pixels) / img_w, (preview_box_height) / img_h, 1) * 0.95
+            logging.debug(f"Original image size: {img_w}x{img_h} for {file_path.name}")
+            logging.debug(f"width: {width}, height: {height}, img_w: {img_w}, img_h: {img_h}")
+            # Rotate image if card is portrait and image is landscape
+            if width < height and img_w > img_h:
+                logging.debug(f"Rotating image for portrait card: {file_path.name}")
+                image = image.rotate(90, expand=True)
+                img_w, img_h = image.size
+                logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
+            # Convert transparent images to RGB with white/light background
+            if image.mode in ("RGBA", "LA"):
+                logging.debug(f"Converting transparent image to RGB: {file_path.name}")
+                background = Image.new("RGB", image.size, (250, 250, 250))  # light gray
+                background.paste(image, mask=image.split()[-1])
+                image = background
+            # Scale to fit preview area
+            scale_factor = min(
+                (max_line_width_pixels) / img_w,
+                (preview_box_height) / img_h
+            ) * 0.95
+            logging.debug(f"Scaling image by factor {scale_factor:.3f} for {file_path.name}")
             new_w = int(img_w * scale_factor)
             new_h = int(img_h * scale_factor)
             image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
+            logging.debug(f"Final image_thumb size: {new_w}x{new_h} for {file_path.name}")
     elif ext in {'.heic', '.heif'}:
         image = get_heic_image(file_path)
         if image is not None:
             img_w, img_h = image.size
-            scale_factor = min((max_line_width_pixels) / img_w, (preview_box_height) / img_h, 1) * 0.95
+            if width < height and img_w > img_h:
+                image = image.rotate(90, expand=True)
+                img_w, img_h = image.size
+            scale_factor = min(
+                (max_line_width_pixels) / img_w,
+                (preview_box_height) / img_h
+            ) * 0.95
             new_w = int(img_w * scale_factor)
             new_h = int(img_h * scale_factor)
             image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
@@ -1139,7 +1164,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     avatar_img = None
     if slack_avatar:
         try:
-            logging.debug(f"Loading avatar from: {slack_avatar}")
+            #logging.debug(f"Loading avatar from: {slack_avatar}")
             avatar_img = Image.open(slack_avatar).convert('RGB')
             #logging.debug(f"Avatar loaded: size={avatar_img.size}, mode={avatar_img.mode}")
             avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
