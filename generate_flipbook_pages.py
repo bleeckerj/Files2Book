@@ -53,7 +53,8 @@ def main():
         "--cmyk-background", "0,0,0,0",  # CMYK page background color
         "--cmyk-flipbook-background", "22,0,93,0",  # CMYK blank page background color Omata acid color
         "--cmyk-mode",
-        "--handle-non-visual"  # Create information cards for non-visual files
+        "--handle-non-visual",  # Create information cards for non-visual files
+        "--output-dir", "/Users/julian/Dropbox (Personal)/Projects By Year/@2025/OMATA Process Diary/OMATA-SlackBooks/file-cards/"
     ]
     
     # Iterate through all directories in the base directory

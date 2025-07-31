@@ -25,7 +25,7 @@ Oh, the `SlackExporterForOmata` will also create an `avatar` directory containin
 
 ### Create the cards at LARGE_TAROT size
 
-`python3 create_file_cards.py --page-size LARGE_TAROT --input-dir ../SlackExporterForOmata/omata-backoffice/files --output-dir omata-backoffice_file_cards --cmyk-mode`
+`python3 generate_flipbook_pages.py --page-size LARGE_TAROT --input-dir ../SlackExporterForOmata/omata-backoffice/files --output-dir omata-backoffice_file_cards --cmyk-mode`
 
 This will go through all the files in the input directory and generate a card that is a kind of preview of the file contents, varying depending on what kind of data the file represents (image, zip, fit, gpx, etc.)
 
@@ -262,7 +262,7 @@ This tool processes files and creates visual file cards, which can be combined i
 ## Usage
 
 ```bash
-python create_file_cards.py --input-dir ./files --output-dir ./card_output --cmyk-mode --page-size LARGE_TAROT
+python generate_flipbook_pages.py --input-dir ./files --output-dir ./card_output --cmyk-mode --page-size LARGE_TAROT
 ```
 
 ### Options

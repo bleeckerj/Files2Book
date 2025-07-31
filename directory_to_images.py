@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 from pdf2image import convert_from_path
@@ -26,6 +27,12 @@ from file_card_generator import (
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.heic'}
 VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv'}
 
+try:
+    import pillow_heif
+    PILLOW_HEIF_AVAILABLE = True
+except ImportError:
+    PILLOW_HEIF_AVAILABLE = False
+
 
 def get_parent_of_parent_name(input_dir):
     input_path = Path(input_dir).resolve()
@@ -48,9 +55,26 @@ def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1, exclude_vi
         ext = file_path.suffix.lower()
         
         if ext in IMAGE_EXTENSIONS:
-            img = Image.open(file_path).convert('RGB')
-            images.append(img)
-            image_paths.append(str(file_path))
+            if ext == '.heic':
+                if PILLOW_HEIF_AVAILABLE:
+                    try:
+                        heif_file = pillow_heif.open_heif(str(file_path))
+                        img = Image.frombytes(
+                            heif_file.mode,
+                            heif_file.size,
+                            heif_file.data,
+                            "raw"
+                        ).convert('RGB')
+                        images.append(img)
+                        image_paths.append(str(file_path))
+                    except Exception as e:
+                        print(f"Error loading HEIC image {file_path}: {e}")
+                else:
+                    print(f"pillow-heif not available, skipping HEIC image: {file_path}")
+            else:
+                img = Image.open(file_path).convert('RGB')
+                images.append(img)
+                image_paths.append(str(file_path))
         elif ext == '.pdf':
             pdf_images = convert_from_path(str(file_path))
             images.extend(pdf_images)
@@ -153,7 +177,7 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
     
     # Convert output_dir to a Path object if it's a string
     output_dir = Path(output_dir)
-    
+    logging.info(f"Output directory: {output_dir}")
     # Create the output directory if it doesn't exist
     output_dir.mkdir(exist_ok=True, parents=True)
     
@@ -187,7 +211,6 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
                     else:
                         output_path = flipbook_dir / f'{video_name}_flipbook_frame_{page_counter:03d}_blank.png'
                         blank_page.save(output_path)
-                    print(f'Saved blank flipbook page {output_path}')
                     page_counter += 1
                 
                 # Now create the actual content page (which will be on a recto page)
@@ -225,7 +248,7 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
                 else:
                     output_path = flipbook_dir / f'{video_name}_flipbook_frame_{page_counter:03d}.png'
                     page_img.save(output_path)
-                print(f'Saved flipbook page {output_path}')
+                logging.debug(f'Saved flipbook page {output_path}')
                 page_counter += 1
             if output_pdf and video_output_images:
                 pdf_path_out = flipbook_dir / f'{video_name}_flipbook.pdf'
@@ -360,8 +383,14 @@ def main():
     # Set output directory based on parent of parent directory
     parent_dir_name = get_parent_of_parent_name(args.input_dir)
     script_dir = Path(__file__).parent.resolve()
-    output_dir = args.output_dir or str(script_dir / f'{parent_dir_name}_output_pages')
-    
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        if args.flipbook_mode:
+            output_dir = str(script_dir / f'{parent_dir_name}_flipbook_pages')
+        else:
+            output_dir = str(script_dir / f'{parent_dir_name}_images_output_pages')
+
     # Parse CMYK background color if provided
     cmyk_background = (0, 0, 0, 0)  # Default: no color (white)
     if args.cmyk_mode and args.cmyk_background:

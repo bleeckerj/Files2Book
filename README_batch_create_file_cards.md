@@ -2,7 +2,7 @@
 
 ## Description
 
-This Node.js script automates the creation of file cards for every channel directory (with a `files` subdirectory) under a specified root directory. It is designed for batch processing Slack exports or other bulk file sets using the Python script `create_file_cards.py`.
+This Node.js script automates the creation of file cards for every channel directory (with a `files` subdirectory) under a specified root directory. It is designed for batch processing Slack exports or other bulk file sets using the Python script `generate_flipbook_pages.py`.
 
 ## Usage
 
@@ -12,12 +12,12 @@ node batch_create_file_cards.js --page-size LARGE_TAROT --root-dir ../SlackExpor
 - `--page-size`: Card size (default: LARGE_TAROT)
 - `--root-dir`: Root directory containing channel subdirectories (default: ../SlackExporterForOmata)
 
-Each channel directory must contain a `files` subdirectory. The script will run `create_file_cards.py` for each channel, saving output in a directory named `<channel>_file_cards`.
+Each channel directory must contain a `files` subdirectory. The script will run `generate_flipbook_pages.py` for each channel, saving output in a directory named `<channel>_file_cards`.
 
 ## Requirements
 - Node.js
 - Python 3
-- Required Python packages for `create_file_cards.py` (see its README)
+- Required Python packages for `generate_flipbook_pages.py` (see its README)
 - Node.js package: `minimist` (install with `npm install minimist`)
 
 ## Example

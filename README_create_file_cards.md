@@ -4,7 +4,7 @@ This tool creates visual information cards for files. It's designed to generate 
 
 ## Overview
 
-`create_file_cards.py` processes files from a directory and creates visual information cards for each file. These cards include:
+`generate_flipbook_pages.py` processes files from a directory and creates visual information cards for each file. These cards include:
 
 - File name and file extension
 - File type indicator and color coding
@@ -19,7 +19,7 @@ This tool creates visual information cards for files. It's designed to generate 
 
 Basic usage:
 ```bash
-python create_file_cards.py --input-dir /path/to/files --output-dir ./output --page-size LARGE_TAROT --cmyk-mode
+python generate_flipbook_pages.py --input-dir /path/to/files --output-dir ./output --page-size LARGE_TAROT --cmyk-mode
 ```
 
 ### Command Line Arguments
@@ -43,13 +43,13 @@ If `--pdf-output-name` is not specified, it will default to the parent directory
 
 Create Large Tarot-sized cards (2.76×4.72 inches) in CMYK mode with PDF output (using defaults):
 ```bash
-python create_file_cards.py --input-dir ./my_files/files --cmyk-mode
+python generate_flipbook_pages.py --input-dir ./my_files/files --cmyk-mode
 ```
 This will create cards in `my_files_cards_output` and the combined PDF in `my_files_cards_output/my_files_combined_pdf.pdf`.
 
 Create custom sized cards (3.5×5.0 inches) and specify output locations:
 ```bash
-python create_file_cards.py --input-dir ./my_files/files --output-dir ./cards_output --page-size 3.5X5.0 --pdf-output-name custom_cards.pdf
+python generate_flipbook_pages.py --input-dir ./my_files/files --output-dir ./cards_output --page-size 3.5X5.0 --pdf-output-name custom_cards.pdf
 ```
 
 ## Card Features
@@ -133,6 +133,6 @@ npm install sharp pdfkit commander
 
 For batch processing of multiple Slack channels or directories, use the included Node.js script:
 
-`batch_create_file_cards.js` automates running `create_file_cards.py` for every channel directory (with a `files` subdirectory) under a root directory. This is useful for Slack exports or other bulk file sets.
+`batch_create_file_cards.js` automates running `generate_flipbook_pages.py` for every channel directory (with a `files` subdirectory) under a root directory. This is useful for Slack exports or other bulk file sets.
 
 See `README_batch_create_file_cards.md` for details.
