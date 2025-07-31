@@ -311,3 +311,32 @@ Other features:
 - Archive previews (ZIP, GZ, BZ2)
 
 See the code for details on each preview type.
+
+## Movie File Preview Logic
+
+For movie files (`.mp4`, `.mov`, `.avi`, `.mkv`), the preview shows a grid of 4 frames.  
+Frames are selected as follows:
+- One random frame from the first 10% of the video
+- One random frame from 10%–50%
+- One random frame from 50%–90%
+- One random frame from the last 10%
+
+Each frame is extracted using OpenCV, converted to a PIL image, and:
+- If the preview area is portrait (taller than wide) and the frame is landscape, the frame is rotated 90° to better fill the preview box.
+- Each frame is scaled to fit its grid cell before being pasted into the grid.
+
+## Spreadsheet Preview Logic
+
+For spreadsheet files (`.xlsx`, `.xls`):
+- The code uses `openpyxl` for `.xlsx` and `xlrd` for `.xls` to read the first sheet.
+- It extracts and displays the first few rows and columns as a text preview, formatted as a simple table.
+
+For Apple Numbers files (`.numbers`):
+- The file is treated as a ZIP archive.
+- The code lists the contents and, if a preview image is found inside, displays it as the preview.
+
+## Image Rotation
+
+For all image previews (including movie frames and PDF/AI pages):
+- If the preview card is portrait and the image/frame is landscape, the image/frame is rotated 90° before scaling.
+- This ensures the preview makes optimal use of the available space.
