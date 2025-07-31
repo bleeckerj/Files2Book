@@ -508,8 +508,14 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=2, rotate_
         if frame_count == 0:
             cap.release()
             return None
-        n_frames = grid_cols * grid_rows  # Only 4 stills
-        idxs = [int(i * (frame_count - 1) / (n_frames - 1)) for i in range(n_frames)]
+        # Pick random frames from specific portions
+        ranges = [
+            (0, int(frame_count * 0.1)),                      # first 10%
+            (int(frame_count * 0.1), int(frame_count * 0.5)), # 10%-50%
+            (int(frame_count * 0.5), int(frame_count * 0.9)), # 50%-90%
+            (int(frame_count * 0.9), frame_count)             # last 10%
+        ]
+        idxs = [random.randint(start, max(start, end-1)) for start, end in ranges]
         thumbs = []
         thumb_w = box_w // grid_cols
         thumb_h = box_h // grid_rows
