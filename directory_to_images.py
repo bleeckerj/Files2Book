@@ -8,6 +8,7 @@ import math
 import cv2
 import numpy as np
 import os
+import traceback
 
 from pdf_to_images import (
     parse_page_size,
@@ -29,6 +30,7 @@ VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv'}
 
 try:
     import pillow_heif
+
     PILLOW_HEIF_AVAILABLE = True
 except ImportError:
     PILLOW_HEIF_AVAILABLE = False
@@ -193,8 +195,14 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
     # Flipbook pages per video
     if flipbook_mode and video_frames_map:
         for video_name, frames in video_frames_map.items():
-            flipbook_dir = output_dir / f'{parent_prefix}_flipbook_{video_name}'
-            flipbook_dir.mkdir(exist_ok=True)
+            flipbook_dir = output_dir / f'{parent_prefix}' / f'{parent_prefix}_flipbook_{video_name}'
+            
+            logging.debug(f"Creating flipbook directory: {flipbook_dir}")
+            
+            # Recursively create all parent directories if needed
+            flipbook_dir.mkdir(parents=True, exist_ok=True)
+            
+            logging.debug(f"Flipbook directory created: {flipbook_dir}")
             video_output_images = []
             page_counter = 1
             
@@ -268,7 +276,7 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
                         save_all=True, 
                         append_images=video_output_images[1:]
                     )
-                print(f'Saved PDF {pdf_path_out}')
+                logging.info(f'Saved PDF {pdf_path_out}')
 
     # Generate standard pages for all images
     chunk_size = (grid_rows or 2) * (grid_cols or 2)
@@ -390,7 +398,12 @@ def main():
             output_dir = str(script_dir / f'{parent_dir_name}_flipbook_pages')
         else:
             output_dir = str(script_dir / f'{parent_dir_name}_images_output_pages')
-
+            # Ensure output_dir exists (recursively create if needed)
+    
+    logging.info(f'Output directory: {output_dir}')
+    
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
     # Parse CMYK background color if provided
     cmyk_background = (0, 0, 0, 0)  # Default: no color (white)
     if args.cmyk_mode and args.cmyk_background:
@@ -437,7 +450,8 @@ def main():
         )
 
     except Exception as e:
-        print(f'Error processing images: {e}')
+        logging.error(f'Error processing images: {e}', exc_info=True)
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == '__main__':

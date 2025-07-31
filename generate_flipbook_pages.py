@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 import sys
 import argparse
+import logging
 
 def main():
     # Parse command line arguments
@@ -65,10 +66,10 @@ def main():
             # Check if this directory has a "files" subdirectory
             if files_dir.exists() and files_dir.is_dir():
                 channel_name = item.name
-                print(f"\n{'='*80}")
-                print(f"Processing channel: {channel_name}")
-                print(f"{'='*80}")
-                
+                logging.info(f"\n{'='*80}")
+                logging.info(f"Processing channel: {channel_name}")
+                logging.info(f"{'='*80}")
+
                 # Construct the command
                 cmd = [
                     "python3",
