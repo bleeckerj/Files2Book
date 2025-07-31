@@ -193,7 +193,7 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
     # Flipbook pages per video
     if flipbook_mode and video_frames_map:
         for video_name, frames in video_frames_map.items():
-            flipbook_dir = output_dir / f'flipbook_{video_name}'
+            flipbook_dir = output_dir / f'{parent_prefix}_flipbook_{video_name}'
             flipbook_dir.mkdir(exist_ok=True)
             video_output_images = []
             page_counter = 1
