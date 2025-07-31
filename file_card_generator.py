@@ -499,14 +499,14 @@ def get_gpx_preview(file_path, box_w, box_h):
     except Exception:
         return None
 
-def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=2):
+def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=2, rotate_if_landscape=True):
     try:
         cap = cv2.VideoCapture(str(file_path))
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if frame_count == 0:
             cap.release()
             return None
-        n_frames = grid_cols * grid_rows
+        n_frames = grid_cols * grid_rows  # Only 4 stills
         idxs = [int(i * (frame_count - 1) / (n_frames - 1)) for i in range(n_frames)]
         thumbs = []
         for idx in idxs:
@@ -524,6 +524,9 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=2):
             x = (i % grid_cols) * (box_w // grid_cols) + ((box_w // grid_cols) - thumb.width)//2
             y = (i // grid_cols) * (box_h // grid_rows) + ((box_h // grid_rows) - thumb.height)//2
             grid_img.paste(thumb, (x, y))
+        # Rotate grid if landscape and requested
+        if rotate_if_landscape and grid_img.width > grid_img.height:
+            grid_img = grid_img.rotate(90, expand=True)
         return grid_img
     except Exception:
         return None
@@ -618,7 +621,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         zoom = min(lat_zoom, lon_zoom, 22)
         zoom = max(0, zoom)
         calculated_zoom = float(zoom)
-        adjusted_zoom = max(0.0, calculated_zoom - 1.0)  # Adjust zoom to avoid too high resolution
+        adjusted_zoom = max(0.0, calculated_zoom - 0.9)  # Adjust zoom to avoid too high resolution
         return adjusted_zoom
     zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height)
 
