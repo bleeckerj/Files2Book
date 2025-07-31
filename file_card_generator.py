@@ -79,8 +79,8 @@ FILE_TYPE_GROUPS = {
         'color': (210, 255, 66)  # HEX: d2ff42
     },
     'spreadsheet': {
-        'extensions': {'.xlsx', '.xls', '.ods', '.numbers'},
-        'icon': "TABLE",
+        'extensions': {'.xlsx', '.xls', '.numbers'},
+        'icon': "SPREADSHEET",
         'color': (255, 93, 153)  # HEX: 686974
     },
     'document': {
@@ -621,7 +621,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         zoom = min(lat_zoom, lon_zoom, 22)
         zoom = max(0, zoom)
         calculated_zoom = float(zoom)
-        adjusted_zoom = max(0.0, calculated_zoom - 0.9)  # Adjust zoom to avoid too high resolution
+        adjusted_zoom = max(0.0, calculated_zoom - 0.8)  # Adjust zoom to avoid too high resolution
         return adjusted_zoom
     zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height)
 
@@ -911,6 +911,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                     gpx_thumb = mapbox_img
         except Exception:
             pass
+    elif ext in {'.xlsx', '.xls'}:
+        preview_lines = get_excel_preview(file_path, max_rows=max_preview_lines, max_cols=8)
     elif ext in {'.fit', '.tcx'}:
         preview_lines, fit_meta = get_fit_summary_preview(file_path)
         fit_gps_thumb = get_fit_gps_preview(file_path, max_line_width_pixels, preview_box_height)
@@ -1349,3 +1351,30 @@ def process_pdf_or_ai_page(page, max_width, max_height):
     new_w = int(img_w * scale_factor)
     new_h = int(img_h * scale_factor)
     return page.resize((new_w, new_h), Image.LANCZOS)
+
+def get_excel_preview(file_path, max_rows=10, max_cols=8):
+    ext = file_path.suffix.lower()
+    preview_lines = []
+    try:
+        if ext == '.xlsx':
+            import openpyxl
+            wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+            sheet = wb.active
+            for i, row in enumerate(sheet.iter_rows(values_only=True)):
+                if i >= max_rows:
+                    break
+                row_str = " | ".join(str(cell) if cell is not None else "" for cell in row[:max_cols])
+                preview_lines.append(row_str)
+        elif ext == '.xls':
+            import xlrd
+            wb = xlrd.open_workbook(file_path)
+            sheet = wb.sheet_by_index(0)
+            for i in range(min(max_rows, sheet.nrows)):
+                row = sheet.row_values(i)
+                row_str = " | ".join(str(cell) if cell is not None else "" for cell in row[:max_cols])
+                preview_lines.append(row_str)
+        else:
+            preview_lines = ["Unsupported Excel format."]
+    except Exception as e:
+        preview_lines = [f"Excel preview error: {e}"]
+    return preview_lines
