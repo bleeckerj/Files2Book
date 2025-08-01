@@ -632,9 +632,9 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         zoom = min(lat_zoom, lon_zoom, 22)
         zoom = max(0, zoom)
         calculated_zoom = float(zoom)
-        adjusted_zoom = max(0.0, calculated_zoom - 0.8)  # Adjust zoom to avoid too high resolution
+        adjusted_zoom = max(0.0, calculated_zoom - 0.3)  # Adjust zoom to avoid too high resolution
         return adjusted_zoom
-    zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height)
+    zoom = zoom_for_bounds(min_lat, max_lat, min_lon, max_lon, min(width, 1280), min(height, 1280))
 
     import urllib.parse
     path_str = ""
@@ -674,6 +674,10 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
         return Image.open(io.BytesIO(resp.content))
     else:
         logging.error("Mapbox error: %s %s", resp.status_code, resp.text)
+        logging.error("Bounds are (%f, %f, %f, %f)", min_lat, max_lat, min_lon, max_lon)
+        logging.error("Width: %d, Height: %d", width, height)
+        logging.error("Zoom level: %f", zoom)
+        exit(-1)  # Exit with error code if Mapbox request fails
     return None
 
 
@@ -683,9 +687,9 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     base_width = 800
     base_height = 1000
     scale = min(width / base_width, height / base_height)
-
+    logging.info(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
     # Proportional paddings
-    border_width = 20  # Using a more reasonable but still very visible border width
+    border_width = max(2, int(1 * scale))  # Using a more reasonable but still very visible border width
     outer_padding = max(10, int(25 * scale))  # Padding between border and outer edges of content
 
     # Calculate dimensions for the content area
@@ -730,7 +734,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     # Proportional paddings (keeping the original border_width value)
     icon_space = int((100 + 40) * scale)
     metadata_line_height = int(info_font_size * 1.15)  # Reduce line spacing, closer to font size
-    spacing = int(10 * scale) + int(10 * scale) + int(10 * scale)
+    spacing_between_metadata_and_content_preview = int(15 * scale)
     preview_box_padding = int(15 * scale)
     header_height = int(80 * scale)
 
@@ -821,7 +825,6 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     file_info = {}
     if slack_channel:
         file_info['Slack Channel'] = slack_channel
-    file_info['Name'] = file_path.name
     file_info['Type'] = f"{file_path.suffix[1:].upper()} ({file_type_info['group']})"
     file_info['Size'] = format_file_size(size)
     if slack_message_id:
@@ -835,6 +838,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     else:
         file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
         file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
+    # Move Name to the end
+    file_info['Name'] = file_path.name
 
     # Fixed card height for 4x5 aspect ratio
     header_height = int(80 * scale)
@@ -850,7 +855,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     # Preview box within the content area
     preview_box_left = content_area_left + int(content_area_width * 0.1)
     preview_box_right = content_area_right - int(content_area_width * 0.1)
-    preview_box_top = outer_padding + header_height + icon_space + metadata_height + spacing
+    preview_box_top = outer_padding + header_height + icon_space + metadata_height + spacing_between_metadata_and_content_preview
     preview_box_bottom = height - outer_padding - int(30 * scale)
     preview_box_height = preview_box_bottom - preview_box_top
     max_line_width_pixels = preview_box_right - preview_box_left - preview_box_padding * 2
@@ -962,7 +967,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                 lons, lats = zip(*points)
                 min_lon, max_lon = min(lons), max(lons)
                 min_lat, max_lat = min(lats), max(lats)
-                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, max_line_width_pixels, preview_box_height, MAPBOX_TOKEN, path_points=points)
+                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), MAPBOX_TOKEN, path_points=points)
                 if mapbox_img:
                     gpx_thumb = mapbox_img
         except Exception:
@@ -990,7 +995,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                 lons, lats = zip(*points)
                 min_lon, max_lon = min(lons), max(lons)
                 min_lat, max_lat = min(lats), max(lats)
-                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, max_line_width_pixels, preview_box_height, MAPBOX_TOKEN, path_points=points)
+                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), MAPBOX_TOKEN, path_points=points)
                 if mapbox_img:
                     fit_gps_thumb = mapbox_img
         except Exception:
@@ -1165,7 +1170,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     icon_y = outer_padding + header_height + int(20 * scale)
     icon_color = file_type_info['color'] if rgb_mode else color
     draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
-    y = icon_y + 40
+    y = icon_y + 60
     avatar_size = int(100 * scale)
     avatar_img = None
     if slack_avatar:
@@ -1183,9 +1188,9 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 
     if avatar_img is not None:
         try:
-            #logging.debug(f"outer_padding is {outer_padding} and border_width is {border_width} at scale {scale}")
-            avatar_x_coordinate = int(outer_padding )
-            avatar_y_coordinate = int(outer_padding + header_height + 10 * scale)
+            # Position avatar relative to the left border (outer_padding)
+            avatar_x_coordinate = int(outer_padding + 60 * scale)  # 15px from left border, scaled
+            avatar_y_coordinate = int(outer_padding + header_height + 5 * scale)
             #logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
@@ -1198,7 +1203,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         else:
             line = f"{key}: {value}"
         draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
-        y += 25
+        y += metadata_line_height
     y = preview_box_top - 30
     draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top

@@ -1,6 +1,6 @@
 # PDF to Grid of Images Converter
 
-A Python utility that converts PDFs, images, and video files into organized grid layouts with optional flipbook generation.
+A collection of Python utilities that converts PDFs, images, and video files into organized grid layouts with optional flipbook generation.
 
 ## Features
 
@@ -15,9 +15,29 @@ A Python utility that converts PDFs, images, and video files into organized grid
 
 ## Usage Note
 
-This utility has been used to create the shelf books of the Slack channels for OMATA. The extraction of all content from those Slack channels is handled by the separate repository [SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata).
+These utilities has been used to create the shelf books of the Slack channels for OMATA. The extraction of all content from those Slack channels is handled by the separate repository [SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata).
 
 The steps are to first use SlackExporterForOmata to extract all the messages and files and everything from the channels. The messages appear as gigantic structured data JSON files and the data files that have been shared in the channel appear in a sidecar directory called, you know ``“files”``.
+
+Run `batch_create_file_cards.js` will create “cards” representing the files that have been shared in all of the Slack channels that were digested by `SlackExporterForOmata` formatted and crap. (You can also try running with LARGE_TAROT if you feel like someday printing out actually cards.)
+
+```
+node batch_create_file_cards.js --page-size A5 --root-dir ../SlackExporterForOmata --output-dir '/Users/julian/Dropbox (Personal)/Projects By Year/@2025/OMATA Process Diary/OMATA-SlackBooks/file-cards/'
+```
+
+---
+
+Run 
+
+```
+python3 ./directory_to_flipbooks.py /Users/julian/Code/SlackExporterForOmata/id-explorations/files/ --page-size A5 --p
+age-orientation portrait --video-fps 1 --cmyk-mode --cmyk-flipbook-background '61,53
+,42,14' --output-dir '/Users/julian/Dropbox (Personal)/Projects By Year/@2025/OMATA Process Diary/OMATA-SlackBooks/slack-channel-cards/'
+```
+
+will output in a subdirectory of `--output-dir` a bunch of folders of all the video files found from that Slack channel's shared files turned into 'flipbook' style pages (or cards) and a combined PDF for each, at the `--video-fps` specified
+
+YOu can use `batch_directory_to_flipbooks.sh` to just do this for all of the channels, quite possibly.
 
 Then running `process_all_slack_dirs.py` (here from this repo) will churn on all of that and make pages and combined PDFs for each Slack channel suitable for printing books and putting them on your shelf. (It will not create the covers and spine..you have to do that by hand at the moment.)
 

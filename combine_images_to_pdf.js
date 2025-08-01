@@ -158,7 +158,7 @@ async function combineImagesToPdf(options) {
             background: { r: 255, g: 255, b: 255, alpha: 1 }
           })
           .toColorspace('cmyk')
-          .jpeg({ quality: 95 })
+          .tiff({ quality: 95 })
           .toFile(processedImagePath);
       } else {
         // For RGB, use the original file
@@ -214,3 +214,4 @@ program
   });
 
 program.parse(process.argv);
+       

@@ -78,24 +78,24 @@ def main():
                 ] + common_args
                 
                 # Print the command being run
-                print("Running command:")
-                print(" ".join(cmd))
-                print()
-                
+                logging.info("Running command:")
+                logging.info(" ".join(cmd))
+                logging.info("")
+
                 try:
                     # Run the command
                     result = subprocess.run(cmd, check=True, text=True)
-                    print(f"Successfully processed {channel_name}")
+                    logging.info(f"Successfully processed {channel_name}")
                     processed_count += 1
                 except subprocess.CalledProcessError as e:
-                    print(f"Error processing {channel_name}: {e}")
-                    print(f"Return code: {e.returncode}")
+                    logging.error(f"Error processing {channel_name}: {e}")
+                    logging.error(f"Return code: {e.returncode}")
                     if e.output:
-                        print(f"Output: {e.output}")
+                        logging.error(f"Output: {e.output}")
                     if e.stderr:
-                        print(f"Stderr: {e.stderr}")
-    
-    print(f"\nProcessing complete. {processed_count} directories were processed.")
+                        logging.error(f"Stderr: {e.stderr}")
+
+    logging.info(f"\nProcessing complete. {processed_count} directories were processed.")
 
 if __name__ == "__main__":
     main()
