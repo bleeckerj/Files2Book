@@ -9,6 +9,8 @@ import logging
 import time
 import shutil
 import itertools
+import traceback
+import img2pdf
 
 # Import the file card generator
 from file_card_generator import create_file_info_card, determine_file_type, save_card_as_tiff
@@ -18,12 +20,12 @@ def parse_page_size(size_name):
     size_name = size_name.upper()
     dpi = 300
     sizes = {
-        'A5': (5.8, 8.3),
-        'A4': (8.3, 11.7),
-        'A3': (11.7, 16.5),
-        'A2': (16.5, 23.4),
-        'A1': (23.4, 33.1),
-        'A0': (33.1, 46.8),
+        'A5': (5.83, 8.27),
+        'A4': (8.27, 11.69),
+        'A3': (11.69, 16.54),
+        'A2': (16.54, 23.39),
+        'A1': (23.39, 33.11),
+        'A0': (33.11, 46.81),
         'LETTER': (8.5, 11),
         'LEGAL': (8.5, 14),
         'TABLOID': (11, 17),
@@ -131,7 +133,6 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
     """
     # Check if we can use img2pdf which has better TIFF support
     try:
-        import img2pdf
         use_img2pdf = True
         logging.info("Using img2pdf for PDF generation (better TIFF support)")
     except ImportError:
@@ -159,18 +160,20 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
                     height_pt = page_size[1] / 300 * 72
                     
                     # Set PDF page size in points
-                    layout = img2pdf.get_layout_fun({
-                        "pagesize": (width_pt, height_pt)
-                    })
-                    
-                    f.write(img2pdf.convert(image_files, layout_fun=layout))
+                    # layout = img2pdf.get_layout_fun({
+                    #     "pagesize": (width_pt, height_pt)
+                    # })
+                    f.write(img2pdf.convert(image_files, pagesize=(width_pt, height_pt)))
                 logging.info(f"Combined PDF saved to {pdf_file}")
                 return
         except Exception as e:
-            logging.warning(f"Error using img2pdf: {e}")
+            logging.warning(f"Error using img2pdf: {e} (type: {type(e)})")
+            logging.warning("Traceback:\n" + traceback.format_exc())
+            logging.warning(f"Image files passed to img2pdf: {image_files}")
             logging.warning("Falling back to FPDF")
     
     # Fallback to FPDF if img2pdf failed or isn't available
+    logging.info("FPDF format {page_size} for PDF generation")
     pdf = FPDF(unit="pt", format=(page_size[0], page_size[1]))
     temp_dir = output_path / "temp_pdf_images"
     temp_dir.mkdir(exist_ok=True, parents=True)
