@@ -97,7 +97,7 @@ def fit_image(img, max_w, max_h, fit_mode, is_flipbook=False):
 def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padding, 
                  image_fit_mode, grid_rows=None, grid_cols=None,
                  inner_margin_px=0, outer_margin_px=0, side='recto',
-                 is_flipbook=False, image_paths=None, cmyk_mode=False, cmyk_background=(0,0,0,0)):
+                 is_flipbook=False, image_paths=None, cmyk_mode=False, cmyk_background=(0,0,0,0), rotate_to_aspect_ratio=False):
     page_w, page_h = page_size
     if cmyk_mode:
         page_img = create_cmyk_image(page_w, page_h, cmyk_background)
@@ -182,6 +182,13 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
         max_w = cell_w - 2 * (padding + hairline_width)
         filename_space = 40  # Allow more space for filename text
         max_h = cell_h - 2 * (padding + hairline_width) - filename_space
+        # Rotate image if aspect ratio does not match cell and flag is set
+        if rotate_to_aspect_ratio:
+            img_aspect = img.width / img.height
+            cell_aspect = max_w / max_h
+            if (img_aspect > 1 and cell_aspect < 1) or (img_aspect < 1 and cell_aspect > 1):
+                img = img.rotate(90, expand=True)
+        # Always scale to fit after rotation
         img = fit_image(img, max_w, max_h, image_fit_mode, is_flipbook)
 
         col = idx % cols
@@ -225,7 +232,7 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
 def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, padding, 
                     image_fit_mode, inner_margin_px=0, outer_margin_px=0, 
                     side='recto', is_flipbook=False, image_paths=None, 
-                    cmyk_mode=False, cmyk_background=(0,0,0,0)):
+                    cmyk_mode=False, cmyk_background=(0,0,0,0), rotate_to_aspect_ratio=False):
     page_w, page_h = page_size
     left_margin = inner_margin_px if side == 'recto' else outer_margin_px
     right_margin = outer_margin_px if side == 'recto' else inner_margin_px
@@ -282,6 +289,13 @@ def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, p
             
         img = images[idx]
         max_w = col_w - 2 * (padding + hairline_width)
+        # Rotate image if aspect ratio does not match cell and flag is set
+        if rotate_to_aspect_ratio:
+            img_aspect = img.width / img.height
+            cell_aspect = max_w / content_h
+            if (img_aspect > 1 and cell_aspect < 1) or (img_aspect < 1 and cell_aspect > 1):
+                img = img.rotate(90, expand=True)
+        # Always scale to fit after rotation
         img = fit_image(img, max_w, content_h, image_fit_mode, is_flipbook)
 
         # Find shortest column
@@ -329,8 +343,18 @@ def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, p
 def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_color, 
                  padding, page_orientation, image_fit_mode, grid_rows=None, 
                  grid_cols=None, inner_margin_px=0, outer_margin_px=0, 
-                 output_pdf=False, flipbook_mode=False, cmyk_mode=False, cmyk_background=(0,0,0,0)):
+                 output_pdf=False, flipbook_mode=False, cmyk_mode=False, cmyk_background=(0,0,0,0),
+                 rotate_to_aspect_ratio=False):
     images = convert_from_path(pdf_path)
+    # Rotate extracted PDF page images to match target page orientation if flag is set
+    if rotate_to_aspect_ratio:
+        page_w, page_h = page_size
+        page_is_portrait = page_h >= page_w
+        for i in range(len(images)):
+            img = images[i]
+            img_is_portrait = img.height >= img.width
+            if page_is_portrait != img_is_portrait:
+                images[i] = img.rotate(90, expand=True)
     output_dir = Path(pdf_path).stem + '_output_pages'
     Path(output_dir).mkdir(exist_ok=True)
 
@@ -347,14 +371,14 @@ def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_col
             page_img = arrange_grid(chunk, page_size, len(chunk), gap, hairline_width, 
                                      hairline_color, padding, image_fit_mode, grid_rows, 
                                      grid_cols, inner_margin_px, outer_margin_px, side, 
-                                     is_flipbook=flipbook_mode, cmyk_mode=cmyk_mode, 
-                                     cmyk_background=cmyk_background)
+                                     is_flipbook=flipbook_mode, image_paths=None, cmyk_mode=cmyk_mode, 
+                                     cmyk_background=cmyk_background, rotate_to_aspect_ratio=rotate_to_aspect_ratio)
         else:
             page_img = arrange_masonry(chunk, page_size, len(chunk), gap, hairline_width, 
                                        hairline_color, padding, image_fit_mode, 
                                        inner_margin_px, outer_margin_px, side, 
-                                       is_flipbook=flipbook_mode, cmyk_mode=cmyk_mode, 
-                                       cmyk_background=cmyk_background)
+                                       is_flipbook=flipbook_mode, image_paths=None, cmyk_mode=cmyk_mode, 
+                                       cmyk_background=cmyk_background, rotate_to_aspect_ratio=rotate_to_aspect_ratio)
 
         output_images.append(page_img)
         # Save image - use TIFF for CMYK mode
@@ -385,6 +409,8 @@ def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_col
 
 def main():
     parser = argparse.ArgumentParser(description='Convert PDF to image pages laid out in grid or masonry format.')
+    parser = argparse.ArgumentParser(description='Convert PDF to image pages laid out in grid or masonry format.')
+    parser.add_argument('--rotate-to-aspect-ratio', action='store_true', help='Rotate images to match cell/page aspect ratio')
     parser.add_argument('input_pdf', help='Input PDF path')
     parser.add_argument('--layout', choices=['grid', 'masonry'], default='grid')
     parser.add_argument('--page-size', default='8.5x11')
@@ -441,11 +467,14 @@ def main():
         except ValueError:
             print("Warning: Invalid CMYK values. Using default.")
 
+    rotate_to_aspect_ratio = args.rotate_to_aspect_ratio
+
     pdf_to_images(
         args.input_pdf, args.layout, page_size, args.gap, args.hairline_width,
         args.hairline_color, args.padding, args.page_orientation, args.image_fit_mode,
         grid_rows, grid_cols, inner_margin_px, outer_margin_px,
-        args.output_pdf, args.flipbook_mode, args.cmyk_mode, cmyk_background
+        args.output_pdf, args.flipbook_mode, args.cmyk_mode, cmyk_background,
+        rotate_to_aspect_ratio=rotate_to_aspect_ratio
     )
 
 if __name__ == '__main__':

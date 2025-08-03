@@ -16,6 +16,32 @@ This tool creates visual information cards for files. It's designed to generate 
 - Hex preview for binary files
 
 ## Usage
+## `create_file_cards.py`
+
+This script generates visual information cards for files in a specified directory. Each card displays metadata (file name, extension, size, dates), a preview (image, PDF, video frame, text/code snippet, or hex dump), and type indicators. It is suitable for cataloging files, creating visual indices, or preparing file information for print.
+
+### Usage
+
+Basic usage:
+```bash
+python create_file_cards.py --input-dir /path/to/files --output-dir ./output --page-size LARGE_TAROT --cmyk-mode
+```
+
+#### Command Line Arguments
+
+- `--input-dir`: Directory containing files to process (required)
+- `--output-dir`: Directory to save the generated card images (default: parent directory of input-dir + `_cards_output`)
+- `--cmyk-mode`: Generate cards in CMYK color mode for professional printing (default: RGB mode)
+- `--page-size`: Card size (default: LARGE_TAROT)
+  - Predefined sizes: A0-A5, LETTER, LEGAL, TABLOID
+  - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
+  - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
+- `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
+
+#### Output
+
+- Cards are saved as PNG (RGB) or TIFF (CMYK) files in the output directory.
+- Optionally, a combined PDF of all cards can be generated.
 
 Basic usage:
 ```bash
