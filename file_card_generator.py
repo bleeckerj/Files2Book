@@ -741,6 +741,9 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 
 
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, compact_mode=False):
+    # ...existing code...
+    # Place vertical file path drawing code after img and preview_box_left are defined
+    # (Move this block to after preview_box_left, preview_box_top, outer_padding, info_font_size, and img are all set)
     file_path = Path(file_path)
     file_type_info = get_file_type_info(file_path)
     # Extract DateTimeOriginal from EXIF for images and add to metadata
@@ -774,8 +777,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     #content_width = width - 2 * outer_padding
     #content_height = height - 2 * outer_padding
 
-    # Create the full-sized image (background)
-    img = Image.new('RGB', (width, height), 'white')
+    # Create the full-sized image (background) as RGBA for transparency support
+    img = Image.new('RGBA', (width, height), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img)
 
     # Draw the border around the content area
@@ -783,16 +786,15 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     rgb_mode = not cmyk_mode
     
     if rgb_mode:
-        # For RGB mode, use standard black border
+        # For RGBA mode, use standard black border
         draw.rectangle(
             [outer_padding, outer_padding, width - outer_padding - 1, height - outer_padding - 1],
-            outline=(0, 0, 0), 
+            outline=(0, 0, 0, 255), 
             width=border_width
         )
     else:
         # For CMYK mode, use solid black (K channel only at 100%) for maximum visibility
-        # Draw multiple concentric borders to ensure visibility
-        for i in range(0, min(10, border_width), 2):  # Draw up to 5 concentric borders
+        for i in range(0, min(10, border_width), 2):
             draw.rectangle(
                 [
                     outer_padding + i,
@@ -800,8 +802,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
                     width - outer_padding - 1 - i,
                     height - outer_padding - 1 - i
                 ],
-                outline=(0, 0, 0, 100),  # 100% black in CMYK
-                width=max(5, border_width // 5)  # Make each border line thick
+                outline=(0, 0, 0, 100),
+                width=max(5, border_width // 5)
             )
 
     # Compact mode overrides
@@ -995,6 +997,40 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     char_width = char_bbox[2] - char_bbox[0]
     max_line_length = max(10, max_line_width_pixels // char_width)
     max_preview_lines = max(1, preview_box_height // line_height)
+
+    # Draw full file path vertically along the left edge of the preview area
+    full_path = str(file_path.resolve())
+    try:
+        path_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", int(info_font_size * 0.8))
+    except:
+        path_font = ImageFont.load_default()
+    path_x = preview_box_left - int(outer_padding * 0.5)
+    path_y = preview_box_top
+    # Only use transparency mask for image files
+    image_exts = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp', '.heic', '.heif'}
+    if ext in image_exts:
+        if cmyk_mode:
+            path_img = Image.new('CMYK', (height, width), (0, 0, 0, 0))
+            path_draw = ImageDraw.Draw(path_img)
+            path_draw.text((0, 0), full_path, font=path_font, fill=(0, 0, 0, 80))
+        else:
+            path_img = Image.new('RGBA', (height, width), (255, 255, 255, 0))
+            path_draw = ImageDraw.Draw(path_img)
+            path_draw.text((0, 0), full_path, font=path_font, fill=(80, 80, 80, 255))
+        rotated_path_img = path_img.rotate(90, expand=True)
+        img.paste(rotated_path_img, (int(path_x), int(path_y)), rotated_path_img)
+    else:
+        # For non-image files, use opaque mask (convert to RGB)
+        if cmyk_mode:
+            path_img = Image.new('CMYK', (height, width), (0, 0, 0, 0))
+            path_draw = ImageDraw.Draw(path_img)
+            path_draw.text((0, 0), full_path, font=path_font, fill=(0, 0, 0, 80))
+        else:
+            path_img = Image.new('RGB', (height, width), (255, 255, 255))
+            path_draw = ImageDraw.Draw(path_img)
+            path_draw.text((0, 0), full_path, font=path_font, fill=(80, 80, 80))
+        rotated_path_img = path_img.rotate(90, expand=True)
+        img.paste(rotated_path_img, (int(path_x), int(path_y)))
 
     # --- Preview logic by file type ---
     preview_lines = []
@@ -1372,11 +1408,11 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         y = preview_box_top - 30
         draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
-    preview_background_color = (245, 245, 245) if rgb_mode else (0, 0, 0, 4)
+    preview_background_color = (245, 245, 245, 255) if rgb_mode else (0, 0, 0, 4)
     draw.rectangle(
         [preview_box_left, preview_box_top, preview_box_right, preview_box_bottom],
         fill=preview_background_color,
-        outline='black',
+        outline=(0, 0, 0, 255),
         width=1
     )
     # --- Always show preview_lines for .zip, .gz, .bz2 if present ---
