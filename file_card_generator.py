@@ -742,6 +742,25 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, compact_mode=False):
     file_path = Path(file_path)
+    file_type_info = get_file_type_info(file_path)
+    # Extract DateTimeOriginal from EXIF for images and add to metadata
+    date_time_original = None
+    if file_type_info['group'] == 'image':
+        try:
+            img = Image.open(file_path)
+            exif_data = img._getexif()
+            logging.info(f"EXIF data for {file_path.name}: {exif_data}")
+            if exif_data:
+                from PIL.ExifTags import TAGS
+                for tag_id, value in exif_data.items():
+                    tag = TAGS.get(tag_id, tag_id)
+                    if tag == 'DateTimeOriginal':
+                        date_time_original = value
+                        break
+                if date_time_original:
+                    file_info['DateTimeOriginal'] = date_time_original
+        except Exception:
+            pass
     # Proportional scaling
     base_width = 800
     base_height = 1000
@@ -925,8 +944,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         file_info['Shared By'] = slack_user_name
     if slack_shared_date:
         file_info['Shared Date'] = slack_shared_date
-
-    if original_dt:
+    # If DateTimeOriginal from EXIF is available, use it for both Modified and Created
+    if date_time_original:
+        file_info['Date'] = date_time_original
+    elif original_dt:
         file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
     else:
         # Only add Modified/Created if DateTimeOriginal is not present
@@ -1308,9 +1329,40 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
 
+    def truncate_middle_with_filename(path, max_length=60):
+        path = str(path)
+        if len(path) <= max_length:
+            return path
+        import os
+        filename = os.path.basename(path)
+        # If filename itself is long, just show filename
+        if len(filename) > max_length - 6:
+            return '...' + filename[-(max_length-3):]
+        # Otherwise, truncate the middle but always show filename
+        keep_len = max_length - len(filename) - 4  # 4 for slashes and ellipsis
+        if keep_len < 8:
+            # Not enough room for path, just show .../filename
+            return '.../' + filename
+        part_len = keep_len // 2
+        # Find the start and end parts of the path (excluding filename)
+        path_no_file = path[:-len(filename)]
+        start = path_no_file[:part_len]
+        end = path_no_file[-part_len:] if part_len > 0 else ''
+        return f"{start}...{end}/{filename}"
+
+    # Always print Type and Name first, if present
+    if 'Type' in file_info:
+        draw.text((width//2, y), str(file_info['Type']), fill='black', font=info_font, anchor="mm")
+        y += metadata_line_height
+    if 'Name' in file_info:
+        draw.text((width//2, y), str('Filename: ‘' + file_info['Name']+'’'), fill='black', font=info_font, anchor="mm")
+        y += metadata_line_height
+    # Print the rest of the metadata except Type and Name
     for key, value in file_info.items():
-        if key == 'Name' or key == 'Path':
-            line = f"{value}"
+        if key in ('Type', 'Name'):
+            continue
+        if key == 'Path':
+            line = truncate_middle_with_filename(value, max_length=75)
         else:
             line = f"{key}: {value}"
         draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")

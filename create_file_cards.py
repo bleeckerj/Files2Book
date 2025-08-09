@@ -172,32 +172,28 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
             logging.warning(f"Image files passed to img2pdf: {image_files}")
             logging.warning("Falling back to FPDF")
     
-    # Fallback to FPDF if img2pdf failed or isn't available
-    logging.debug("FPDF format {page_size} for PDF generation")
-    pdf = FPDF(unit="pt", format=(page_size[0], page_size[1]))
-    temp_dir = output_path / "temp_pdf_images"
-    temp_dir.mkdir(exist_ok=True, parents=True)
-    
-    for card_file in card_files:
-        try:
-            pdf.add_page()
-            
-            # If it's a TIFF file, convert it to JPEG while preserving color profile
-            if card_file.suffix.lower() == '.tiff':
-                #logging.debug(f"Converting TIFF to JPEG for PDF inclusion: {card_file}")
-                img = Image.open(str(card_file))
-                
-                # Create a temporary JPEG file
-                temp_jpg = temp_dir / f"{card_file.stem}_temp.jpg"
-                
-                # Save as JPEG with high quality - JPEG supports CMYK
-                img.save(str(temp_jpg), format='JPEG', quality=95)
-                
-                # Use the JPEG for PDF
-                pdf.image(str(temp_jpg), x=0, y=0, w=page_size[0], h=page_size[1])
+                # Only include TIFFs for CMYK, PNGs otherwise
+                # Detect CMYK mode by presence of TIFFs (since only CMYK saves TIFFs)
+            tiff_files = sorted(output_path.glob("*_card.tiff"))
+            png_files = sorted(output_path.glob("*_card.png"))
+            if tiff_files:
+                image_files = [str(f) for f in tiff_files]
             else:
-                # Direct inclusion for other formats
-                pdf.image(str(card_file), x=0, y=0, w=page_size[0], h=page_size[1])
+                image_files = [str(f) for f in png_files]
+            if image_files:
+                try:
+                    logging.debug(f"Creating PDF with img2pdf using {len(image_files)} images")
+                    with open(pdf_file, "wb") as f:
+                        width_pt = page_size[0] / 300 * 72
+                        height_pt = page_size[1] / 300 * 72
+                        f.write(img2pdf.convert(image_files, pagesize=(width_pt, height_pt)))
+                    logging.info(f"Combined PDF saved to {pdf_file}")
+                    return
+                except Exception as e:
+                    logging.warning(f"Error using img2pdf: {e} (type: {type(e)})")
+                    logging.warning("Traceback:\n" + traceback.format_exc())
+            # Direct inclusion for other formats
+            pdf.image(str(card_file), x=0, y=0, w=page_size[0], h=page_size[1])
         except Exception as e:
             logging.error(f"Error adding {card_file} to PDF: {e}")
 
@@ -212,16 +208,16 @@ if __name__ == "__main__":
     parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
     parser.add_argument('--compact', action='store_true', help='Enable compact mode for file card generation')
+    parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
 
     args = parser.parse_args()
     logging.debug(f"Arguments: {args}")
     # Validate and adjust input_dir
     input_path = Path(args.input_dir)
-    last_component = input_path.name
     if not input_path.is_dir():
         print(f"Error: {args.input_dir} is not a directory.")
         sys.exit(1)
-    if last_component != "files":
+    if args.slack:
         files_subdir = input_path / "files"
         if files_subdir.is_dir():
             args.input_dir = str(files_subdir)
