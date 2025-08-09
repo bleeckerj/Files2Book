@@ -55,7 +55,7 @@ def parse_page_size(size_name):
     logging.warning(f"Unknown page size '{size_name}', defaulting to A4")
     return int(8.3 * dpi), int(11.7 * dpi)
 
-def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT'):
+def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', compact_mode=False):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -83,7 +83,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
         print(f"Error: {input_dir} is not a directory")
         return
     
-    logging.info(f"width: {width}, height: {height}, cmyk_mode: {cmyk_mode}")
+    logging.debug(f"width: {width}, height: {height}, cmyk_mode: {cmyk_mode}")
     # Process each file in the directory
     file_count = 0
     for file_path in sorted(input_path.iterdir()):
@@ -96,7 +96,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 logging.debug(f"Before create_file_info_card: width={width}, height={height}")
 
                 # Generate the card
-                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode)
+                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, compact_mode=compact_mode)
                 
                 # Save the card using specialized TIFF save function
                 card_file_name = f"{file_path.stem}_card.tiff"
@@ -134,7 +134,7 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
     # Check if we can use img2pdf which has better TIFF support
     try:
         use_img2pdf = True
-        logging.info("Using img2pdf for PDF generation (better TIFF support)")
+        logging.debug("Using img2pdf for PDF generation (better TIFF support)")
     except ImportError:
         use_img2pdf = False
         logging.info("img2pdf not available, using FPDF")
@@ -152,7 +152,7 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
             image_files = [str(f) for f in card_files if f.suffix.lower() in valid_extensions]
             
             if image_files:
-                logging.info(f"Creating PDF with img2pdf using {len(image_files)} images")
+                logging.debug(f"Creating PDF with img2pdf using {len(image_files)} images")
                 with open(pdf_file, "wb") as f:
                     # img2pdf works with points (1/72 inch)
                     # Convert our 300dpi measurements to points
@@ -173,7 +173,7 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
             logging.warning("Falling back to FPDF")
     
     # Fallback to FPDF if img2pdf failed or isn't available
-    logging.info("FPDF format {page_size} for PDF generation")
+    logging.debug("FPDF format {page_size} for PDF generation")
     pdf = FPDF(unit="pt", format=(page_size[0], page_size[1]))
     temp_dir = output_path / "temp_pdf_images"
     temp_dir.mkdir(exist_ok=True, parents=True)
@@ -211,6 +211,7 @@ if __name__ == "__main__":
     parser.add_argument('--cmyk-mode', action='store_true', help='Generate cards in CMYK mode')
     parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
+    parser.add_argument('--compact', action='store_true', help='Enable compact mode for file card generation')
 
     args = parser.parse_args()
     logging.debug(f"Arguments: {args}")
@@ -242,7 +243,13 @@ if __name__ == "__main__":
         logging.info(f"Using default PDF output name: {args.pdf_output_name}")
 
     # Generate file cards
-    build_file_cards_from_directory(args.input_dir, args.output_dir, args.cmyk_mode, args.page_size)
+    build_file_cards_from_directory(
+        args.input_dir,
+        args.output_dir,
+        args.cmyk_mode,
+        args.page_size,
+        compact_mode=args.compact
+    )
 
     # Report summary
     output_path = Path(args.output_dir)

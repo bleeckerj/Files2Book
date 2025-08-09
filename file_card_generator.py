@@ -1,3 +1,49 @@
+# Ensure logging is imported before main block
+import logging
+
+if __name__ == "__main__":
+    from file_card_generator import get_file_type_info, create_file_info_card, save_card_as_tiff
+    import traceback
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate a file info card image for a given file.")
+    parser.add_argument("file", help="Path to the file to generate a card for.")
+    parser.add_argument("--output", help="Path to save the output image.")
+    parser.add_argument("--width", type=int, default=800, help="Width of the card image.")
+    parser.add_argument("--height", type=int, default=1000, help="Height of the card image.")
+    parser.add_argument("--cmyk", action="store_true", help="Generate card in CMYK mode.")
+    parser.add_argument("--compact", action="store_true", help="Enable compact mode for smaller text and tighter spacing.")
+    args = parser.parse_args()
+
+    file_path = args.file
+    output_path = args.output or "file_card.jpg"
+    width = args.width
+    height = args.height
+    cmyk_mode = args.cmyk
+    compact_mode = args.compact
+
+    logging.info(f"[START] file_card_generator.py for file: {file_path}")
+    logging.info(f"[ARGS] Output path: {output_path}, Card size: {width}x{height}, CMYK: {cmyk_mode}, Compact: {compact_mode}")
+
+    try:
+        from pathlib import Path
+        file_type_info = get_file_type_info(Path(file_path))
+        logging.info(f"[INFO] File type detected: {file_type_info}")
+        logging.info(f"[STEP] Creating file info card...")
+        img = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, compact_mode=compact_mode)
+        if img is None:
+            logging.error(f"[FAIL] Failed to create card for {file_path}")
+        else:
+            logging.info(f"[STEP] Saving card to {output_path}")
+            # Save as TIFF if output ends with .tif or .tiff, else JPEG
+            if output_path.lower().endswith(('.tif', '.tiff')):
+                save_card_as_tiff(img, output_path, cmyk_mode=cmyk_mode)
+                logging.info(f"[SUCCESS] Saved TIFF card to {output_path}")
+            else:
+                img.save(output_path, format='JPEG', quality=95)
+                logging.info(f"[SUCCESS] Saved JPEG card to {output_path}")
+    except Exception as e:
+        logging.error(f"[ERROR] Exception during card generation: {e}")
+        logging.error(traceback.format_exc())
 import os
 import time
 from datetime import datetime
@@ -37,11 +83,12 @@ mimetypes.init()
 dotenv.load_dotenv()
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(name)s - %(funcName)s:%(lineno)d - %(message)s'
 )
 
 logging.getLogger("pdf2image").setLevel(logging.WARNING)
+logging.getLogger("img2pdf").setLevel(logging.INFO)
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
@@ -68,6 +115,11 @@ def scale_image(image, scale_factor):
 
 # Define file type groups with recognizable icons
 FILE_TYPE_GROUPS = {
+    'image': {
+        'extensions': {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tif', '.tiff', '.webp', '.heic', '.heif'},
+        'icon': "IMG",
+        'color': (33, 150, 243)  # HEX: 2196F3
+    },
     'code': {
         'extensions': {'.py', '.js', '.html', '.css', '.java', '.c', '.cpp', '.h', '.sh', '.rb', '.swift', '.php', '.go'},
         'icon': "< / >",
@@ -142,7 +194,7 @@ def scale_image_by_percent(image, percent):
 def get_file_type_info(file_path):
     """Determine file type group and icon information."""
     ext = file_path.suffix.lower()
-    logging.info(f"DEBUG: ext={ext}")
+    logging.debug(f"DEBUG: ext={ext}")
     # Check if the extension is in any of our groups
     for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
@@ -155,6 +207,13 @@ def get_file_type_info(file_path):
     # If not found, try to use mimetype to determine a general type
     mime_type, _ = mimetypes.guess_type(str(file_path))
     if mime_type:
+        if mime_type.startswith('image/'):
+            info = FILE_TYPE_GROUPS.get('image', {'icon': 'IMG', 'color': (33, 150, 243)})
+            return {
+                'group': 'image',
+                'icon': info['icon'],
+                'color': info['color']
+            }
         if mime_type.startswith('text/'):
             return {
                 'group': 'text',
@@ -382,7 +441,7 @@ def get_fit_summary_preview(file_path):
             if 'total_calories' in fields:
                 summary.append(f"Calories: {fields['total_calories']}")
             summary.append("")
-        # If no session, try activity
+    # If no session, try activity
         if not summary:
             for msg in fitfile.get_messages('activity'):
                 fields = {d.name: d.value for d in msg}
@@ -604,7 +663,7 @@ def get_fit_gps_preview(file_path, box_w, box_h):
         return None
 
 MAPBOX_TOKEN = os.getenv('MAPBOX_TOKEN', '').strip()
-logging.info("Using Mapbox token: %s", MAPBOX_TOKEN if MAPBOX_TOKEN else "Not set")
+#logging.debug("Using Mapbox token: %s", MAPBOX_TOKEN if MAPBOX_TOKEN else "Not set")
 def downsample_points(points, max_points=100):
     if len(points) <= max_points:
         return points
@@ -681,7 +740,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
+def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, compact_mode=False):
     file_path = Path(file_path)
     # Proportional scaling
     base_width = 800
@@ -726,17 +785,28 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                 width=max(5, border_width // 5)  # Make each border line thick
             )
 
-    # Proportional font sizes
-    title_font_size = int(40 * scale)
-    info_font_size = int(22 * scale)  # Slightly larger font size for metadata
-    preview_font_size = int(14 * scale)
-    fit_font_size = int(12 * scale)
-    # Proportional paddings (keeping the original border_width value)
-    icon_space = int((100 + 40) * scale)
-    metadata_line_height = int(info_font_size * 1.15)  # Reduce line spacing, closer to font size
-    spacing_between_metadata_and_content_preview = int(15 * scale)
-    preview_box_padding = int(15 * scale)
-    header_height = int(80 * scale)
+    # Compact mode overrides
+    if compact_mode:
+        title_font_size = int(24 * scale)
+        info_font_size = int(16 * scale)
+        preview_font_size = int(9 * scale)
+        fit_font_size = int(8 * scale)
+        icon_space = int(20 * scale)
+        metadata_line_height = int(info_font_size * 1.0)
+        spacing_between_metadata_and_content_preview = 0
+        preview_box_padding = int(1 * scale)
+        header_height = int(32 * scale)  # Much shorter header bar
+        logging.info("[COMPACT MODE] Reduced header, spacing, and maximized preview area.")
+    else:
+        title_font_size = int(40 * scale)
+        info_font_size = int(22 * scale)
+        preview_font_size = int(14 * scale)
+        fit_font_size = int(12 * scale)
+        icon_space = int((100 + 40) * scale)
+        metadata_line_height = int(info_font_size * 1.15)
+        spacing_between_metadata_and_content_preview = int(15 * scale)
+        preview_box_padding = int(15 * scale)
+        header_height = int(80 * scale)
 
     # Load fonts
     try:
@@ -751,7 +821,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         fit_font = ImageFont.load_default()
 
     file_type_info = get_file_type_info(file_path)
-    logging.info(f"Processing {file_path.name} - Type: {file_type_info['group']}")
+    logging.debug(f"Processing {file_path.name} - Type: {file_type_info['group']}")
     icon = file_type_info['icon']
     ext = file_path.suffix.lower()
 
@@ -840,24 +910,35 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
     # Move Name to the end
     file_info['Name'] = file_path.name
+    file_info['Path'] = str(file_path.resolve())
 
     # Fixed card height for 4x5 aspect ratio
-    header_height = int(80 * scale)
-    icon_space = int((100 + 40) * scale)
-    metadata_lines = len(file_info)
-    metadata_height = metadata_lines * metadata_line_height
-    
-    # Content area dimensions, accounting for outer padding
-    content_area_left = outer_padding
-    content_area_right = width - outer_padding
-    content_area_width = content_area_right - content_area_left
-    
-    # Preview box within the content area
-    preview_box_left = content_area_left + int(content_area_width * 0.1)
-    preview_box_right = content_area_right - int(content_area_width * 0.1)
-    preview_box_top = outer_padding + header_height + icon_space + metadata_height + spacing_between_metadata_and_content_preview
-    preview_box_bottom = height - outer_padding - int(30 * scale)
-    preview_box_height = preview_box_bottom - preview_box_top
+    if compact_mode:
+        header_height = int(22 * scale)
+        icon_space = int(8 * scale)
+        metadata_lines = len(file_info)
+        metadata_height = metadata_lines * metadata_line_height
+        content_area_left = outer_padding
+        content_area_right = width - outer_padding
+        content_area_width = content_area_right - content_area_left
+        preview_box_left = content_area_left + int(content_area_width * 0.05)
+        preview_box_right = content_area_right - int(content_area_width * 0.05)
+        preview_box_top = outer_padding + header_height + icon_space + metadata_height
+        preview_box_bottom = height - outer_padding - int(10 * scale)
+        preview_box_height = preview_box_bottom - preview_box_top
+    else:
+        header_height = int(80 * scale)
+        icon_space = int((100 + 40) * scale)
+        metadata_lines = len(file_info)
+        metadata_height = metadata_lines * metadata_line_height
+        content_area_left = outer_padding
+        content_area_right = width - outer_padding
+        content_area_width = content_area_right - content_area_left
+        preview_box_left = content_area_left + int(content_area_width * 0.1)
+        preview_box_right = content_area_right - int(content_area_width * 0.1)
+        preview_box_top = outer_padding + header_height + icon_space + metadata_height + spacing_between_metadata_and_content_preview
+        preview_box_bottom = height - outer_padding - int(30 * scale)
+        preview_box_height = preview_box_bottom - preview_box_top
     max_line_width_pixels = preview_box_right - preview_box_left - preview_box_padding * 2
     temp_img = Image.new('RGB', (width, height))
     temp_draw = ImageDraw.Draw(temp_img)
@@ -1167,10 +1248,15 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     # Position the file type text vertically centered in the header area, accounting for outer padding
     draw.text((width//2, outer_padding + header_height//2), file_path.suffix.upper(), fill=text_color, font=title_font, anchor="mm")
     # Position the icon below the header, accounting for outer padding
-    icon_y = outer_padding + header_height + int(20 * scale)
-    icon_color = file_type_info['color'] if rgb_mode else color
-    draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
-    y = icon_y + 60
+    if compact_mode:
+        # Do not draw icon text in compact mode
+        gap_after_header = int(12 * scale)
+        y = outer_padding + header_height + gap_after_header
+    else:
+        icon_y = outer_padding + header_height + int(20 * scale)
+        icon_color = file_type_info['color'] if rgb_mode else color
+        draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
+        y = icon_y + 60
     avatar_size = int(100 * scale)
     avatar_img = None
     if slack_avatar:
@@ -1198,14 +1284,15 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
 
     for key, value in file_info.items():
         if key == 'Name':
-            # For the Name field, don't show the label
             line = f"{value}"
         else:
             line = f"{key}: {value}"
         draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
         y += metadata_line_height
-    y = preview_box_top - 30
-    draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
+    # In compact mode, skip 'Content Preview:' label and extra spacing
+    if not compact_mode:
+        y = preview_box_top - 30
+        draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
     preview_background_color = (245, 245, 245) if rgb_mode else (0, 0, 0, 4)
     draw.rectangle(
@@ -1355,53 +1442,26 @@ def save_card_as_tiff(img, output_path, cmyk_mode=False):
     """
     Save a card image as a TIFF file with proper handling for CMYK mode.
     This function ensures borders are preserved during CMYK conversion.
-    
-    Args:
-        img: The PIL Image object to save
-        output_path: The path where the TIFF should be saved
-        cmyk_mode: Whether to save in CMYK mode (True) or RGB mode (False)
     """
     try:
-        if cmyk_mode:
-            # For CMYK mode, we need to make sure the border is even more pronounced
-            # Draw an additional solid border around the entire image
-            draw = ImageDraw.Draw(img)
-            w, h = img.size
-            for i in range(0, 5):  # Draw 5 concentric borders for visibility
-                draw.rectangle(
-                    [i, i, w-1-i, h-1-i],
-                    outline=(0, 0, 0, 100),  # Solid black in CMYK
-                    width=4  # Thick line
-                )
-            
-            # Save with LibTIFF and specific compression settings
-            img.save(
-                output_path, 
-                format='TIFF',
-                compression='none',  # No compression for maximum quality
-                dpi=(300, 300)       # Set DPI to 300
-            )
-            logging.debug(f"Saved CMYK TIFF with reinforced border: {output_path}")
+        # Save as TIFF if output ends with .tif or .tiff, else JPEG
+        if str(output_path).lower().endswith(('.tif', '.tiff')):
+            img.save(output_path, format='TIFF')
+            logging.info(f"[SUCCESS] Saved TIFF card to {output_path}")
         else:
-            # For RGB mode, add a clear border too
-            draw = ImageDraw.Draw(img)
-            w, h = img.size
-            draw.rectangle([0, 0, w-1, h-1], outline=(0, 0, 0), width=5)
-            
-            # Standard save
-            img.save(output_path, format='TIFF', compression='tiff_deflate')
-            logging.debug(f"Saved RGB TIFF with reinforced border: {output_path}")
+            img.save(output_path, format='JPEG', quality=95)
+            logging.info(f"[SUCCESS] Saved JPEG card to {output_path}")
     except Exception as e:
-        logging.error(f"Error saving TIFF image: {e}")
-        # Fall back to basic save method
-        img.save(output_path)
-        logging.warning(f"Used fallback save method for: {output_path}")
+        logging.error(f"[ERROR] Exception during card saving: {e}")
+        logging.error(traceback.format_exc())
 
 def process_pdf_or_ai_page(page, max_width, max_height):
     """
     Takes a PIL Image (PDF or AI page), rotates if landscape, and scales to fit the preview box.
     Returns the processed image.
+
     """
+    
     img_w, img_h = page.size
     # Rotate if landscape
     if img_w > img_h:

@@ -75,11 +75,12 @@ You can get a token from https://account.mapbox.com/
 
 ## Usage
 
+
 ### As a Script
 
 You can run the script directly to generate a file info card:
 ```bash
-python file_card_generator.py /path/to/your/file.ext
+python file_card_generator.py /path/to/your/file.ext [--compact]
 ```
 
 ### Command Line Arguments
@@ -88,10 +89,11 @@ python file_card_generator.py /path/to/your/file.ext
 - `--height HEIGHT`: Output card height (default: 1000)
 - `--cmyk`: Enable CMYK mode for print
 - `--output OUTPUT_PATH`: Path to save the generated image (default: `file_card.png`)
+- `--compact`: Enable compact mode for reduced text size, tighter spacing, and maximized preview area
 
 Example:
 ```bash
-python file_card_generator.py myfile.gpx --width 1200 --height 1500 --output my_card.png
+python file_card_generator.py myfile.gpx --width 1200 --height 1500 --output my_card.png --compact
 ```
 
 ### As a Module
@@ -103,6 +105,11 @@ img.save('my_card.png')
 ```
 
 ## New Features and Enhancements
+
+### Compact Mode
+- Use the `--compact` flag to generate cards with reduced font size, minimal spacing, and a maximized preview area.
+- Useful for print layouts or when you want the image/preview to take priority over metadata.
+
 
 ### HEIC Image Support
 - Added support for `.heic` and `.heif` image formats using the `pillow-heif` library.

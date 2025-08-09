@@ -50,6 +50,7 @@ python generate_flipbook_pages.py --input-dir /path/to/files --output-dir ./outp
 
 ### Command Line Arguments
 
+
 - `--input-dir`: Directory containing files to process (required)
 - `--output-dir`: Directory to save the generated card images (default: parent directory of input-dir + `_cards_output`)
 - `--cmyk-mode`: Generate cards in CMYK color mode for professional printing (default: RGB mode)
@@ -58,6 +59,7 @@ python generate_flipbook_pages.py --input-dir /path/to/files --output-dir ./outp
   - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
   - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
 - `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
+- `--compact`: Enable compact mode for reduced text size, minimal spacing, and maximized preview area
 
 ### Defaults
 
@@ -67,18 +69,28 @@ If `--pdf-output-name` is not specified, it will default to the parent directory
 
 ## Examples
 
-Create Large Tarot-sized cards (2.76×4.72 inches) in CMYK mode with PDF output (using defaults):
+
+Create Large Tarot-sized cards (2.76×4.72 inches) in CMYK mode and compact mode with PDF output (using defaults):
 ```bash
-python generate_flipbook_pages.py --input-dir ./my_files/files --cmyk-mode
+python create_file_cards.py --input-dir ./my_files/files --cmyk-mode --compact
 ```
 This will create cards in `my_files_cards_output` and the combined PDF in `my_files_cards_output/my_files_combined_pdf.pdf`.
 
-Create custom sized cards (3.5×5.0 inches) and specify output locations:
+Create custom sized cards (3.5×5.0 inches) and specify output locations, with compact mode:
 ```bash
-python generate_flipbook_pages.py --input-dir ./my_files/files --output-dir ./cards_output --page-size 3.5X5.0 --pdf-output-name custom_cards.pdf
+python create_file_cards.py --input-dir ./my_files/files --output-dir ./cards_output --page-size 3.5X5.0 --pdf-output-name custom_cards.pdf --compact
 ```
 
 ## Card Features
+
+### Compact Mode
+
+When `--compact` is specified, cards are generated with:
+- Smaller font sizes
+- Minimal vertical spacing
+- No file type icon text below the header
+- Maximized preview/image area
+This is ideal for print layouts or when you want the preview to take priority over metadata.
 
 ### File Type Detection
 
