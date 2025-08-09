@@ -1007,7 +1007,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     zip_file_list = None
     zip_file_preview_img = None
     zip_file_preview_lines = None
-    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff'}:
+    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff'}:
         image = get_image_thumbnail(file_path, thumb_size=(max_line_width_pixels, preview_box_height))
         if image is not None:
             img_w, img_h = image.size
