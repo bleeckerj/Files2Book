@@ -741,6 +741,21 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 
 
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, compact_mode=False):
+    # Helper for robust image opening (handles .webp and errors)
+    from PIL import UnidentifiedImageError
+    def open_image_robust(path, size):
+        try:
+            img = Image.open(path)
+            if getattr(img, 'format', None) == 'WEBP':
+                img = img.convert('RGBA')
+                logging.info(f"Converted WEBP image to RGBA: {path}")
+            else:
+                img = img.convert('RGBA')
+            return img
+        except (UnidentifiedImageError, OSError, Exception) as e:
+            logging.error(f"Error opening image {path}: {e}")
+            # Return placeholder image
+            return Image.new('RGBA', size, (200, 200, 200, 255))
     # ...existing code...
     # Place vertical file path drawing code after img and preview_box_left are defined
     # (Move this block to after preview_box_left, preview_box_top, outer_padding, info_font_size, and img are all set)
@@ -782,6 +797,12 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     # Create the full-sized image (background) as RGBA for transparency support
     img = Image.new('RGBA', (width, height), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img)
+
+    # Load preview image robustly (handles .webp and errors)
+    preview_box_width = int(width * 0.45)
+    preview_box_height = int(height * 0.6)
+    preview_img = open_image_robust(str(file_path), (preview_box_width, preview_box_height))
+    # ...continue with card layout logic using preview_img...
 
     # Draw the border around the content area
     # Determine the color mode first to avoid variable reference issues
@@ -956,7 +977,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     else:
         # Only add Modified/Created if DateTimeOriginal is not present
         if not date_time_original:
-            file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
+            # file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
             file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
 
     # Move Name to the end
@@ -1029,7 +1050,32 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     zip_file_list = None
     zip_file_preview_img = None
     zip_file_preview_lines = None
-    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff'}:
+    if ext == '.webp':
+        # Use robust preview logic for webp
+        image = preview_img
+        if image is not None:
+            img_w, img_h = image.size
+            # Rotate image if card is portrait and image is landscape
+            if width < height and img_w > img_h:
+                logging.debug(f"Rotating webp image for portrait card: {file_path.name}")
+                image = image.rotate(90, expand=True)
+                img_w, img_h = image.size
+            # Convert transparent images to RGB with white/light background
+            if image.mode in ("RGBA", "LA"):
+                logging.debug(f"Converting transparent webp image to RGB: {file_path.name}")
+                background = Image.new("RGB", image.size, (250, 250, 250))
+                background.paste(image, mask=image.split()[-1])
+                image = background
+            scale_factor = min(
+                (max_line_width_pixels) / img_w,
+                (preview_box_height) / img_h
+            ) * 0.95
+            logging.debug(f"Scaling webp image by factor {scale_factor:.3f} for {file_path.name}")
+            new_w = int(img_w * scale_factor)
+            new_h = int(img_h * scale_factor)
+            image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
+            logging.debug(f"Final webp image_thumb size: {new_w}x{new_h} for {file_path.name}")
+    elif ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff'}:
         image = get_image_thumbnail(file_path, thumb_size=(max_line_width_pixels, preview_box_height))
         if image is not None:
             img_w, img_h = image.size
@@ -1040,7 +1086,6 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
                 logging.debug(f"Rotating image for portrait card: {file_path.name}")
                 image = image.rotate(90, expand=True)
                 img_w, img_h = image.size
-                #logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
             # Convert transparent images to RGB with white/light background
             if image.mode in ("RGBA", "LA"):
                 logging.debug(f"Converting transparent image to RGB: {file_path.name}")
