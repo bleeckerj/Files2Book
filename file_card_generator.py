@@ -12,6 +12,7 @@ if __name__ == "__main__":
     parser.add_argument("--height", type=int, default=1000, help="Height of the card image.")
     parser.add_argument("--cmyk", action="store_true", help="Generate card in CMYK mode.")
     parser.add_argument("--compact", action="store_true", help="Enable compact mode for smaller text and tighter spacing.")
+    parser.add_argument("--exclude-file-path", action="store_true", help="Exclude the vertical file path from the card.")
     args = parser.parse_args()
 
     file_path = args.file
@@ -29,7 +30,7 @@ if __name__ == "__main__":
         file_type_info = get_file_type_info(Path(file_path))
         logging.info(f"[INFO] File type detected: {file_type_info}")
         logging.info(f"[STEP] Creating file info card...")
-        img = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, compact_mode=compact_mode)
+        img = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, compact_mode=compact_mode, exclude_file_path=args.exclude_file_path)
         if img is None:
             logging.error(f"[FAIL] Failed to create card for {file_path}")
         else:
@@ -1021,23 +1022,25 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     max_line_length = max(10, max_line_width_pixels // char_width)
     max_preview_lines = max(1, preview_box_height // line_height)
 
-    # Draw full file path vertically along the left edge of the preview area
-    full_path = str(file_path.resolve())
-    try:
-        path_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", int(info_font_size * 0.8))
-    except:
-        path_font = ImageFont.load_default()
-    path_x = preview_box_left - int(outer_padding * 0.5)
-    path_y = preview_box_top
-    # Always use RGBA for overlays
-    path_img = Image.new('RGBA', (height, width), (255, 255, 255, 0))
-    path_draw = ImageDraw.Draw(path_img)
-    path_draw.text((0, 0), full_path, font=path_font, fill=(80, 80, 80, 255))
-    rotated_path_img = path_img.rotate(90, expand=True)
-    # Ensure base image is RGBA
-    if img.mode != 'RGBA':
-        img = img.convert('RGBA')
-    img.paste(rotated_path_img, (int(path_x), int(path_y)), rotated_path_img)
+    # Draw full file path vertically along the left edge of the preview area unless excluded
+    exclude_file_path = locals().get('exclude_file_path', False)
+    if not exclude_file_path:
+        full_path = str(file_path.resolve())
+        try:
+            path_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", int(info_font_size * 0.8))
+        except:
+            path_font = ImageFont.load_default()
+        path_x = preview_box_left - int(outer_padding * 0.5)
+        path_y = preview_box_top
+        # Always use RGBA for overlays
+        path_img = Image.new('RGBA', (height, width), (255, 255, 255, 0))
+        path_draw = ImageDraw.Draw(path_img)
+        path_draw.text((0, 0), full_path, font=path_font, fill=(80, 80, 80, 255))
+        rotated_path_img = path_img.rotate(90, expand=True)
+        # Ensure base image is RGBA
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        img.paste(rotated_path_img, (int(path_x), int(path_y)), rotated_path_img)
 
     # --- Preview logic by file type ---
     preview_lines = []

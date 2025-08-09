@@ -34,6 +34,10 @@ python create_file_cards.py --input-dir /path/to/files --max-depth 2
 ```
 This will process files up to 2 levels deep.
 
+```bash
+python3 ./create_file_cards.py --page-size "A5" --input-dir "/Users/julian/OMATA Dropbox/Julian Bleecker/RenderStationDropOff/COMFY_AUTOTRADER/" --cmyk --compact --output-dir ./autotrader-cards --max-depth 1 --exclude-file-path
+```
+
 #### Command Line Arguments
 
 
@@ -44,6 +48,30 @@ This will process files up to 2 levels deep.
   - Predefined sizes: A0-A5, LETTER, LEGAL, TABLOID
   - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
   - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
+
+**Supported Page Sizes and Their Dimensions (in inches):**
+
+| Name         | Width (in) | Height (in) |
+|--------------|------------|-------------|
+| A0           | 33.11      | 46.81       |
+| A1           | 23.39      | 33.11       |
+| A2           | 16.54      | 23.39       |
+| A3           | 11.69      | 16.54       |
+| A4           | 8.27       | 11.69       |
+| A5           | 5.83       | 8.27        |
+| LETTER       | 8.5        | 11          |
+| LEGAL        | 8.5        | 14          |
+| TABLOID      | 11         | 17          |
+| DIGEST       | 5.5        | 8.5         |
+| POCKETBOOK   | 4.25       | 6.87        |
+| POKER        | 2.48       | 3.46        |
+| BRIDGE       | 2.24       | 3.46        |
+| MINI         | 1.73       | 2.68        |
+| LARGE_TAROT  | 2.76       | 4.72        |
+| SMALL_TAROT  | 2.76       | 4.25        |
+| LARGE_SQUARE | 2.76       | 2.76        |
+| SMALL_SQUARE | 2.48       | 2.48        |
+-------------------------------------------
 - `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
 - `--max-depth`: Maximum folder recursion depth (default: 0, no recursion; set higher for deeper traversal)
 
@@ -86,15 +114,20 @@ Create Large Tarot-sized cards (2.76×4.72 inches) in CMYK mode and compact mode
 ```bash
 python create_file_cards.py --input-dir ./my_files/files --cmyk-mode --compact
 ```
-This will create cards in `my_files_cards_output` and the combined PDF in `my_files_cards_output/my_files_combined_pdf.pdf`.
 
-Create custom sized cards (3.5×5.0 inches) and specify output locations, with compact mode, recursing up to 2 levels deep:
-```bash
-python create_file_cards.py --input-dir ./my_files/files --output-dir ./cards_output --page-size 3.5X5.0 --pdf-output-name custom_cards.pdf --compact --max-depth 2
-```
+`--input-dir`: Directory containing files to process (required)
+`--output-dir`: Directory to save the generated card images (default: parent directory of input-dir + `_cards_output`)
+`--cmyk-mode`: Generate cards in CMYK color mode for professional printing (default: RGB mode)
+`--page-size`: Card size (default: LARGE_TAROT)
 
-## Card Features
+**Supported page sizes:**
+- A5, A4, A3, A2, A1, A0
+- LETTER, LEGAL, TABLOID
+- POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
+- Or custom WxH in inches (e.g. 8.5x11)
 
+`--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
+`--max-depth`: Maximum folder recursion depth (default: 0, no recursion; set higher for deeper traversal)
 ### Compact Mode
 
 When `--compact` is specified, cards are generated with:

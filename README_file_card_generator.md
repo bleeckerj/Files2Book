@@ -84,16 +84,29 @@ python file_card_generator.py /path/to/your/file.ext [--compact]
 ```
 
 ### Command Line Arguments
-- `file_path` (required): Path to the file you want to generate a card for.
-- `--width WIDTH`: Output card width (default: 800)
-- `--height HEIGHT`: Output card height (default: 1000)
-- `--cmyk`: Enable CMYK mode for print
-- `--output OUTPUT_PATH`: Path to save the generated image (default: `file_card.png`)
-- `--compact`: Enable compact mode for reduced text size, tighter spacing, and maximized preview area
+
+`file_path` (required): Path to the file you want to generate a card for.
+`--width WIDTH`: Output card width (default: 800)
+`--height HEIGHT`: Output card height (default: 1000)
+`--cmyk`: Enable CMYK mode for print
+`--output OUTPUT_PATH`: Path to save the generated image (default: `file_card.png`)
+`--compact`: Enable compact mode for reduced text size, tighter spacing, and maximized preview area
+`--exclude-file-path`: Exclude the vertical file path from the card (by default, the file path is shown vertically along the preview area)
+
+**Supported page sizes:**
+- A5, A4, A3, A2, A1, A0
+- LETTER, LEGAL, TABLOID
+- POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
+- Or custom WxH in inches (e.g. 8.5x11)
 
 Example:
 ```bash
 python file_card_generator.py myfile.gpx --width 1200 --height 1500 --output my_card.png --compact
+```
+
+To hide the vertical file path on the card:
+```bash
+python file_card_generator.py myfile.jpg --exclude-file-path
 ```
 
 ### As a Module

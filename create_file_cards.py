@@ -29,6 +29,8 @@ def parse_page_size(size_name):
         'LETTER': (8.5, 11),
         'LEGAL': (8.5, 14),
         'TABLOID': (11, 17),
+        'DIGEST': (5.5, 8.5),         # Digest size
+        'POCKETBOOK': (4.25, 6.87),   # PocketBook size
         # Playing card sizes (in inches, rounded to 2 decimals)
         'POKER': (2.48, 3.46),        # 63x88mm
         'BRIDGE': (2.24, 3.46),       # 57x88mm
@@ -55,7 +57,7 @@ def parse_page_size(size_name):
     logging.warning(f"Unknown page size '{size_name}', defaulting to A4")
     return int(8.3 * dpi), int(11.7 * dpi)
 
-def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', compact_mode=False):
+def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', compact_mode=False, exclude_file_path=False):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -118,7 +120,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 logging.debug(f"Before create_file_info_card: width={width}, height={height}")
 
                 # Generate the card
-                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, compact_mode=compact_mode)
+                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, compact_mode=compact_mode, exclude_file_path=exclude_file_path)
                 
                 # Save the card using specialized TIFF save function
                 card_file_name = f"{file_path.stem}_card.tiff"
@@ -248,6 +250,7 @@ if __name__ == "__main__":
     parser.add_argument('--compact', action='store_true', help='Enable compact mode for file card generation')
     parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
     parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
+    parser.add_argument('--exclude-file-path', action='store_true', help='Exclude the vertical file path from the card (default: shown)')
 
     args = parser.parse_args()
     logging.debug(f"Arguments: {args}")
@@ -283,7 +286,8 @@ if __name__ == "__main__":
         args.output_dir,
         args.cmyk_mode,
         args.page_size,
-        compact_mode=args.compact
+        compact_mode=args.compact,
+        exclude_file_path=args.exclude_file_path
     )
 
     # Report summary
