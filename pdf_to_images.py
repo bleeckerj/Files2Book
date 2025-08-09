@@ -158,37 +158,19 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
     cell_h = (content_h - total_gap_h) // rows
     offset_y = inner_margin_px
 
-    # # Draw debug rectangles for column boundaries
-    # for col in range(cols):
-    #     x = offset_x + col * (cell_w + gap)
-    #     # Draw a red rectangle outline for each column's boundaries
-    #     draw.rectangle([x, offset_y, x + cell_w, offset_y + content_h], 
-    #                   outline='red', fill=(255, 0, 0, 25))  # Very light red fill
-    #     # Print column positions
-    #     print(f"[DEBUG] Column {col}: x={x}, width={cell_w}, right edge={x + cell_w}")
-    
-    # # Draw page margins for debugging
-    # draw.line([(left_margin, 0), (left_margin, page_h)], fill='blue', width=2)  # Left margin
-    # draw.line([(page_w - right_margin, 0), (page_w - right_margin, page_h)], fill='blue', width=2)  # Right margin
-
-    # # Draw a vertical line at offset_x to show where grid starts
-    # draw.line([(offset_x, 0), (offset_x, page_h)], fill='green', width=2)  # Grid start position
-
-    # Position images within columns with proper alignment
+    # Position images within cells
     for idx in range(n):
         if idx >= len(images):
             break
         img = images[idx]
         max_w = cell_w - 2 * (padding + hairline_width)
-        filename_space = 40  # Allow more space for filename text
+        filename_space = 40
         max_h = cell_h - 2 * (padding + hairline_width) - filename_space
-        # Rotate image if aspect ratio does not match cell and flag is set
         if rotate_to_aspect_ratio:
             img_aspect = img.width / img.height
-            cell_aspect = max_w / max_h
+            cell_aspect = max_w / max_h if max_h > 0 else 1
             if (img_aspect > 1 and cell_aspect < 1) or (img_aspect < 1 and cell_aspect > 1):
                 img = img.rotate(90, expand=True)
-        # Always scale to fit after rotation
         img = fit_image(img, max_w, max_h, image_fit_mode, is_flipbook)
 
         col = idx % cols
@@ -196,14 +178,10 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
         x = offset_x + col * (cell_w + gap)
         y = offset_y + row * (cell_h + gap)
 
-        # Align image within column based on page side
         if side == 'recto':
-            # Right-align image within column
             img_x = x + (cell_w - img.width - 2 * (padding + hairline_width))
         else:
-            # Left-align image within column
             img_x = x + padding + hairline_width
-        
         img_y = y + padding + hairline_width
 
         page_img.paste(img, (img_x, img_y))
@@ -212,18 +190,13 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
 
         if image_paths and idx < len(image_paths):
             filename = os.path.basename(image_paths[idx])
-            # Calculate text position first
             text_y = img_y + img.height + 5
             text_x = img_x + img.width // 2
-            
-            #print(f"Drawing filename: {filename} at position ({text_x}, {text_y})")
             try:
                 font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 30)
             except IOError:
                 print("Using default font due to IOError")
                 font = ImageFont.load_default()
-                
-            # Draw text shadow and then text
             draw.text((text_x+1, text_y+1), filename, fill='gray', font=font, anchor="mt")
             draw.text((text_x, text_y), filename, fill='black', font=font, anchor="mt")
 
@@ -232,111 +205,118 @@ def arrange_grid(images, page_size, n, gap, hairline_width, hairline_color, padd
 def arrange_masonry(images, page_size, n, gap, hairline_width, hairline_color, padding, 
                     image_fit_mode, inner_margin_px=0, outer_margin_px=0, 
                     side='recto', is_flipbook=False, image_paths=None, 
-                    cmyk_mode=False, cmyk_background=(0,0,0,0), rotate_to_aspect_ratio=False):
+                    cmyk_mode=False, cmyk_background=(0,0,0,0), rotate_to_aspect_ratio=False,
+                    masonry_cols=None):
     page_w, page_h = page_size
     left_margin = inner_margin_px if side == 'recto' else outer_margin_px
     right_margin = outer_margin_px if side == 'recto' else inner_margin_px
-    
-    # Create page and drawing context - either RGB or CMYK
+
+    # Create page and drawing context
     if cmyk_mode:
         page_img = create_cmyk_image(page_w, page_h, cmyk_background)
     else:
         page_img = Image.new('RGB', (page_w, page_h), 'white')
     draw = ImageDraw.Draw(page_img)
 
-    # Calculate usable dimensions
+    # Usable dimensions
     usable_width = page_w - left_margin - right_margin
     if is_flipbook:
         usable_width = int(usable_width * 0.7)
-
-    # Add bottom margin for captions
-    bottom_margin_px = int(0.14 * 300)  # 0.14 inch in pixels
+    bottom_margin_px = int(0.14 * 300)
     content_h = page_h - inner_margin_px - outer_margin_px - bottom_margin_px
-    cols = math.ceil(math.sqrt(n))
-    
-    # Calculate max image width for column sizing
-    max_image_width = 0
-    for img in images:
-        if img.width > max_image_width:
-            max_image_width = img.width
-    
-    # Base column width on actual image dimensions plus padding
-    col_w = max_image_width + 2 * (padding + hairline_width)
-    if is_flipbook:
-        col_w = int(col_w * 3)
-    
-    # Ensure columns fit within usable width
-    total_width_needed = (col_w * cols) + (gap * (cols - 1))
-    if total_width_needed > usable_width:
-        available_width = usable_width - (gap * (cols - 1))
-        col_w = available_width // cols
 
-    # Initialize column tracking
-    col_y_offsets = [0] * cols
-    
-    # Calculate starting x position based on side
+    # Columns
+    cols = max(1, masonry_cols if masonry_cols else math.ceil(math.sqrt(n)))
+
+    # Assign images to columns (round-robin) with original indices
+    column_images = [[] for _ in range(cols)]
+    for idx, img in enumerate(images[:n]):
+        column_images[idx % cols].append((idx, img))
+
+    # Vertical parameters
+    filename_space_base = 40
+    padline = padding + hairline_width
+
+    # Compute global scale to fit tallest column
+    s_candidates = []
+    for col_imgs in column_images:
+        m = len(col_imgs)
+        if m == 0:
+            continue
+        sum_img_heights = sum(img.height for _, img in col_imgs)
+        denom = sum_img_heights + (m - 1) * gap + m * filename_space_base
+        numer = content_h - m * 2 * padline
+        if denom <= 0:
+            s_candidates.append(1.0)
+        else:
+            s_candidates.append(max(0.05, min(1.0, numer / denom)))
+    global_scale = min(s_candidates) if s_candidates else 1.0
+
+    # Column width to avoid horizontal overlap
+    total_col_gaps = (cols - 1) * gap
+    col_w = max(1, (usable_width - total_col_gaps) // cols)
+
+    # Offsets
+    grid_width = cols * col_w + (cols - 1) * gap
     if side == 'recto':
-        offset_x = page_w - right_margin - (cols * col_w + (cols - 1) * gap)
+        offset_x = page_w - right_margin - grid_width
     else:
         offset_x = left_margin
-    
     offset_y = inner_margin_px
 
-    # Position images within columns
-    for idx in range(n):
-        if idx >= len(images):
-            break
-            
-        img = images[idx]
-        max_w = col_w - 2 * (padding + hairline_width)
-        # Rotate image if aspect ratio does not match cell and flag is set
-        if rotate_to_aspect_ratio:
-            img_aspect = img.width / img.height
-            cell_aspect = max_w / content_h
-            if (img_aspect > 1 and cell_aspect < 1) or (img_aspect < 1 and cell_aspect > 1):
-                img = img.rotate(90, expand=True)
-        # Always scale to fit after rotation
-        img = fit_image(img, max_w, content_h, image_fit_mode, is_flipbook)
+    # Scaled spacing
+    scaled_gap = max(0, int(round(gap * global_scale)))
+    scaled_caption = max(0, int(round(filename_space_base * global_scale)))
 
-        # Find shortest column
-        col = col_y_offsets.index(min(col_y_offsets))
-        x = offset_x + col * (col_w + gap)
-        y = offset_y + col_y_offsets[col]
+    # Place images
+    for col_idx, col_imgs in enumerate(column_images):
+        y_offset = 0
+        for img_idx, (orig_idx, img) in enumerate(col_imgs):
+            # Width constraint inside the column
+            inner_w_limit = max(1, col_w - 2 * padline)
 
-        # Align image within column based on page side
-        if side == 'recto':
-            img_x = x + (col_w - img.width - 2 * (padding + hairline_width))
-        else:
-            img_x = x + padding + hairline_width
-            
-        img_y = y + padding + hairline_width
+            # Optionally rotate to better fit aspect
+            if rotate_to_aspect_ratio and img.height > 0:
+                img_aspect = img.width / img.height
+                col_aspect = inner_w_limit / max(1, content_h)
+                if (img_aspect > 1 and col_aspect < 1) or (img_aspect < 1 and col_aspect > 1):
+                    img = img.rotate(90, expand=True)
 
-        # Place image and draw border
-        page_img.paste(img, (img_x, img_y))
-        draw_hairline_border(draw, (img_x, img_y, img_x + img.width - 1, img_y + img.height - 1), 
-                           hairline_width, hairline_color)
+            width_scale = min(1.0, inner_w_limit / max(1, img.width))
+            final_scale = min(global_scale, width_scale)
 
-        # Add filename caption if paths provided
-        if image_paths and idx < len(image_paths):
-            filename = os.path.basename(image_paths[idx])
-            text_y = img_y + img.height + 5
-            text_x = img_x + img.width // 2
-            
-            try:
-                font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 30)
-            except IOError:
-                print("Using default font due to IOError")
-                font = ImageFont.load_default()
-            
-            # Draw text shadow and then text
-            draw.text((text_x+1, text_y+1), filename, fill='gray', font=font, anchor="mt")
-            draw.text((text_x, text_y), filename, fill='black', font=font, anchor="mt")
+            new_w = max(1, int(round(img.width * final_scale)))
+            new_h = max(1, int(round(img.height * final_scale)))
+            img_scaled = img if (new_w == img.width and new_h == img.height) else img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-        # Update column height
-        filename_space = 40  # Allow more space for filename text
-        col_y_offsets[col] += img.height + gap + filename_space
-        if col_y_offsets[col] > content_h:
-            break
+            x = offset_x + col_idx * (col_w + gap)
+            y = offset_y + y_offset
+
+            if side == 'recto':
+                img_x = x + (col_w - img_scaled.width - 2 * padline)
+            else:
+                img_x = x + padline
+            img_y = y + padline
+
+            page_img.paste(img_scaled, (img_x, img_y))
+            draw_hairline_border(draw, (img_x, img_y, img_x + img_scaled.width - 1, img_y + img_scaled.height - 1),
+                                 hairline_width, hairline_color)
+
+            if image_paths and 0 <= orig_idx < len(image_paths):
+                filename = os.path.basename(image_paths[orig_idx])
+                text_y = img_y + img_scaled.height + 5
+                text_x = img_x + img_scaled.width // 2
+                try:
+                    font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", 30)
+                except IOError:
+                    print("Using default font due to IOError")
+                    font = ImageFont.load_default()
+                draw.text((text_x+1, text_y+1), filename, fill='gray', font=font, anchor="mt")
+                draw.text((text_x, text_y), filename, fill='black', font=font, anchor="mt")
+
+            y_offset += img_scaled.height + 2 * padline + scaled_caption
+            if img_idx < len(col_imgs) - 1:
+                y_offset += scaled_gap
 
     return page_img
 
@@ -344,7 +324,7 @@ def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_col
                  padding, page_orientation, image_fit_mode, grid_rows=None, 
                  grid_cols=None, inner_margin_px=0, outer_margin_px=0, 
                  output_pdf=False, flipbook_mode=False, cmyk_mode=False, cmyk_background=(0,0,0,0),
-                 rotate_to_aspect_ratio=False):
+                 rotate_to_aspect_ratio=False, masonry_cols=None):
     images = convert_from_path(pdf_path)
     # Rotate extracted PDF page images to match target page orientation if flag is set
     if rotate_to_aspect_ratio:
@@ -378,7 +358,8 @@ def pdf_to_images(pdf_path, layout, page_size, gap, hairline_width, hairline_col
                                        hairline_color, padding, image_fit_mode, 
                                        inner_margin_px, outer_margin_px, side, 
                                        is_flipbook=flipbook_mode, image_paths=None, cmyk_mode=cmyk_mode, 
-                                       cmyk_background=cmyk_background, rotate_to_aspect_ratio=rotate_to_aspect_ratio)
+                                       cmyk_background=cmyk_background, rotate_to_aspect_ratio=rotate_to_aspect_ratio,
+                                       masonry_cols=masonry_cols)
 
         output_images.append(page_img)
         # Save image - use TIFF for CMYK mode
@@ -427,6 +408,7 @@ def main():
     parser.add_argument('--outer-margin', type=float, default=0.5)
     parser.add_argument('--output-pdf', action='store_true')
     parser.add_argument('--flipbook-mode', action='store_true')
+    parser.add_argument('--masonry-cols', type=int, help='Number of columns in masonry layout')
     parser.add_argument('--cmyk-mode', action='store_true', help='Output images in CMYK color mode')
     parser.add_argument('--cmyk-background', type=str, default='0,0,0,0', 
                       help='CMYK background color as C,M,Y,K values (0-255, comma-separated)')
@@ -474,7 +456,7 @@ def main():
         args.hairline_color, args.padding, args.page_orientation, args.image_fit_mode,
         grid_rows, grid_cols, inner_margin_px, outer_margin_px,
         args.output_pdf, args.flipbook_mode, args.cmyk_mode, cmyk_background,
-        rotate_to_aspect_ratio=rotate_to_aspect_ratio
+        rotate_to_aspect_ratio=rotate_to_aspect_ratio, masonry_cols=args.masonry_cols
     )
 
 if __name__ == '__main__':

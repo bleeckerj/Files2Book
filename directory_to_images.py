@@ -190,7 +190,7 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
                     image_fit_mode, grid_rows=None, grid_cols=None, page_margin=0, output_pdf=False,
                     output_dir='output_pages', flipbook_mode=False, video_frames_map=None, parent_prefix='output',
                     image_paths=None, cmyk_mode=False, cmyk_background=(0, 0, 0, 0), cmyk_flipbook_background=(0, 0, 0, 0),
-                    insert_blank_pages_main=False):
+                    insert_blank_pages_main=False, masonry_cols=None):
     
     # Convert output_dir to a Path object if it's a string
     output_dir = Path(output_dir)
@@ -314,7 +314,8 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
         else:
             page_img = arrange_masonry(chunk, page_size, len(chunk), gap, hairline_width, hairline_color,
                                        padding, image_fit_mode, page_margin, side=side,
-                                       cmyk_mode=cmyk_mode, cmyk_background=cmyk_background)
+                                       cmyk_mode=cmyk_mode, cmyk_background=cmyk_background,
+                                       rotate_to_aspect_ratio=False, masonry_cols=masonry_cols)
         if cmyk_mode:
             filename = f'{parent_prefix}_output_page_{page_counter:03d}.tiff'
             output_path = output_dir / filename
@@ -365,6 +366,7 @@ def main():
     parser.add_argument('--grid-rows', type=int, help='Number of rows in grid layout')
     parser.add_argument('--grid-cols', type=int, help='Number of columns in grid layout')
     parser.add_argument('--grid', type=str, help='Grid size shorthand as ROWSxCOLS, e.g. 2x3')
+    parser.add_argument('--masonry-cols', type=int, help='Number of columns in masonry layout')
     parser.add_argument('--page-margin', type=float, default=0.25, help='Page margin in inches')
     parser.add_argument('--output-pdf', action='store_true', help='Generate a PDF of the output pages')
     parser.add_argument('--output-dir', default=None, help='Directory to save output pages (default: <parent_of_parent>_output_pages)')
@@ -465,7 +467,8 @@ def main():
             args.hairline_color, padding_px, args.image_fit_mode,
             grid_rows, grid_cols, page_margin_px, args.output_pdf,
             output_dir, args.flipbook_mode, video_frames_map, parent_dir_name,
-            image_paths=image_paths, cmyk_mode=args.cmyk_mode, cmyk_background=cmyk_background, cmyk_flipbook_background=cmyk_flipbook_background
+            image_paths=image_paths, cmyk_mode=args.cmyk_mode, cmyk_background=cmyk_background, cmyk_flipbook_background=cmyk_flipbook_background,
+            masonry_cols=args.masonry_cols
         )
 
     except Exception as e:

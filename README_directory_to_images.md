@@ -4,7 +4,7 @@ A Python utility for converting directories of images, videos, PDFs, and other f
 
 ## Features
 
-- **Grid and Masonry Layouts:** Arrange images, video frames, and file cards in customizable grid or masonry layouts for print-ready pages.
+- **Grid and Masonry Layouts:** Arrange images, video frames, and file cards in customizable grid or masonry layouts for print-ready pages. Note: Masonry is experimental and still a work in progress.
 - **Flipbook Mode:** Extract frames from videos and generate flipbook pages, ensuring all flipbook frames appear on recto (right) pages with blank verso pages as needed.
 - **Non-Visual File Support:** Automatically generates visual information cards for non-image files (code, data, spreadsheets, archives, etc.), including file metadata and content previews.
 - **HEIC Image Support:** Optionally loads HEIC images if `pillow-heif` is installed.
@@ -34,6 +34,7 @@ python3 directory_to_images.py <input_dir> [options]
 - `--layout [grid|masonry]` : Choose layout style (default: grid)
 - `--grid-rows N` : Number of rows in grid
 - `--grid-cols N` : Number of columns in grid
+- `--masonry-cols N` : Number of columns in masonry (override auto-detected columns)
 - `--page-size SIZE` : Page size (e.g. A5, 8.5x11)
 - `--page-orientation [portrait|landscape]`
 - `--image-fit-mode [uniform|rotate|scale]`
@@ -57,6 +58,26 @@ python3 directory_to_images.py <input_dir> [options]
 
 ```bash
 python3 directory_to_images.py ./my_files --layout grid --grid-rows 2 --grid-cols 2 --output-pdf --handle-non-visual
+```
+
+### Masonry (Experimental / WIP)
+
+The masonry layout attempts to place items in columns of varying heights while ensuring that every image or card appears without cropping or truncation. It uses:
+
+- A global vertical scaling so the tallest column fits within the page height (including padding, borders, gaps, and caption space).
+- A per-column width constraint so columns never overlap horizontally; images are scaled to fit inside the column’s inner width.
+- Optional column override via `--masonry-cols` to explicitly choose the number of columns instead of the auto-detected value.
+
+Because this is still a work in progress, results may not always match expectations (for example, items might be smaller than desired on dense pages). If the output isn’t satisfactory:
+
+- Try changing `--masonry-cols` (fewer columns = larger items; more columns = smaller items).
+- Adjust `--gap` and `--padding` to change spacing density.
+- Consider using `--layout grid` for predictable sizing.
+
+Example:
+
+```bash
+python3 directory_to_images.py ./my_files --layout masonry --masonry-cols 3 --output-pdf
 ```
 
 ## Output
@@ -92,6 +113,7 @@ pip install pillow pdf2image opencv-python numpy pillow-heif
 - If you see errors about missing packages, install them with `pip install ...` as above.
 - For HEIC images, ensure `pillow-heif` is installed.
 - For PDF conversion, ensure `poppler` is installed on your system (e.g. `brew install poppler` on macOS).
+- Masonry layout is experimental. If items look too small or placement isn’t desirable, tweak `--masonry-cols`, `--gap`, and `--padding`, or switch to the grid layout.
 
 ## License
 
