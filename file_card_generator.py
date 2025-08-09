@@ -746,7 +746,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     base_width = 800
     base_height = 1000
     scale = min(width / base_width, height / base_height)
-    logging.info(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
+    logging.debug(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
     # Proportional paddings
     border_width = max(2, int(1 * scale))  # Using a more reasonable but still very visible border width
     outer_padding = max(10, int(25 * scale))  # Padding between border and outer edges of content
@@ -892,22 +892,48 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         except Exception:
             pass
     # Build metadata with Slack Channel at the top if present
+
     file_info = {}
     if slack_channel:
         file_info['Slack Channel'] = slack_channel
-    file_info['Type'] = f"{file_path.suffix[1:].upper()} ({file_type_info['group']})"
-    file_info['Size'] = format_file_size(size)
+        file_info['Type'] = f"{file_path.suffix[1:].upper()} ({file_type_info['group']})"
+        file_info['Size'] = format_file_size(size)
+
+
+    # Always add only DateTimeOriginal from EXIF for images if present
+    date_time_original = None
+    if file_type_info['group'] == 'image':
+        try:
+            img = Image.open(file_path)
+            exif_data = img._getexif()
+            logging.info(f"EXIF data for {file_path.name}: {exif_data}")
+            if exif_data:
+                from PIL.ExifTags import TAGS
+                for tag_id, value in exif_data.items():
+                    tag = TAGS.get(tag_id, tag_id)
+                    if tag == 'DateTimeOriginal':
+                        date_time_original = value
+                        break
+                if date_time_original:
+                    file_info['DateTimeOriginal'] = date_time_original
+        except Exception:
+            pass
+
     if slack_message_id:
         file_info['Message ID'] = slack_message_id
     if slack_user_name:
         file_info['Shared By'] = slack_user_name
     if slack_shared_date:
         file_info['Shared Date'] = slack_shared_date
+
     if original_dt:
         file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
     else:
-        file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
-        file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
+        # Only add Modified/Created if DateTimeOriginal is not present
+        if not date_time_original:
+            file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
+            file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
+
     # Move Name to the end
     file_info['Name'] = file_path.name
     file_info['Path'] = str(file_path.resolve())
@@ -964,14 +990,14 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         image = get_image_thumbnail(file_path, thumb_size=(max_line_width_pixels, preview_box_height))
         if image is not None:
             img_w, img_h = image.size
-            logging.debug(f"Original image size: {img_w}x{img_h} for {file_path.name}")
-            logging.debug(f"width: {width}, height: {height}, img_w: {img_w}, img_h: {img_h}")
+            #logging.debug(f"Original image size: {img_w}x{img_h} for {file_path.name}")
+            #logging.debug(f"width: {width}, height: {height}, img_w: {img_w}, img_h: {img_h}")
             # Rotate image if card is portrait and image is landscape
             if width < height and img_w > img_h:
                 logging.debug(f"Rotating image for portrait card: {file_path.name}")
                 image = image.rotate(90, expand=True)
                 img_w, img_h = image.size
-                logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
+                #logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
             # Convert transparent images to RGB with white/light background
             if image.mode in ("RGBA", "LA"):
                 logging.debug(f"Converting transparent image to RGB: {file_path.name}")
@@ -1283,7 +1309,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
             logging.error(f"Error pasting avatar image: {e}")
 
     for key, value in file_info.items():
-        if key == 'Name':
+        if key == 'Name' or key == 'Path':
             line = f"{value}"
         else:
             line = f"{key}: {value}"

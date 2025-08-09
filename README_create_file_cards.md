@@ -50,7 +50,6 @@ python generate_flipbook_pages.py --input-dir /path/to/files --output-dir ./outp
 
 ### Command Line Arguments
 
-
 - `--input-dir`: Directory containing files to process (required)
 - `--output-dir`: Directory to save the generated card images (default: parent directory of input-dir + `_cards_output`)
 - `--cmyk-mode`: Generate cards in CMYK color mode for professional printing (default: RGB mode)
