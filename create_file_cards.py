@@ -84,10 +84,32 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
         return
     
     logging.debug(f"width: {width}, height: {height}, cmyk_mode: {cmyk_mode}")
-    # Process each file in the directory
+    # Helper to find files with depth limit
+    def find_files(root_dir, max_depth=None):
+        result = []
+        root_depth = str(root_dir).rstrip(os.sep).count(os.sep)
+        for dirpath, dirnames, filenames in os.walk(root_dir):
+            current_depth = str(dirpath).rstrip(os.sep).count(os.sep) - root_depth
+            if max_depth is not None and current_depth > max_depth:
+                dirnames[:] = []
+                continue
+            for filename in filenames:
+                if filename != '.DS_Store':
+                    result.append(Path(dirpath) / filename)
+        return result
+
+    # Get max_depth from global args if present
+    import sys
+    max_depth = None
+    for arg in sys.argv:
+        if arg.startswith('--max-depth='):
+            try:
+                max_depth = int(arg.split('=')[1])
+            except Exception:
+                pass
     file_count = 0
-    for file_path in sorted(input_path.iterdir()):
-        if file_path.is_file() and file_path.name != '.DS_Store':
+    for file_path in sorted(find_files(input_path, max_depth=max_depth)):
+        if file_path.is_file():
             try:
                 file_type = determine_file_type(file_path)
                 logging.debug(f"Processing {file_path.name} - Type: {file_type}")
@@ -209,6 +231,7 @@ if __name__ == "__main__":
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
     parser.add_argument('--compact', action='store_true', help='Enable compact mode for file card generation')
     parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
+    parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
 
     args = parser.parse_args()
     logging.debug(f"Arguments: {args}")

@@ -22,12 +22,20 @@ This script generates visual information cards for files in a specified director
 
 ### Usage
 
-Basic usage:
+
+Basic usage (no recursion, only files in the specified folder):
 ```bash
 python create_file_cards.py --input-dir /path/to/files --output-dir ./output --page-size LARGE_TAROT --cmyk-mode
 ```
 
+To recurse into subfolders, use the `--max-depth` argument:
+```bash
+python create_file_cards.py --input-dir /path/to/files --max-depth 2
+```
+This will process files up to 2 levels deep.
+
 #### Command Line Arguments
+
 
 - `--input-dir`: Directory containing files to process (required)
 - `--output-dir`: Directory to save the generated card images (default: parent directory of input-dir + `_cards_output`)
@@ -37,6 +45,7 @@ python create_file_cards.py --input-dir /path/to/files --output-dir ./output --p
   - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
   - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
 - `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
+- `--max-depth`: Maximum folder recursion depth (default: 0, no recursion; set higher for deeper traversal)
 
 #### Output
 
@@ -62,6 +71,9 @@ python generate_flipbook_pages.py --input-dir /path/to/files --output-dir ./outp
 
 ### Defaults
 
+
+If `--max-depth` is not specified, only files in the specified folder are processed (no recursion). To include files in subfolders, set `--max-depth` to a higher value.
+
 If `--output-dir` is not specified, it will default to the parent directory name of the input directory with `_cards_output` appended. For example, if your input directory is `/path/to/my_files/files`, the output directory will be `my_files_cards_output`.
 
 If `--pdf-output-name` is not specified, it will default to the parent directory name of the input directory with `_combined_pdf.pdf` appended, and the PDF will be saved inside the output directory. For example, if your input directory is `/path/to/my_files/files`, the PDF will be saved as `my_files_cards_output/my_files_combined_pdf.pdf`.
@@ -69,15 +81,16 @@ If `--pdf-output-name` is not specified, it will default to the parent directory
 ## Examples
 
 
-Create Large Tarot-sized cards (2.76×4.72 inches) in CMYK mode and compact mode with PDF output (using defaults):
+
+Create Large Tarot-sized cards (2.76×4.72 inches) in CMYK mode and compact mode with PDF output (using defaults, no recursion):
 ```bash
 python create_file_cards.py --input-dir ./my_files/files --cmyk-mode --compact
 ```
 This will create cards in `my_files_cards_output` and the combined PDF in `my_files_cards_output/my_files_combined_pdf.pdf`.
 
-Create custom sized cards (3.5×5.0 inches) and specify output locations, with compact mode:
+Create custom sized cards (3.5×5.0 inches) and specify output locations, with compact mode, recursing up to 2 levels deep:
 ```bash
-python create_file_cards.py --input-dir ./my_files/files --output-dir ./cards_output --page-size 3.5X5.0 --pdf-output-name custom_cards.pdf --compact
+python create_file_cards.py --input-dir ./my_files/files --output-dir ./cards_output --page-size 3.5X5.0 --pdf-output-name custom_cards.pdf --compact --max-depth 2
 ```
 
 ## Card Features
