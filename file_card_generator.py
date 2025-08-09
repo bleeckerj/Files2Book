@@ -741,7 +741,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, compact_mode=False):
+def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, compact_mode=False, exclude_file_path=False):
     # Helper for robust image opening (handles .webp and errors)
     from PIL import UnidentifiedImageError
     def open_image_robust(path, size):
@@ -762,6 +762,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     # (Move this block to after preview_box_left, preview_box_top, outer_padding, info_font_size, and img are all set)
     file_path = Path(file_path)
     file_type_info = get_file_type_info(file_path)
+    # Initialize file_info before any use
+    file_info = {}
     # Extract DateTimeOriginal from EXIF for images and add to metadata
     date_time_original = None
     if file_type_info['group'] == 'image':
@@ -770,7 +772,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
             exif_data = img._getexif()
             if exif_data:
                 from PIL.ExifTags import TAGS
-                logging.debug(f"EXIF data for {file_path.name}:")
+                logging.info(f"EXIF data found for {file_path.name}:")
                 for tag_id, value in exif_data.items():
                     tag = TAGS.get(tag_id, tag_id)
                     logging.debug(f"  {tag}: {value}")
@@ -779,7 +781,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
                 if date_time_original:
                     file_info['DateTimeOriginal'] = date_time_original
             else:
-                logging.info(f"No EXIF data found for {file_path.name}")
+                logging.debug(f"No EXIF data found for {file_path.name}")
         except Exception as e:
             logging.error(f"Error reading EXIF data for {file_path.name}: {e}")
     # Proportional scaling
@@ -971,8 +973,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     if slack_shared_date:
         file_info['Shared Date'] = slack_shared_date
     # If DateTimeOriginal from EXIF is available, use it for both Modified and Created
-    if date_time_original:
-        file_info['Date'] = date_time_original
+    # if date_time_original:
+    #     file_info['Date'] = date_time_original
     elif original_dt:
         file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
     else:
@@ -983,7 +985,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
 
     # Move Name to the end
     file_info['Name'] = file_path.name
-    file_info['Path'] = str(file_path.resolve())
+    if not exclude_file_path:
+        file_info['Path'] = str(file_path.resolve())
 
     # Fixed card height for 4x5 aspect ratio
     if compact_mode:
@@ -1022,8 +1025,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     max_line_length = max(10, max_line_width_pixels // char_width)
     max_preview_lines = max(1, preview_box_height // line_height)
 
-    # Draw full file path vertically along the left edge of the preview area unless excluded
-    exclude_file_path = locals().get('exclude_file_path', False)
+    # Draw full file path unless excluded
     if not exclude_file_path:
         full_path = str(file_path.resolve())
         try:
