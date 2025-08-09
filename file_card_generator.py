@@ -752,18 +752,20 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         try:
             img = Image.open(file_path)
             exif_data = img._getexif()
-            logging.info(f"EXIF data for {file_path.name}: {exif_data}")
             if exif_data:
                 from PIL.ExifTags import TAGS
+                logging.info(f"EXIF data for {file_path.name}:")
                 for tag_id, value in exif_data.items():
                     tag = TAGS.get(tag_id, tag_id)
+                    logging.info(f"  {tag}: {value}")
                     if tag == 'DateTimeOriginal':
                         date_time_original = value
-                        break
                 if date_time_original:
                     file_info['DateTimeOriginal'] = date_time_original
-        except Exception:
-            pass
+            else:
+                logging.info(f"No EXIF data found for {file_path.name}")
+        except Exception as e:
+            logging.error(f"Error reading EXIF data for {file_path.name}: {e}")
     # Proportional scaling
     base_width = 800
     base_height = 1000
@@ -927,7 +929,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         try:
             img = Image.open(file_path)
             exif_data = img._getexif()
-            logging.info(f"EXIF data for {file_path.name}: {exif_data}")
+            #logging.info(f"EXIF data for {file_path.name}: {exif_data}")
             if exif_data:
                 from PIL.ExifTags import TAGS
                 for tag_id, value in exif_data.items():
@@ -1006,31 +1008,15 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         path_font = ImageFont.load_default()
     path_x = preview_box_left - int(outer_padding * 0.5)
     path_y = preview_box_top
-    # Only use transparency mask for image files
-    image_exts = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp', '.heic', '.heif'}
-    if ext in image_exts:
-        if cmyk_mode:
-            path_img = Image.new('CMYK', (height, width), (0, 0, 0, 0))
-            path_draw = ImageDraw.Draw(path_img)
-            path_draw.text((0, 0), full_path, font=path_font, fill=(0, 0, 0, 80))
-        else:
-            path_img = Image.new('RGBA', (height, width), (255, 255, 255, 0))
-            path_draw = ImageDraw.Draw(path_img)
-            path_draw.text((0, 0), full_path, font=path_font, fill=(80, 80, 80, 255))
-        rotated_path_img = path_img.rotate(90, expand=True)
-        img.paste(rotated_path_img, (int(path_x), int(path_y)), rotated_path_img)
-    else:
-        # For non-image files, use opaque mask (convert to RGB)
-        if cmyk_mode:
-            path_img = Image.new('CMYK', (height, width), (0, 0, 0, 0))
-            path_draw = ImageDraw.Draw(path_img)
-            path_draw.text((0, 0), full_path, font=path_font, fill=(0, 0, 0, 80))
-        else:
-            path_img = Image.new('RGB', (height, width), (255, 255, 255))
-            path_draw = ImageDraw.Draw(path_img)
-            path_draw.text((0, 0), full_path, font=path_font, fill=(80, 80, 80))
-        rotated_path_img = path_img.rotate(90, expand=True)
-        img.paste(rotated_path_img, (int(path_x), int(path_y)))
+    # Always use RGBA for overlays
+    path_img = Image.new('RGBA', (height, width), (255, 255, 255, 0))
+    path_draw = ImageDraw.Draw(path_img)
+    path_draw.text((0, 0), full_path, font=path_font, fill=(80, 80, 80, 255))
+    rotated_path_img = path_img.rotate(90, expand=True)
+    # Ensure base image is RGBA
+    if img.mode != 'RGBA':
+        img = img.convert('RGBA')
+    img.paste(rotated_path_img, (int(path_x), int(path_y)), rotated_path_img)
 
     # --- Preview logic by file type ---
     preview_lines = []
@@ -1351,6 +1337,9 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
             #logging.debug(f"Avatar resized: size={avatar_img.size}")
             avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
             #logging.debug(f"Avatar rounded: size={avatar_img.size}")
+            # Ensure avatar is RGBA
+            if avatar_img.mode != 'RGBA':
+                avatar_img = avatar_img.convert('RGBA')
         except Exception as e:
             logging.error(f"Error processing avatar image {slack_avatar}: {e}")
             avatar_img = None
@@ -1361,6 +1350,9 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
             avatar_x_coordinate = int(outer_padding + 60 * scale)  # 15px from left border, scaled
             avatar_y_coordinate = int(outer_padding + header_height + 5 * scale)
             #logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
+            # Ensure base image is RGBA
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
@@ -1465,35 +1457,45 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        img.paste(pdf_grid_thumb, (int(x0), int(y0)))
+        if pdf_grid_thumb.mode != 'RGBA':
+            pdf_grid_thumb = pdf_grid_thumb.convert('RGBA')
+        img.paste(pdf_grid_thumb, (int(x0), int(y0)), pdf_grid_thumb)
     elif gpx_thumb is not None:
         img_w, img_h = gpx_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        img.paste(gpx_thumb, (int(x0), int(y0)))
+        if gpx_thumb.mode != 'RGBA':
+            gpx_thumb = gpx_thumb.convert('RGBA')
+        img.paste(gpx_thumb, (int(x0), int(y0)), gpx_thumb)
     elif video_thumb is not None:
         img_w, img_h = video_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        img.paste(video_thumb, (int(x0), int(y0)))
+        if video_thumb.mode != 'RGBA':
+            video_thumb = video_thumb.convert('RGBA')
+        img.paste(video_thumb, (int(x0), int(y0)), video_thumb)
     elif image_thumb is not None:
         img_w, img_h = image_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        img.paste(image_thumb, (int(x0), int(y0)))
+        if image_thumb.mode != 'RGBA':
+            image_thumb = image_thumb.convert('RGBA')
+        img.paste(image_thumb, (int(x0), int(y0)), image_thumb)
     elif fit_gps_thumb is not None:
         img_w, img_h = fit_gps_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        img.paste(fit_gps_thumb, (int(x0), int(y0)))
+        if fit_gps_thumb.mode != 'RGBA':
+            fit_gps_thumb = fit_gps_thumb.convert('RGBA')
+        img.paste(fit_gps_thumb, (int(x0), int(y0)), fit_gps_thumb)
     elif zip_file_list is not None:
         text_y = preview_box_top + preview_box_padding
         for line in zip_file_list:

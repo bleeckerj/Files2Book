@@ -90,7 +90,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
         if file_path.is_file() and file_path.name != '.DS_Store':
             try:
                 file_type = determine_file_type(file_path)
-                logging.info(f"Processing {file_path.name} - Type: {file_type}")
+                logging.debug(f"Processing {file_path.name} - Type: {file_type}")
 
                 # Log width and height before calling create_file_info_card
                 logging.debug(f"Before create_file_info_card: width={width}, height={height}")
@@ -104,18 +104,18 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 
                 # Use dedicated function for TIFF saving to preserve borders
                 save_card_as_tiff(card, card_path, cmyk_mode=cmyk_mode)
-                logging.info(f"Saved card: {card_path}")
+                logging.debug(f"Saved card: {card_path}")
                 
                 # Log the size of the saved card
                 card_size = card.size
                 logging.debug(f"Card size: {card_size}")
 
-                logging.info(f"Created card for {file_path.name} with size: {card.size} width: {card.width}, height: {card.height}")
+                logging.debug(f"Created card for {file_path.name} with size: {card.size} width: {card.width}, height: {card.height}")
                 # Save the card as PNG only if not CMYK
                 if not cmyk_mode:
                     output_file = output_path / f"{file_path.stem}_card.png"
                     card.save(output_file)
-                    logging.info(f"Saved card to {output_file} with size: {card.size}")
+                    logging.debug(f"Saved card to {output_file} with size: {card.size}")
                 file_count += 1
             except Exception as e:
                 logging.error(f"Error processing {file_path.name}: {e}")
