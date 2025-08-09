@@ -36,9 +36,9 @@ except ImportError:
     PILLOW_HEIF_AVAILABLE = False
 
 
-def get_parent_of_parent_name(input_dir):
+def get_parent_name(input_dir):
     input_path = Path(input_dir).resolve()
-    return input_path.parent.name.replace(' ', '_')
+    return input_path.name.replace(' ', '_')
 
 
 def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1, exclude_video_stills=False, 
@@ -52,11 +52,19 @@ def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1, exclude_vi
     video_frames_map = {}  # video_name -> list of frames
     frame_index = 0
 
-    for file_path in sorted(input_path.iterdir()):
+    # List all files in the input directory before processing
+    all_files = sorted(input_path.iterdir())
+    logging.info(f"Directory listing for {input_path}:")
+    for f in all_files:
+        logging.info(f"  {f} (suffix: {f.suffix.lower()})")
+
+    for file_path in all_files:
+        logging.debug(f"Considering file: {file_path} (suffix: {file_path.suffix.lower()})")
         file_type = determine_file_type(file_path)
         ext = file_path.suffix.lower()
         
         if ext in IMAGE_EXTENSIONS:
+            logging.info(f"Accepted as image: {file_path}")
             if ext == '.heic':
                 if PILLOW_HEIF_AVAILABLE:
                     try:
@@ -70,18 +78,20 @@ def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1, exclude_vi
                         images.append(img)
                         image_paths.append(str(file_path))
                     except Exception as e:
-                        print(f"Error loading HEIC image {file_path}: {e}")
+                        logging.error(f"Error loading HEIC image {file_path}: {e}")
                 else:
-                    print(f"pillow-heif not available, skipping HEIC image: {file_path}")
+                    logging.warning(f"pillow-heif not available, skipping HEIC image: {file_path}")
             else:
                 img = Image.open(file_path).convert('RGB')
                 images.append(img)
                 image_paths.append(str(file_path))
         elif ext == '.pdf':
+            logging.info(f"Accepted as PDF: {file_path}")
             pdf_images = convert_from_path(str(file_path))
             images.extend(pdf_images)
             image_paths.extend([f"{file_path} (Page {i+1})" for i in range(len(pdf_images))])
         elif ext in VIDEO_EXTENSIONS:
+            logging.info(f"Accepted as video: {file_path}")
             video_name = file_path.stem.replace(' ', '_')
             if flipbook_mode:
                 frames = extract_frames_from_video_fps(file_path, video_fps)
@@ -95,19 +105,24 @@ def load_images_from_dir(input_dir, flipbook_mode=False, video_fps=1, exclude_vi
                 frames = extract_frames_from_video(file_path, num_frames=12)
                 images.extend(frames)
                 image_paths.extend([f"{file_path} (Frame {i+1})" for i in range(len(frames))])
-        
         # Handle non-visual files by creating info cards
         elif handle_non_visual and file_path.is_file():
+            logging.info(f"Accepted as non-visual file: {file_path}")
             try:
-                print(f"Creating info card for non-visual file: {file_path}")
+                logging.debug(f"Creating info card for non-visual file: {file_path}")
                 # Standard size for info cards (3:2 aspect ratio)
                 card_width, card_height = 900, 600
                 img = create_file_info_card(file_path, card_width, card_height, cmyk_mode=cmyk_mode)
                 images.append(img)
                 image_paths.append(str(file_path))
             except Exception as e:
-                print(f"Error creating info card for {file_path}: {e}")
+                logging.error(f"Error creating info card for {file_path}: {e}")
+        else:
+            logging.debug(f"Skipped file: {file_path}")
     
+    logging.info(f"Accepted files for output ({len(image_paths)}):")
+    for accepted_file in image_paths:
+        logging.info(f"  {accepted_file}")
     return images, video_frames_map, image_paths
 
 
@@ -286,11 +301,15 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
     for i in range(0, len(images), chunk_size):
             
         chunk = images[i:i + (chunk_size or len(images))]
+        chunk_paths = image_paths[i:i+chunk_size]
+        logging.info(f"Generating output page {page_counter} with {len(chunk)} images:")
+        for cp in chunk_paths:
+            logging.info(f"  Included in page: {cp}")
         side = 'recto' if page_counter % 2 == 1 else 'verso'
         if layout == 'grid':
             page_img = arrange_grid(chunk, page_size, len(chunk), gap, hairline_width, hairline_color,
                                     padding, image_fit_mode, grid_rows, grid_cols, page_margin, 
-                                    side=side, is_flipbook=flipbook_mode, image_paths=image_paths[i:i+chunk_size],
+                                    side=side, is_flipbook=flipbook_mode, image_paths=chunk_paths,
                                     cmyk_mode=cmyk_mode, cmyk_background=cmyk_background)
         else:
             page_img = arrange_masonry(chunk, page_size, len(chunk), gap, hairline_width, hairline_color,
@@ -305,7 +324,7 @@ def images_to_pages(images, layout, page_size, gap, hairline_width, hairline_col
             output_path = output_dir / filename
             page_img.save(output_path)
         output_images.append(page_img)
-        print(f'Saved {output_path}')
+        logging.info(f"Saved output page: {output_path}")
         page_counter += 1
     if output_pdf and output_images:
         pdf_path_out = output_dir / f'{parent_prefix}_output_combined.pdf'
@@ -389,7 +408,7 @@ def main():
     hairline_width_px = parse_inches_to_pixels(args.hairline_width)
 
     # Set output directory based on parent of parent directory
-    parent_dir_name = get_parent_of_parent_name(args.input_dir)
+    parent_dir_name = get_parent_name(args.input_dir)
     script_dir = Path(__file__).parent.resolve()
     if args.output_dir:
         output_dir = args.output_dir
