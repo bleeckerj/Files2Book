@@ -783,7 +783,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
             else:
                 logging.debug(f"No EXIF data found for {file_path.name}")
         except Exception as e:
-            logging.error(f"Error reading EXIF data for {file_path.name}: {e}")
+            logging.warning(f"Error reading EXIF data for {file_path.name}: {e}")
     # Proportional scaling
     base_width = 800
     base_height = 1000
@@ -804,7 +804,29 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     # Load preview image robustly (handles .webp and errors)
     preview_box_width = int(width * 0.45)
     preview_box_height = int(height * 0.6)
-    preview_img = open_image_robust(str(file_path), (preview_box_width, preview_box_height))
+    # For .ai files, use pdf2image to generate preview
+    ext = Path(file_path).suffix.lower()
+    preview_img = None
+    if ext == '.ai':
+        try:
+            from pdf2image import convert_from_path
+            pages = convert_from_path(str(file_path), first_page=1, last_page=1)
+            if pages:
+                # Resize first page to preview box size
+                page_img = pages[0]
+                page_img = page_img.convert('RGBA')
+                page_img.thumbnail((preview_box_width, preview_box_height), Image.LANCZOS)
+                preview_img = page_img
+            else:
+                logging.warning(f"No pages found in .ai file: {file_path}")
+        except Exception as e:
+            logging.error(f"Error generating preview for .ai file {file_path}: {e}")
+            preview_img = Image.new('RGBA', (preview_box_width, preview_box_height), (200, 200, 200, 255))
+    elif ext == '.pdf':
+        # For PDFs, preview_img is not used; handled in dedicated PDF logic below
+        preview_img = None
+    else:
+        preview_img = open_image_robust(str(file_path), (preview_box_width, preview_box_height))
     # ...continue with card layout logic using preview_img...
 
     # Draw the border around the content area
@@ -843,7 +865,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         spacing_between_metadata_and_content_preview = 0
         preview_box_padding = int(1 * scale)
         header_height = int(32 * scale)  # Much shorter header bar
-        logging.info("[COMPACT MODE] Reduced header, spacing, and maximized preview area.")
+        logging.debug("[COMPACT MODE] Reduced header, spacing, and maximized preview area.")
     else:
         title_font_size = int(40 * scale)
         info_font_size = int(22 * scale)
@@ -1055,7 +1077,22 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     zip_file_list = None
     zip_file_preview_img = None
     zip_file_preview_lines = None
-    if ext == '.webp':
+    # --- Preview logic by file type ---
+    # .ai files: use preview_img from pdf2image above
+    if ext == '.ai':
+        if preview_img is not None:
+            img_w, img_h = preview_img.size
+            scale_factor = min(
+                (max_line_width_pixels) / img_w,
+                (preview_box_height) / img_h
+            ) * 0.95
+            new_w = int(img_w * scale_factor)
+            new_h = int(img_h * scale_factor)
+            image_thumb = preview_img.resize((new_w, new_h), Image.LANCZOS)
+            logging.debug(f"Final .ai image_thumb size: {new_w}x{new_h} for {file_path.name}")
+        else:
+            preview_lines = ["AI file: PDF preview not available."]
+    elif ext == '.webp':
         # Use robust preview logic for webp
         image = preview_img
         if image is not None:
@@ -1143,6 +1180,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
             preview_lines = [f"NUMBERS error: {e}"]
     elif ext == '.pdf':
         try:
+            from pdf2image import convert_from_path
             pages = convert_from_path(str(file_path), first_page=1, last_page=1)
             if pages:
                 image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
@@ -1323,15 +1361,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"PPTX error: {e}"]
-    elif ext == '.ai':
-        try:
-            pages = convert_from_path(str(file_path), first_page=1, last_page=1)
-            if pages:
-                image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
-            else:
-                preview_lines = ["AI file: PDF preview not available."]
-        except Exception as e:
-            preview_lines = [f"AI error: {e}"]
+    # All other file types remain handled as before
     # --- Draw card ---
     if cmyk_mode:
         from pdf_to_images import create_cmyk_image
@@ -1365,7 +1395,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=color)
         text_color = (0, 0, 0, 0)
     # Position the file type text vertically centered in the header area, accounting for outer padding
-    draw.text((width//2, outer_padding + header_height//2), file_path.suffix.upper(), fill=text_color, font=title_font, anchor="mm")
+    draw.text((width//2, outer_padding + header_height//2), file_path.name.upper(), fill=text_color, font=title_font, anchor="mm")
     # Position the icon below the header, accounting for outer padding
     if compact_mode:
         # Do not draw icon text in compact mode
@@ -1432,15 +1462,15 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     if 'Type' in file_info:
         draw.text((width//2, y), str(file_info['Type']), fill='black', font=info_font, anchor="mm")
         y += metadata_line_height
-    if 'Name' in file_info:
-        draw.text((width//2, y), str('Filename: ‘' + file_info['Name']+'’'), fill='black', font=info_font, anchor="mm")
-        y += metadata_line_height
+    # if 'Name' in file_info:
+    #     draw.text((width//2, y), str('Filename: ‘' + file_info['Name']+'’'), fill='black', font=info_font, anchor="mm")
+    #     y += metadata_line_height
     # Print the rest of the metadata except Type and Name
     for key, value in file_info.items():
         if key in ('Type', 'Name'):
             continue
         if key == 'Path':
-            line = truncate_middle_with_filename(value, max_length=75)
+            line = truncate_middle_with_filename(value, max_length=85 )
         else:
             line = f"{key}: {value}"
         draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
