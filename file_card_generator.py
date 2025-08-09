@@ -511,21 +511,29 @@ def get_gpx_preview(file_path, box_w, box_h):
     except Exception:
         return None
 
-def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=2, rotate_frames_if_portrait=True):
+def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=3, rotate_frames_if_portrait=True):
     try:
         cap = cv2.VideoCapture(str(file_path))
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if frame_count == 0:
             cap.release()
             return None
-        # Pick random frames from specific portions
-        ranges = [
-            (0, int(frame_count * 0.1)),                      # first 10%
-            (int(frame_count * 0.1), int(frame_count * 0.5)), # 10%-50%
-            (int(frame_count * 0.5), int(frame_count * 0.9)), # 50%-90%
-            (int(frame_count * 0.9), frame_count)             # last 10%
-        ]
-        idxs = [random.randint(start, max(start, end-1)) for start, end in ranges]
+        # Select frames using a normal distribution (bell curve) centered in the video
+        import numpy as np
+        num_frames = grid_cols * grid_rows
+        mean = frame_count / 2
+        stddev = frame_count / 4
+        idxs = np.random.normal(loc=mean, scale=stddev, size=num_frames)
+        idxs = np.clip(idxs, 0, frame_count - 1)
+        idxs = np.round(idxs).astype(int)
+        # Ensure unique and sorted indices for visual consistency
+        idxs = sorted(set(idxs))
+        # If not enough unique frames, fill in with evenly spaced frames
+        while len(idxs) < num_frames:
+            extra = np.linspace(0, frame_count - 1, num_frames)
+            idxs = sorted(set(list(idxs) + list(np.round(extra).astype(int))))
+            if len(idxs) > num_frames:
+                idxs = idxs[:num_frames]
         thumbs = []
         thumb_w = box_w // grid_cols
         thumb_h = box_h // grid_rows
@@ -737,14 +745,14 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             )
 
     # Proportional font sizes
-    title_font_size = int(15 * scale)
+    title_font_size = int(20 * scale)
     info_font_size = int(15 * scale)  # Smaller font size for metadata
-    preview_font_size = int(10 * scale)
-    fit_font_size = int(15 * scale)
+    preview_font_size = int(11 * scale)
+    fit_font_size = int(11 * scale)
     # Proportional paddings (keeping the original border_width value)
     icon_space = int((100 + 40) * scale)
     metadata_line_height = int(info_font_size * 1.02)  # Tighter line spacing for metadata
-    spacing_between_metadata_and_content_preview = int(80 * scale)
+    spacing_between_metadata_and_content_preview = int(20 * scale)
     preview_box_padding = int(8 * scale)
     header_height = int(20 * scale)
 
