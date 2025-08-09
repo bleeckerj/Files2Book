@@ -69,7 +69,7 @@ def scale_image(image, scale_factor):
 # Define file type groups with recognizable icons
 FILE_TYPE_GROUPS = {
     'code': {
-        'extensions': {'.py', '.js', '.html', '.css', '.java', '.c', '.cpp', '.h', '.sh', '.rb', '.swift', '.php', '.go'},
+        'extensions': {'.patch', '.py', '.js', '.html', '.css', '.java', '.c', '.cpp', '.h', '.sh', '.rb', '.swift', '.php', '.go'},
         'icon': "< / >",
         'color': (251, 64, 55)  # HEX: fb4037
     },
@@ -126,6 +126,11 @@ FILE_TYPE_GROUPS = {
     'log': {
         'extensions': {'.log', '.txt', '.out'},
         'icon': "LOG",
+        'color': (0, 0, 0)  # HEX: 000000
+    },
+    'movie': {
+        'extensions': {'.mp4', '.mkv', '.avi', '.mov'},
+        'icon': "MOVIE",
         'color': (0, 0, 0)  # HEX: 000000
     }
 }
@@ -687,7 +692,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     base_width = 800
     base_height = 1000
     scale = min(width / base_width, height / base_height)
-    logging.info(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
+    logging.debug(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
     # Proportional paddings
     border_width = max(2, int(1 * scale))  # Using a more reasonable but still very visible border width
     outer_padding = max(10, int(25 * scale))  # Padding between border and outer edges of content
@@ -697,7 +702,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     #content_height = height - 2 * outer_padding
 
     # Create the full-sized image (background)
-    img = Image.new('RGB', (width, height), 'white')
+    img = Image.new('RGBA', (width, height), 'white')
     draw = ImageDraw.Draw(img)
 
     # Draw the border around the content area
@@ -727,16 +732,16 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             )
 
     # Proportional font sizes
-    title_font_size = int(40 * scale)
-    info_font_size = int(22 * scale)  # Slightly larger font size for metadata
-    preview_font_size = int(14 * scale)
-    fit_font_size = int(12 * scale)
+    title_font_size = int(15 * scale)
+    info_font_size = int(15 * scale)  # Smaller font size for metadata
+    preview_font_size = int(10 * scale)
+    fit_font_size = int(15 * scale)
     # Proportional paddings (keeping the original border_width value)
     icon_space = int((100 + 40) * scale)
-    metadata_line_height = int(info_font_size * 1.15)  # Reduce line spacing, closer to font size
-    spacing_between_metadata_and_content_preview = int(15 * scale)
-    preview_box_padding = int(15 * scale)
-    header_height = int(80 * scale)
+    metadata_line_height = int(info_font_size * 1.02)  # Tighter line spacing for metadata
+    spacing_between_metadata_and_content_preview = int(80 * scale)
+    preview_box_padding = int(8 * scale)
+    header_height = int(20 * scale)
 
     # Load fonts
     try:
@@ -842,11 +847,11 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     file_info['Name'] = file_path.name
 
     # Fixed card height for 4x5 aspect ratio
-    header_height = int(80 * scale)
+    #header_height = int(80 * scale)
     icon_space = int((100 + 40) * scale)
     metadata_lines = len(file_info)
     metadata_height = metadata_lines * metadata_line_height
-    
+    logging.debug(f"Metadata height: {metadata_height} for {metadata_lines} lines")
     # Content area dimensions, accounting for outer padding
     content_area_left = outer_padding
     content_area_right = width - outer_padding
@@ -855,7 +860,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     # Preview box within the content area
     preview_box_left = content_area_left + int(content_area_width * 0.1)
     preview_box_right = content_area_right - int(content_area_width * 0.1)
-    preview_box_top = outer_padding + header_height + icon_space + metadata_height + spacing_between_metadata_and_content_preview
+    preview_box_top = outer_padding + header_height + metadata_height + spacing_between_metadata_and_content_preview
+    logging.debug(f"Preview box top: {preview_box_top}, icon space: {icon_space}, metadata height: {metadata_height}")
     preview_box_bottom = height - outer_padding - int(30 * scale)
     preview_box_height = preview_box_bottom - preview_box_top
     max_line_width_pixels = preview_box_right - preview_box_left - preview_box_padding * 2
@@ -950,7 +956,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                 preview_lines = ["PDF preview not available."]
         except Exception as e:
             preview_lines = [f"PDF error: {e}"]
-    elif ext in {'.mp4', '.mov', '.avi', '.mkv'}:
+    elif ext in {'.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm'}:
         video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height)
     elif ext == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
@@ -1164,13 +1170,13 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     else:
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=color)
         text_color = (0, 0, 0, 0)
-    # Position the file type text vertically centered in the header area, accounting for outer padding
-    draw.text((width//2, outer_padding + header_height//2), file_path.suffix.upper(), fill=text_color, font=title_font, anchor="mm")
+    # Position the file name vertically centered in the header area, accounting for outer padding
+    draw.text((width//2, outer_padding + header_height//2), file_path.name.upper(), fill=text_color, font=title_font, anchor="mm")
     # Position the icon below the header, accounting for outer padding
-    icon_y = outer_padding + header_height + int(20 * scale)
-    icon_color = file_type_info['color'] if rgb_mode else color
-    draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
-    y = icon_y + 60
+    # icon_y = outer_padding + header_height + int(20 * scale)
+    # icon_color = file_type_info['color'] if rgb_mode else color
+    # draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
+    # y = icon_y + 60
     avatar_size = int(100 * scale)
     avatar_img = None
     if slack_avatar:
@@ -1195,7 +1201,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
-
+    y = avatar_y_coordinate + 5*scale # avatar and metadata can be horizontally aligned
     for key, value in file_info.items():
         if key == 'Name':
             # For the Name field, don't show the label
@@ -1205,7 +1211,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
         y += metadata_line_height
     y = preview_box_top - 30
-    draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
+    #draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
     preview_background_color = (245, 245, 245) if rgb_mode else (0, 0, 0, 4)
     draw.rectangle(
