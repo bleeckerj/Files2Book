@@ -165,14 +165,30 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
     
     # Get list of all card files
     card_files = sorted(output_path.glob("*_card.*"))
-    
+
+    # Convert webp images to PNG for img2pdf compatibility
+    converted_files = []
+    for f in card_files:
+        if f.suffix.lower() == '.webp':
+            png_path = f.with_suffix('.png')
+            try:
+                from PIL import Image
+                im = Image.open(f)
+                im.save(png_path)
+                logging.info(f"Converted {f} to {png_path} for PDF assembly.")
+                converted_files.append(str(png_path))
+            except Exception as e:
+                logging.error(f"Error converting {f} to PNG: {e}")
+        else:
+            converted_files.append(str(f))
+
     # If using img2pdf and we have TIFF files, use it directly
-    if use_img2pdf and any(f.suffix.lower() == '.tiff' for f in card_files):
+    if use_img2pdf and any(Path(f).suffix.lower() == '.tiff' for f in converted_files):
         try:
             # Filter to only include image files that img2pdf supports
-            valid_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif']
-            image_files = [str(f) for f in card_files if f.suffix.lower() in valid_extensions]
-            
+            valid_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp']
+            image_files = [str(f) for f in converted_files if Path(f).suffix.lower() in valid_extensions]
+
             if image_files:
                 logging.debug(f"Creating PDF with img2pdf using {len(image_files)} images")
                 with open(pdf_file, "wb") as f:

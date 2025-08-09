@@ -754,10 +754,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
             exif_data = img._getexif()
             if exif_data:
                 from PIL.ExifTags import TAGS
-                logging.info(f"EXIF data for {file_path.name}:")
+                logging.debug(f"EXIF data for {file_path.name}:")
                 for tag_id, value in exif_data.items():
                     tag = TAGS.get(tag_id, tag_id)
-                    logging.info(f"  {tag}: {value}")
+                    logging.debug(f"  {tag}: {value}")
                     if tag == 'DateTimeOriginal':
                         date_time_original = value
                 if date_time_original:
