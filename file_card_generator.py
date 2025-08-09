@@ -99,7 +99,7 @@ FILE_TYPE_GROUPS = {
         'color': (166, 0, 245)  # HEX: #a600f5
     },
     'text': {
-        'extensions': {'.txt', '.md', '.rtf'},
+        'extensions': {'.txt', '.md', '.rtf', '.mdx'},
         'icon': "TEXT",
         'color': (101, 0, 237)  # HEX: 6500ed
     },
@@ -129,9 +129,14 @@ FILE_TYPE_GROUPS = {
         'color': (0, 0, 0)  # HEX: 000000
     },
     'movie': {
-        'extensions': {'.mp4', '.mkv', '.avi', '.mov'},
+        'extensions': {'.mp4', '.mkv', '.avi', '.mov', '.m4v', '.webm'},
         'icon': "MOVIE",
-        'color': (0, 0, 0)  # HEX: 000000
+        'color': (42, 219, 61)  # HEX: 2adb3d
+    },
+    'image': {
+        'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'},
+        'icon': "IMAGE",
+        'color': (0, 244, 240)  # HEX: 00f4f0
     }
 }
 
