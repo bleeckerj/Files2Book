@@ -439,31 +439,47 @@ def get_pdf_preview(file_path, box_w, box_h, max_pages=6):
     try:
         # First, get the total number of pages
         from pdf2image import convert_from_path
+        import numpy as np
         logging.debug(f"Attempting to extract PDF preview: {file_path}")
         all_pages = convert_from_path(str(file_path))
         n_total = len(all_pages)
         logging.info(f"PDF {file_path} has {n_total} pages")
-        n = min(max_pages, n_total)
-        if n == 0:
+        # Dynamically determine number of preview pages
+        if n_total <= 6:
+            n_preview = n_total
+        elif n_total <= 20:
+            n_preview = min(8, n_total)
+        elif n_total <= 50:
+            n_preview = min(12, n_total)
+        else:
+            n_preview = min(16, n_total)
+        if n_preview == 0:
             logging.warning(f"No pages found in PDF: {file_path}")
             return None
+        # Select preview page indices: always include first page, then evenly distributed
+        indices = [0]
+        if n_preview > 1:
+            # Evenly distribute remaining pages
+            remaining = np.linspace(1, n_total - 1, n_preview - 1)
+            indices += [int(round(i)) for i in remaining]
+        indices = sorted(set(indices))
+        selected_pages = [all_pages[i] for i in indices]
         # Dynamically determine grid layout
-        # Favor more rows for tall preview, more columns for wide preview
         aspect_ratio = box_w / max(box_h, 1)
-        grid_rows = int(math.ceil(math.sqrt(n / aspect_ratio)))
-        grid_cols = int(math.ceil(n / grid_rows))
+        grid_rows = int(math.ceil(math.sqrt(len(selected_pages) / aspect_ratio)))
+        grid_cols = int(math.ceil(len(selected_pages) / grid_rows))
         thumb_w = box_w // grid_cols
         thumb_h = box_h // grid_rows
-        grid_img = Image.new('RGB', (box_w, box_h), (245, 245, 245))
-        for idx, page in enumerate(all_pages[:n]):
+        grid_img = Image.new('RGBA', (box_w, box_h), (245, 245, 245))
+        for idx, page in enumerate(selected_pages):
             try:
                 page.thumbnail((thumb_w, thumb_h))
                 x = (idx % grid_cols) * thumb_w + (thumb_w - page.width)//2
                 y = (idx // grid_cols) * thumb_h + (thumb_h - page.height)//2
                 grid_img.paste(page, (x, y))
-                logging.debug(f"Pasted page {idx+1} at ({x}, {y}), size ({page.width}, {page.height})")
+                logging.debug(f"Pasted page {indices[idx]+1} at ({x}, {y}), size ({page.width}, {page.height})")
             except Exception as page_e:
-                logging.error(f"Error rendering page {idx+1} of {file_path}: {page_e}")
+                logging.error(f"Error rendering page {indices[idx]+1} of {file_path}: {page_e}")
         logging.debug(f"Preview box: width={box_w}, height={box_h}")
         logging.debug(f"Grid before rotation: width={grid_img.width}, height={grid_img.height}")
         return grid_img
@@ -747,8 +763,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
     # Proportional font sizes
     title_font_size = int(20 * scale)
     info_font_size = int(15 * scale)  # Smaller font size for metadata
-    preview_font_size = int(11 * scale)
-    fit_font_size = int(11 * scale)
+    preview_font_size = int(12 * scale)
+    fit_font_size = int(15 * scale)
     # Proportional paddings (keeping the original border_width value)
     icon_space = int((100 + 40) * scale)
     metadata_line_height = int(info_font_size * 1.02)  # Tighter line spacing for metadata
@@ -962,11 +978,12 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
             preview_lines = [f"NUMBERS error: {e}"]
     elif ext == '.pdf':
         try:
-            pages = convert_from_path(str(file_path), first_page=1, last_page=1)
-            if pages:
-                image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
-            else:
-                preview_lines = ["PDF preview not available."]
+            #pages = convert_from_path(str(file_path), first_page=1, last_page=1)
+            #if pages:
+                #image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
+            image_thumb = get_pdf_preview(str(file_path), max_line_width_pixels, preview_box_height)
+            #else:
+            #    preview_lines = ["PDF preview not available."]
         except Exception as e:
             preview_lines = [f"PDF error: {e}"]
     elif ext in {'.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm'}:
