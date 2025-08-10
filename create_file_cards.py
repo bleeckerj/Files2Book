@@ -59,8 +59,10 @@ def parse_page_size(size_name):
         except Exception:
             pass
     # Default to A4
-    logging.warning(f"Unknown page size '{size_name}', defaulting to A4")
-    return int(8.3 * dpi), int(11.7 * dpi)
+    logging.warning(f"Unknown page size '{size_name}', defaulting to A5")
+    w_in, h_in = sizes['A5']
+    logging.warning(f"A5 size: {w_in}x{h_in} inches")
+    return int(w_in * dpi), int(h_in * dpi)
 
 def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False):
     """
