@@ -308,7 +308,7 @@ def get_gz_preview(file_path, max_bytes=1024, preview_box=None):
         orig_name = Path(file_path).stem
         ext = Path(orig_name).suffix.lower()
         # Try image preview
-        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.heic'} and preview_box:
+        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.heic', '.webp'} and preview_box:
             try:
                 img = Image.open(io.BytesIO(data))
                 img.thumbnail(preview_box)
@@ -753,7 +753,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     #content_width = width - 2 * outer_padding
     #content_height = height - 2 * outer_padding
 
-    # Create the full-sized image (background)
+    # Create the full-sized background image that is the canvas for the preview
     img = Image.new('RGBA', (width, height), 'white')
     draw = ImageDraw.Draw(img)
 
@@ -939,7 +939,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     zip_file_list = None
     zip_file_preview_img = None
     zip_file_preview_lines = None
-    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff'}:
+    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp'}:
         image = get_image_thumbnail(file_path, thumb_size=(max_line_width_pixels, preview_box_height))
         if image is not None:
             img_w, img_h = image.size
