@@ -57,7 +57,7 @@ def parse_page_size(size_name):
     logging.warning(f"Unknown page size '{size_name}', defaulting to A4")
     return int(8.3 * dpi), int(11.7 * dpi)
 
-def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', compact_mode=False, exclude_file_path=False):
+def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -221,7 +221,6 @@ if __name__ == "__main__":
     parser.add_argument('--cmyk-mode', action='store_true', help='Generate cards in CMYK mode')
     parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
-    parser.add_argument('--compact', action='store_true', help='Enable compact mode for file card generation')
     parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
     parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
     parser.add_argument('--exclude-file-path', action='store_true', help='Exclude the vertical file path from the card (default: shown)')
@@ -260,7 +259,6 @@ if __name__ == "__main__":
         args.output_dir,
         args.cmyk_mode,
         args.page_size,
-        compact_mode=args.compact,
         exclude_file_path=args.exclude_file_path
     )
 
