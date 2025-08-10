@@ -37,13 +37,14 @@ mimetypes.init()
 dotenv.load_dotenv()
 
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(name)s - %(funcName)s:%(lineno)d - %(message)s'
+    level=logging.INFO,
+    format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
 )
 
 logging.getLogger("pdf2image").setLevel(logging.WARNING)
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
+logging.getLogger("img2pdf").setLevel(logging.WARNING)
 
 def round_image_corners(img, radius):
     # Ensure img is RGBA
@@ -152,11 +153,11 @@ def scale_image_by_percent(image, percent):
 def get_file_type_info(file_path):
     """Determine file type group and icon information."""
     ext = file_path.suffix.lower()
-    logging.info(f"DEBUG: ext={ext}")
+    #logging.debug(f"ext={ext}")
     # Check if the extension is in any of our groups
     for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
-            logging.debug(f"DEBUG: Found group {group} for extension {ext} for file {file_path}")
+            logging.debug(f"Found group {group} for extension {ext} for file {file_path}")
             return {
                 'group': group,
                 'icon': info['icon'],
@@ -763,6 +764,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 
 
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False):
+    file_info = {}
     exif_candidate = False
     ext = Path(file_path).suffix.lower()
     # Step 2: If EXIF-capable, try to read EXIF data

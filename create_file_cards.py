@@ -12,6 +12,10 @@ import itertools
 import traceback
 import img2pdf
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
+)
 # Import the file card generator
 from file_card_generator import create_file_info_card, determine_file_type, save_card_as_tiff
 
@@ -67,7 +71,6 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
         cmyk_mode: Whether to use CMYK mode for the cards
         page_size: Page size for the cards (default is A4)
     """
-    logging.basicConfig(level=logging.INFO)
     logging.info(f"Starting file card with size {page_size}")
     input_path = Path(input_dir)
     logging.info(f"Input directory: {input_path}")
