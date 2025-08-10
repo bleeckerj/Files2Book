@@ -57,7 +57,7 @@ def parse_page_size(size_name):
     logging.warning(f"Unknown page size '{size_name}', defaulting to A4")
     return int(8.3 * dpi), int(11.7 * dpi)
 
-def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', compact_mode=False, exclude_file_path=False):
+def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -68,7 +68,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
         page_size: Page size for the cards (default is A4)
     """
     logging.basicConfig(level=logging.INFO)
-    logging.debug(f"Starting file card with size {page_size}")
+    logging.info(f"Starting file card with size {page_size}")
     input_path = Path(input_dir)
     logging.info(f"Input directory: {input_path}")
     logging.info(f"Output directory: {output_dir}")
@@ -120,7 +120,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 logging.debug(f"Before create_file_info_card: width={width}, height={height}")
 
                 # Generate the card
-                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, compact_mode=compact_mode, exclude_file_path=exclude_file_path)
+                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, exclude_file_path=exclude_file_path)
                 
                 # Save the card using specialized TIFF save function
                 card_file_name = f"{file_path.stem}_card.tiff"
@@ -143,6 +143,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 file_count += 1
             except Exception as e:
                 logging.error(f"Error processing {file_path.name}: {e}")
+                logging.error("Traceback:\n" + traceback.format_exc())
     
     logging.info(f"\nProcessing complete. Generated {file_count} file cards in {output_path}")
 
@@ -207,38 +208,11 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
                 logging.info(f"Combined PDF saved to {pdf_file}")
                 return
         except Exception as e:
-            logging.warning(f"Error using img2pdf: {e} (type: {type(e)})")
-            logging.warning("Traceback:\n" + traceback.format_exc())
-            logging.warning(f"Image files passed to img2pdf: {image_files}")
-            logging.warning("Falling back to FPDF")
-    
-                # Only include TIFFs for CMYK, PNGs otherwise
-                # Detect CMYK mode by presence of TIFFs (since only CMYK saves TIFFs)
-            tiff_files = sorted(output_path.glob("*_card.tiff"))
-            png_files = sorted(output_path.glob("*_card.png"))
-            if tiff_files:
-                image_files = [str(f) for f in tiff_files]
-            else:
-                image_files = [str(f) for f in png_files]
-            if image_files:
-                try:
-                    logging.debug(f"Creating PDF with img2pdf using {len(image_files)} images")
-                    with open(pdf_file, "wb") as f:
-                        width_pt = page_size[0] / 300 * 72
-                        height_pt = page_size[1] / 300 * 72
-                        f.write(img2pdf.convert(image_files, pagesize=(width_pt, height_pt)))
-                    logging.info(f"Combined PDF saved to {pdf_file}")
-                    return
-                except Exception as e:
-                    logging.warning(f"Error using img2pdf: {e} (type: {type(e)})")
-                    logging.warning("Traceback:\n" + traceback.format_exc())
-            # Direct inclusion for other formats
-            pdf.image(str(card_file), x=0, y=0, w=page_size[0], h=page_size[1])
-        except Exception as e:
-            logging.error(f"Error adding {card_file} to PDF: {e}")
+            logging.error(f"Error using img2pdf: {e} (type: {type(e)})")
+            logging.error("Traceback:\n" + traceback.format_exc())
+            logging.error(f"Image files passed to img2pdf: {image_files}")
+            logging.error("Bust.")
 
-    pdf.output(pdf_file)
-    logging.info(f"Combined PDF saved to {pdf_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test file card generation and PDF assembly for various file types')
@@ -247,7 +221,6 @@ if __name__ == "__main__":
     parser.add_argument('--cmyk-mode', action='store_true', help='Generate cards in CMYK mode')
     parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
-    parser.add_argument('--compact', action='store_true', help='Enable compact mode for file card generation')
     parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
     parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
     parser.add_argument('--exclude-file-path', action='store_true', help='Exclude the vertical file path from the card (default: shown)')
@@ -286,18 +259,17 @@ if __name__ == "__main__":
         args.output_dir,
         args.cmyk_mode,
         args.page_size,
-        compact_mode=args.compact,
         exclude_file_path=args.exclude_file_path
     )
 
     # Report summary
     output_path = Path(args.output_dir)
     card_files = sorted(output_path.glob("*_card.*"))
-    print(f"\nSummary:")
-    print(f"Output directory: {os.path.abspath(args.output_dir)}")
-    print(f"Number of card files generated: {len(card_files)}")
+    logging.info(f"\nSummary:")
+    logging.info(f"Output directory: {os.path.abspath(args.output_dir)}")
+    logging.info(f"Number of card files generated: {len(card_files)}")
     if card_files:
-        print("Generated card files:")
+        logging.info("Generated card files:")
         # Print in 3 columns
         col_count = 3
         names = [f.name for f in card_files]
@@ -308,7 +280,7 @@ if __name__ == "__main__":
         rows = (len(names) + cols - 1) // cols
         for row in range(rows):
             line = "".join(names[row + rows * col].ljust(col_width) for col in range(cols) if row + rows * col < len(names))
-            print(line)
+            logging.info(line)
 
     # Assemble cards into a PDF if requested
     if args.pdf_output_name:

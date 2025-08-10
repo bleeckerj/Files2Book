@@ -28,15 +28,6 @@ Basic usage (no recursion, only files in the specified folder):
 python create_file_cards.py --input-dir /path/to/files --output-dir ./output --page-size LARGE_TAROT --cmyk-mode
 ```
 
-To recurse into subfolders, use the `--max-depth` argument:
-```bash
-python create_file_cards.py --input-dir /path/to/files --max-depth 2
-```
-This will process files up to 2 levels deep.
-
-```bash
-python3 ./create_file_cards.py --page-size "A5" --input-dir "/Users/julian/OMATA Dropbox/Julian Bleecker/RenderStationDropOff/COMFY_AUTOTRADER/" --cmyk --compact --output-dir ./autotrader-cards --max-depth 1 --exclude-file-path
-```
 
 #### Command Line Arguments
 
@@ -45,7 +36,7 @@ python3 ./create_file_cards.py --page-size "A5" --input-dir "/Users/julian/OMATA
 - `--output-dir`: Directory to save the generated card images (default: parent directory of input-dir + `_cards_output`)
 - `--cmyk-mode`: Generate cards in CMYK color mode for professional printing (default: RGB mode)
 - `--page-size`: Card size (default: LARGE_TAROT)
-  - Predefined sizes: A0-A5, LETTER, LEGAL, TABLOID
+  - Predefined sizes: A0-A5, LETTER, LEGAL, TABLOID, DIGEST
   - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
   - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
 
@@ -73,7 +64,7 @@ python3 ./create_file_cards.py --page-size "A5" --input-dir "/Users/julian/OMATA
 | SMALL_SQUARE | 2.48       | 2.48        |
 -------------------------------------------
 - `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
-- `--max-depth`: Maximum folder recursion depth (default: 0, no recursion; set higher for deeper traversal)
+- `--exclude-file-path`: Exclude the vertical file path from the card (default: shown)
 
 #### Output
 
