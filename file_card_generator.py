@@ -336,6 +336,23 @@ def get_gz_preview(file_path, max_bytes=1024, preview_box=None):
     except Exception as e:
         return [f"GZ error: {e}"], None, None
 
+def is_mostly_text_or_html(file_path, chunk_size=4096):
+    try:
+        with open(file_path, 'rb') as f:
+            chunk = f.read(chunk_size)
+        try:
+            text = chunk.decode('utf-8')
+        except UnicodeDecodeError:
+            text = chunk.decode('latin-1')
+        printable = sum(c.isprintable() or c.isspace() for c in text)
+        ratio = printable / max(1, len(text))
+        html_like = any(tag in text.lower() for tag in ['<html', '<body', '<div', '<span', '<head', '<title', '<p>'])
+        # Consider as text if >90% printable or contains HTML tags
+        return ratio > 0.9 or html_like
+    except Exception:
+        return False
+
+
 def get_hex_preview(file_path, max_bytes=1024):
     try:
         with open(file_path, 'rb') as f:
@@ -523,6 +540,13 @@ def get_pdf_preview(file_path, box_w, box_h):
 def get_image_thumbnail(file_path, box_size=(320, 320)):
     try:
         img = Image.open(file_path)
+        # Composite transparent images onto white/light background BEFORE any CMYK conversion
+        if img.mode in ("RGBA", "LA"):
+            logging.debug(f"Compositing transparent image onto white background: {file_path.name}")
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[-1])
+            img = background
+            
         img_w, img_h = img.size
         box_w, box_h = box_size
         # Rotate image if box is portrait and image is landscape
@@ -1003,12 +1027,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
                 image = image.rotate(90, expand=True)
                 img_w, img_h = image.size
                 logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
-            # Convert transparent images to RGB with white/light background
-            if image.mode in ("RGBA", "LA"):
-                logging.debug(f"Converting transparent image to RGB: {file_path.name}")
-                background = Image.new("RGB", image.size, (250, 250, 250))  # light gray
-                background.paste(image, mask=image.split()[-1])
-                image = background
+
             # Scale to fit preview area
             scale_factor = min(
                 (max_line_width_pixels) / img_w,
@@ -1155,8 +1174,15 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
             preview_lines = preview_lines[:max_preview_lines]
         except Exception as e:
             preview_lines = [f"DOCX error: {e}"]
-    elif file_type_info['group'] == 'binary' or ext == '.dfu' or file_type_info['group'] == 'unknown':
+    elif file_type_info['group'] == 'binary' or ext == '.dfu':
         preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
+    elif file_type_info['group'] == 'unknown':
+        logging.info(f"Unknown file type for {file_path.name}. Attempting to read as text or hex.")
+        if is_mostly_text_or_html(file_path):
+            logging.info(f"File is mostly text or HTML {file_path.name} - Reading as text.")
+            preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length)
+        else:
+            preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
     elif file_type_info['group'] in ['code', 'data', 'document', 'log']:
         # Read a large chunk and wrap
         try:

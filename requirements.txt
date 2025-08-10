@@ -25,6 +25,8 @@ pyheif==0.8.0
 python-docx==1.2.0
 python-dotenv==1.1.1
 python-pptx==1.0.2
+qrcode==8.2
+rarfile==4.2
 requests==2.32.4
 typing_extensions==4.14.1
 urllib3==2.5.0
