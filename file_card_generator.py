@@ -135,7 +135,7 @@ FILE_TYPE_GROUPS = {
         'color': (42, 219, 61)  # HEX: 2adb3d
     },
     'image': {
-        'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'},
+        'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp'},
         'icon': "IMAGE",
         'color': (0, 244, 240)  # HEX: 00f4f0
     }
