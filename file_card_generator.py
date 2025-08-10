@@ -435,24 +435,24 @@ def get_fit_summary_preview(file_path):
     except Exception as e:
         return [f"FIT error: {e}"], {}
 
-def get_pdf_preview(file_path, box_w, box_h, max_pages=6):
+def get_pdf_preview(file_path, box_w, box_h):
     try:
         # First, get the total number of pages
         from pdf2image import convert_from_path
         import numpy as np
-        logging.debug(f"Attempting to extract PDF preview: {file_path}")
+        #logging.debug(f"Attempting to extract PDF preview: {file_path}")
         all_pages = convert_from_path(str(file_path))
         n_total = len(all_pages)
-        logging.info(f"PDF {file_path} has {n_total} pages")
+        logging.info(f"PDF {file_path} page count is {n_total} pages")
         # Dynamically determine number of preview pages
-        if n_total <= 6:
+        if n_total <= 20:
             n_preview = n_total
-        elif n_total <= 20:
-            n_preview = min(8, n_total)
-        elif n_total <= 50:
-            n_preview = min(20, n_total)
-        else:
+        elif n_total <= 40:
             n_preview = min(24, n_total)
+        elif n_total <= 60:
+            n_preview = min(30, n_total)
+        else:
+            n_preview = min(36, n_total)
         if n_preview == 0:
             logging.warning(f"No pages found in PDF: {file_path}")
             return None
@@ -464,24 +464,56 @@ def get_pdf_preview(file_path, box_w, box_h, max_pages=6):
             indices += [int(round(i)) for i in remaining]
         indices = sorted(set(indices))
         selected_pages = [all_pages[i] for i in indices]
-        # Dynamically determine grid layout
-        aspect_ratio = box_w / max(box_h, 1)
-        grid_rows = int(math.ceil(math.sqrt(len(selected_pages) / aspect_ratio)))
-        grid_cols = int(math.ceil(len(selected_pages) / grid_rows))
-        thumb_w = box_w // grid_cols
-        thumb_h = box_h // grid_rows
-        grid_img = Image.new('RGBA', (box_w, box_h), (245, 245, 245))
-        for idx, page in enumerate(selected_pages):
-            try:
-                page.thumbnail((thumb_w, thumb_h))
-                x = (idx % grid_cols) * thumb_w + (thumb_w - page.width)//2
-                y = (idx // grid_cols) * thumb_h + (thumb_h - page.height)//2
-                grid_img.paste(page, (x, y))
-                logging.debug(f"Pasted page {indices[idx]+1} at ({x}, {y}), size ({page.width}, {page.height})")
-            except Exception as page_e:
-                logging.error(f"Error rendering page {indices[idx]+1} of {file_path}: {page_e}")
+        n_pages = len(selected_pages)
+        box_is_landscape = box_w >= box_h
+        if n_pages == 1:
+            # Single page: scale to fill preview box as much as possible
+            page = selected_pages[0].copy()
+            page_is_landscape = page.width >= page.height
+            if box_is_landscape != page_is_landscape:
+                page = page.rotate(90, expand=True)
+            scale_factor = min(box_w / page.width, box_h / page.height)
+            new_w = int(page.width * scale_factor)
+            new_h = int(page.height * scale_factor)
+            page = page.resize((new_w, new_h), Image.LANCZOS)
+            grid_img = Image.new('RGBA', (box_w, box_h), (228, 234, 231))
+            x = (box_w - new_w) // 2
+            y = (box_h - new_h) // 2
+            grid_img.paste(page, (x, y))
+            logging.debug(f"Single page preview: scaled to ({new_w}, {new_h}) at ({x}, {y})")
+            return grid_img
+        # Multi-page: maximize grid coverage
+        best_thumb_w = 0
+        best_thumb_h = 0
+        best_rows = 0
+        best_cols = 0
+        for rows in range(1, n_pages + 1):
+            cols = int(math.ceil(n_pages / rows))
+            thumb_w = box_w // cols
+            thumb_h = box_h // rows
+            thumb_size = min(thumb_w, thumb_h)
+            if thumb_size > min(best_thumb_w, best_thumb_h) or best_thumb_w == 0:
+                best_thumb_w = thumb_w
+                best_thumb_h = thumb_h
+                best_rows = rows
+                best_cols = cols
+        thumbs = []
+        for page in selected_pages:
+            page = page.copy()
+            page.thumbnail((best_thumb_w, best_thumb_h))
+            thumb_is_landscape = page.width >= page.height
+            if box_is_landscape != thumb_is_landscape:
+                page = page.rotate(90, expand=True)
+                page.thumbnail((best_thumb_w, best_thumb_h))
+            thumbs.append(page)
+        grid_img = Image.new('RGBA', (box_w, box_h), (228, 234, 231))
+        for idx, page in enumerate(thumbs):
+            x = (idx % best_cols) * best_thumb_w + (best_thumb_w - page.width)//2
+            y = (idx // best_cols) * best_thumb_h + (best_thumb_h - page.height)//2
+            grid_img.paste(page, (x, y))
+            logging.debug(f"Pasted page {indices[idx]+1} at ({x}, {y}), size ({page.width}, {page.height})")
         logging.debug(f"Preview box: width={box_w}, height={box_h}")
-        logging.debug(f"Grid before rotation: width={grid_img.width}, height={grid_img.height}")
+        logging.debug(f"Grid created at: width={grid_img.width}, height={grid_img.height}")
         return grid_img
     except Exception as e:
         logging.error(f"PDF preview error for {file_path}: {e}")
