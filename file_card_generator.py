@@ -1207,6 +1207,17 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         zip_file_list = get_zip_preview(file_path, max_files=max_preview_lines)
         zip_file_preview_img = None
         zip_file_preview_lines = None
+    elif ext == '.rar':
+        try:
+            logging.info(f"Processing RAR file: {file_path}")
+            import rarfile
+            with rarfile.RarFile(file_path) as rf:
+                names = rf.namelist()
+                preview_lines = [f"RAR file: {len(names)} items"]
+                preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
+                logging.info(f"Found {len(names)} items in RAR file: {file_path}")
+        except Exception as e:
+            preview_lines = [f"RAR error: {e}"]
     elif ext == '.gz':
         preview_lines, image_thumb, _ = get_gz_preview(
             file_path, max_bytes=max_preview_lines * 16, preview_box=(max_line_width_pixels, preview_box_height))
