@@ -30,6 +30,7 @@ def parse_page_size(size_name):
         'A2': (16.54, 23.39),
         'A1': (23.39, 33.11),
         'A0': (33.11, 46.81),
+        'TRADE_LARGE': (7, 9),
         'LETTER': (8.5, 11),
         'LEGAL': (8.5, 14),
         'TABLOID': (11, 17),
