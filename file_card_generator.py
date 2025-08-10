@@ -135,7 +135,7 @@ FILE_TYPE_GROUPS = {
         'color': (42, 219, 61)  # HEX: 2adb3d
     },
     'image': {
-        'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'},
+        'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp'},
         'icon': "IMAGE",
         'color': (0, 244, 240)  # HEX: 00f4f0
     }
@@ -309,7 +309,7 @@ def get_gz_preview(file_path, max_bytes=1024, preview_box=None):
         orig_name = Path(file_path).stem
         ext = Path(orig_name).suffix.lower()
         # Try image preview
-        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.heic', '.webp'} and preview_box:
+        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.heic', '.webp'} and preview_box:
             try:
                 img = Image.open(io.BytesIO(data))
                 img.thumbnail(preview_box)

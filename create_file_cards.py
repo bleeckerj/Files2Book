@@ -272,7 +272,7 @@ if __name__ == "__main__":
     logging.info(f"Output directory: {os.path.abspath(args.output_dir)}")
     logging.info(f"Number of card files generated: {len(card_files)}")
     if card_files:
-        logging.info("Generated card files:")
+        #logging.info(f"Generated {len(card_files)} card files")
         # Print in 3 columns
         col_count = 3
         names = [f.name for f in card_files]
@@ -283,10 +283,11 @@ if __name__ == "__main__":
         rows = (len(names) + cols - 1) // cols
         for row in range(rows):
             line = "".join(names[row + rows * col].ljust(col_width) for col in range(cols) if row + rows * col < len(names))
-            logging.info(line)
+            #logging.info(line)
 
     # Assemble cards into a PDF if requested
     if args.pdf_output_name:
+        logging.info(f"Assembling cards into PDF: {args.pdf_output_name}")
         width, height = parse_page_size(args.page_size)
         pdf_path = str(Path(args.output_dir) / args.pdf_output_name)
         assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
