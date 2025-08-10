@@ -1381,7 +1381,12 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         for line in preview_lines:
             if text_y + line_height > preview_box_bottom - preview_box_padding:
                 break
+
+        if '\n' in line:
+            draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font)
+        else:
             draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
+
             text_y += line_height
         return img
     # FIT: show GPS map if present, then summary text below
@@ -1402,7 +1407,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         for line in preview_lines:
             if text_y + line_height > preview_box_bottom - preview_box_padding:
                 break
-            draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=fit_font, anchor="lt")
+            if '\n' in line:
+                draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=fit_font)
+            else:
+                draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=fit_font, anchor="lt")
             text_y += line_height
         return img
     # If no GPS map, just show summary text as before
@@ -1459,14 +1467,22 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         for line in zip_file_list:
             if text_y + line_height > preview_box_bottom - preview_box_padding:
                 break
+
+        if '\n' in line:
+            draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font)
+        else:
             draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
+
             text_y += line_height
         # Always show preview lines for .zip, .gz, .bz2 if present
         if zip_file_preview_lines is not None:
             for line in zip_file_preview_lines:
                 if text_y + line_height > preview_box_bottom - preview_box_padding:
                     break
-                draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
+                if '\n' in line:
+                    draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font)
+                else:
+                    draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
                 text_y += line_height
         if zip_file_preview_img is not None:
             img_w, img_h = zip_file_preview_img.size
@@ -1483,7 +1499,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         for line in preview_lines:
             if text_y + line_height > preview_box_bottom - preview_box_padding:
                 break
-            draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
+            if '\n' in line:
+                draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font)
+            else:
+                draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
             text_y += line_height
     return img
 
