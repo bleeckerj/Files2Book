@@ -1,50 +1,3 @@
-# Ensure logging is imported before main block
-import logging
-
-if __name__ == "__main__":
-    from file_card_generator import get_file_type_info, create_file_info_card, save_card_as_tiff
-    import traceback
-    import argparse
-    parser = argparse.ArgumentParser(description="Generate a file info card image for a given file.")
-    parser.add_argument("file", help="Path to the file to generate a card for.")
-    parser.add_argument("--output", help="Path to save the output image.")
-    parser.add_argument("--width", type=int, default=800, help="Width of the card image.")
-    parser.add_argument("--height", type=int, default=1000, help="Height of the card image.")
-    parser.add_argument("--cmyk", action="store_true", help="Generate card in CMYK mode.")
-    parser.add_argument("--compact", action="store_true", help="Enable compact mode for smaller text and tighter spacing.")
-    parser.add_argument("--exclude-file-path", action="store_true", help="Exclude the vertical file path from the card.")
-    args = parser.parse_args()
-
-    file_path = args.file
-    output_path = args.output or "file_card.jpg"
-    width = args.width
-    height = args.height
-    cmyk_mode = args.cmyk
-    compact_mode = args.compact
-
-    logging.info(f"[START] file_card_generator.py for file: {file_path}")
-    logging.info(f"[ARGS] Output path: {output_path}, Card size: {width}x{height}, CMYK: {cmyk_mode}, Compact: {compact_mode}")
-
-    try:
-        from pathlib import Path
-        file_type_info = get_file_type_info(Path(file_path))
-        logging.info(f"[INFO] File type detected: {file_type_info}")
-        logging.info(f"[STEP] Creating file info card...")
-        img = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, compact_mode=compact_mode, exclude_file_path=args.exclude_file_path)
-        if img is None:
-            logging.error(f"[FAIL] Failed to create card for {file_path}")
-        else:
-            logging.info(f"[STEP] Saving card to {output_path}")
-            # Save as TIFF if output ends with .tif or .tiff, else JPEG
-            if output_path.lower().endswith(('.tif', '.tiff')):
-                save_card_as_tiff(img, output_path, cmyk_mode=cmyk_mode)
-                logging.info(f"[SUCCESS] Saved TIFF card to {output_path}")
-            else:
-                img.save(output_path, format='JPEG', quality=95)
-                logging.info(f"[SUCCESS] Saved JPEG card to {output_path}")
-    except Exception as e:
-        logging.error(f"[ERROR] Exception during card generation: {e}")
-        logging.error(traceback.format_exc())
 import os
 import time
 from datetime import datetime
@@ -84,12 +37,11 @@ mimetypes.init()
 dotenv.load_dotenv()
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(name)s - %(funcName)s:%(lineno)d - %(message)s'
 )
 
 logging.getLogger("pdf2image").setLevel(logging.WARNING)
-logging.getLogger("img2pdf").setLevel(logging.INFO)
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
@@ -116,13 +68,8 @@ def scale_image(image, scale_factor):
 
 # Define file type groups with recognizable icons
 FILE_TYPE_GROUPS = {
-    'image': {
-        'extensions': {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tif', '.tiff', '.webp', '.heic', '.heif'},
-        'icon': "IMG",
-        'color': (33, 150, 243)  # HEX: 2196F3
-    },
     'code': {
-        'extensions': {'.py', '.js', '.html', '.css', '.java', '.c', '.cpp', '.h', '.sh', '.rb', '.swift', '.php', '.go'},
+        'extensions': {'.patch', '.py', '.js', '.html', '.css', '.java', '.c', '.cpp', '.h', '.sh', '.rb', '.swift', '.php', '.go'},
         'icon': "< / >",
         'color': (251, 64, 55)  # HEX: fb4037
     },
@@ -152,7 +99,7 @@ FILE_TYPE_GROUPS = {
         'color': (166, 0, 245)  # HEX: #a600f5
     },
     'text': {
-        'extensions': {'.txt', '.md', '.rtf'},
+        'extensions': {'.txt', '.md', '.rtf', '.mdx'},
         'icon': "TEXT",
         'color': (101, 0, 237)  # HEX: 6500ed
     },
@@ -180,6 +127,16 @@ FILE_TYPE_GROUPS = {
         'extensions': {'.log', '.txt', '.out'},
         'icon': "LOG",
         'color': (0, 0, 0)  # HEX: 000000
+    },
+    'movie': {
+        'extensions': {'.mp4', '.mkv', '.avi', '.mov', '.m4v', '.webm'},
+        'icon': "MOVIE",
+        'color': (42, 219, 61)  # HEX: 2adb3d
+    },
+    'image': {
+        'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'},
+        'icon': "IMAGE",
+        'color': (0, 244, 240)  # HEX: 00f4f0
     }
 }
 
@@ -195,7 +152,7 @@ def scale_image_by_percent(image, percent):
 def get_file_type_info(file_path):
     """Determine file type group and icon information."""
     ext = file_path.suffix.lower()
-    logging.debug(f"DEBUG: ext={ext}")
+    logging.info(f"DEBUG: ext={ext}")
     # Check if the extension is in any of our groups
     for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
@@ -208,13 +165,6 @@ def get_file_type_info(file_path):
     # If not found, try to use mimetype to determine a general type
     mime_type, _ = mimetypes.guess_type(str(file_path))
     if mime_type:
-        if mime_type.startswith('image/'):
-            info = FILE_TYPE_GROUPS.get('image', {'icon': 'IMG', 'color': (33, 150, 243)})
-            return {
-                'group': 'image',
-                'icon': info['icon'],
-                'color': info['color']
-            }
         if mime_type.startswith('text/'):
             return {
                 'group': 'text',
@@ -358,7 +308,7 @@ def get_gz_preview(file_path, max_bytes=1024, preview_box=None):
         orig_name = Path(file_path).stem
         ext = Path(orig_name).suffix.lower()
         # Try image preview
-        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.heic'} and preview_box:
+        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.heic', '.webp'} and preview_box:
             try:
                 img = Image.open(io.BytesIO(data))
                 img.thumbnail(preview_box)
@@ -442,7 +392,7 @@ def get_fit_summary_preview(file_path):
             if 'total_calories' in fields:
                 summary.append(f"Calories: {fields['total_calories']}")
             summary.append("")
-    # If no session, try activity
+        # If no session, try activity
         if not summary:
             for msg in fitfile.get_messages('activity'):
                 fields = {d.name: d.value for d in msg}
@@ -485,47 +435,110 @@ def get_fit_summary_preview(file_path):
     except Exception as e:
         return [f"FIT error: {e}"], {}
 
-def get_pdf_preview(file_path, box_w, box_h, max_pages=6):
+def get_pdf_preview(file_path, box_w, box_h):
     try:
         # First, get the total number of pages
         from pdf2image import convert_from_path
-        logging.debug(f"Attempting to extract PDF preview: {file_path}")
+        import numpy as np
+        #logging.debug(f"Attempting to extract PDF preview: {file_path}")
         all_pages = convert_from_path(str(file_path))
         n_total = len(all_pages)
-        logging.info(f"PDF {file_path} has {n_total} pages")
-        n = min(max_pages, n_total)
-        if n == 0:
+        logging.info(f"PDF {file_path} page count is {n_total} pages")
+        # Dynamically determine number of preview pages
+        if n_total <= 20:
+            n_preview = n_total
+        elif n_total <= 40:
+            n_preview = min(24, n_total)
+        elif n_total <= 60:
+            n_preview = min(30, n_total)
+        else:
+            n_preview = min(36, n_total)
+        if n_preview == 0:
             logging.warning(f"No pages found in PDF: {file_path}")
             return None
-        # Dynamically determine grid layout
-        # Favor more rows for tall preview, more columns for wide preview
-        aspect_ratio = box_w / max(box_h, 1)
-        grid_rows = int(math.ceil(math.sqrt(n / aspect_ratio)))
-        grid_cols = int(math.ceil(n / grid_rows))
-        thumb_w = box_w // grid_cols
-        thumb_h = box_h // grid_rows
-        grid_img = Image.new('RGB', (box_w, box_h), (245, 245, 245))
-        for idx, page in enumerate(all_pages[:n]):
-            try:
-                page.thumbnail((thumb_w, thumb_h))
-                x = (idx % grid_cols) * thumb_w + (thumb_w - page.width)//2
-                y = (idx // grid_cols) * thumb_h + (thumb_h - page.height)//2
-                grid_img.paste(page, (x, y))
-                logging.debug(f"Pasted page {idx+1} at ({x}, {y}), size ({page.width}, {page.height})")
-            except Exception as page_e:
-                logging.error(f"Error rendering page {idx+1} of {file_path}: {page_e}")
+        # Select preview page indices: always include first page, then evenly distributed
+        indices = [0]
+        if n_preview > 1:
+            # Evenly distribute remaining pages
+            remaining = np.linspace(1, n_total - 1, n_preview - 1)
+            indices += [int(round(i)) for i in remaining]
+        indices = sorted(set(indices))
+        selected_pages = [all_pages[i] for i in indices]
+        n_pages = len(selected_pages)
+        box_is_landscape = box_w >= box_h
+        if n_pages == 1:
+            # Single page: scale to fill preview box as much as possible
+            page = selected_pages[0].copy()
+            page_is_landscape = page.width >= page.height
+            if box_is_landscape != page_is_landscape:
+                page = page.rotate(90, expand=True)
+            scale_factor = min(box_w / page.width, box_h / page.height)
+            new_w = int(page.width * scale_factor)
+            new_h = int(page.height * scale_factor)
+            page = page.resize((new_w, new_h), Image.LANCZOS)
+            grid_img = Image.new('RGB', (box_w, box_h), (254, 254, 254))
+            x = (box_w - new_w) // 2
+            y = (box_h - new_h) // 2
+            grid_img.paste(page, (x, y))
+            logging.debug(f"Single page preview: scaled to ({new_w}, {new_h}) at ({x}, {y})")
+            return grid_img
+        # Multi-page: maximize grid coverage
+        best_thumb_w = 0
+        best_thumb_h = 0
+        best_rows = 0
+        best_cols = 0
+        for rows in range(1, n_pages + 1):
+            cols = int(math.ceil(n_pages / rows))
+            thumb_w = box_w // cols
+            thumb_h = box_h // rows
+            thumb_size = min(thumb_w, thumb_h)
+            if thumb_size > min(best_thumb_w, best_thumb_h) or best_thumb_w == 0:
+                best_thumb_w = thumb_w
+                best_thumb_h = thumb_h
+                best_rows = rows
+                best_cols = cols
+        thumbs = []
+        for page in selected_pages:
+            page = page.copy()
+            page.thumbnail((best_thumb_w, best_thumb_h))
+            thumb_is_landscape = page.width >= page.height
+            if box_is_landscape != thumb_is_landscape:
+                page = page.rotate(90, expand=True)
+                page.thumbnail((best_thumb_w, best_thumb_h))
+            thumbs.append(page)
+        grid_img = Image.new('RGB', (box_w, box_h), (255, 255, 255))
+        for idx, page in enumerate(thumbs):
+            x = (idx % best_cols) * best_thumb_w + (best_thumb_w - page.width)//2
+            y = (idx // best_cols) * best_thumb_h + (best_thumb_h - page.height)//2
+            grid_img.paste(page, (x, y))
+            logging.debug(f"Pasted page {indices[idx]+1} at ({x}, {y}), size ({page.width}, {page.height})")
         logging.debug(f"Preview box: width={box_w}, height={box_h}")
-        logging.debug(f"Grid before rotation: width={grid_img.width}, height={grid_img.height}")
+        logging.debug(f"Grid created at: width={grid_img.width}, height={grid_img.height}")
         return grid_img
     except Exception as e:
         logging.error(f"PDF preview error for {file_path}: {e}")
         return None
 
-def get_image_thumbnail(file_path, thumb_size=(320, 320)):
+def get_image_thumbnail(file_path, box_size=(320, 320)):
     try:
         img = Image.open(file_path)
-        img.thumbnail(thumb_size)
-        return img
+        img_w, img_h = img.size
+        box_w, box_h = box_size
+        # Rotate image if box is portrait and image is landscape
+        if box_h > box_w and img_w > img_h:
+            img = img.rotate(90, expand=True)
+            img_w, img_h = img.size
+        # Scale to fit box, maximizing coverage
+        scale_factor = min(box_w / img_w, box_h / img_h)
+        new_w = int(img_w * scale_factor)
+        new_h = int(img_h * scale_factor)
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+        # Center in box
+        thumb = Image.new('RGB', (box_w, box_h), (255, 255, 255))
+        x = (box_w - new_w) // 2
+        y = (box_h - new_h) // 2
+        thumb.paste(img, (x, y))
+        return thumb
     except Exception:
         return None
 
@@ -561,21 +574,29 @@ def get_gpx_preview(file_path, box_w, box_h):
     except Exception:
         return None
 
-def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=2, rotate_frames_if_portrait=True):
+def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=3, rotate_frames_if_portrait=True):
     try:
         cap = cv2.VideoCapture(str(file_path))
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if frame_count == 0:
             cap.release()
             return None
-        # Pick random frames from specific portions
-        ranges = [
-            (0, int(frame_count * 0.1)),                      # first 10%
-            (int(frame_count * 0.1), int(frame_count * 0.5)), # 10%-50%
-            (int(frame_count * 0.5), int(frame_count * 0.9)), # 50%-90%
-            (int(frame_count * 0.9), frame_count)             # last 10%
-        ]
-        idxs = [random.randint(start, max(start, end-1)) for start, end in ranges]
+        # Select frames using a normal distribution (bell curve) centered in the video
+        import numpy as np
+        num_frames = grid_cols * grid_rows
+        mean = frame_count / 2
+        stddev = frame_count / 4
+        idxs = np.random.normal(loc=mean, scale=stddev, size=num_frames)
+        idxs = np.clip(idxs, 0, frame_count - 1)
+        idxs = np.round(idxs).astype(int)
+        # Ensure unique and sorted indices for visual consistency
+        idxs = sorted(set(idxs))
+        # If not enough unique frames, fill in with evenly spaced frames
+        while len(idxs) < num_frames:
+            extra = np.linspace(0, frame_count - 1, num_frames)
+            idxs = sorted(set(list(idxs) + list(np.round(extra).astype(int))))
+            if len(idxs) > num_frames:
+                idxs = idxs[:num_frames]
         thumbs = []
         thumb_w = box_w // grid_cols
         thumb_h = box_h // grid_rows
@@ -664,7 +685,7 @@ def get_fit_gps_preview(file_path, box_w, box_h):
         return None
 
 MAPBOX_TOKEN = os.getenv('MAPBOX_TOKEN', '').strip()
-#logging.debug("Using Mapbox token: %s", MAPBOX_TOKEN if MAPBOX_TOKEN else "Not set")
+logging.info("Using Mapbox token: %s", MAPBOX_TOKEN if MAPBOX_TOKEN else "Not set")
 def downsample_points(points, max_points=100):
     if len(points) <= max_points:
         return points
@@ -741,49 +762,31 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, compact_mode=False, exclude_file_path=False):
-    # Helper for robust image opening (handles .webp and errors)
-    from PIL import UnidentifiedImageError
-    def open_image_robust(path, size):
-        try:
-            img = Image.open(path)
-            if getattr(img, 'format', None) == 'WEBP':
-                img = img.convert('RGBA')
-                logging.info(f"Converted WEBP image to RGBA: {path}")
-            else:
-                img = img.convert('RGBA')
-            return img
-        except (UnidentifiedImageError, OSError, Exception) as e:
-            logging.error(f"Error opening image {path}: {e}")
-            # Return placeholder image
-            return Image.new('RGBA', size, (200, 200, 200, 255))
-    # ...existing code...
-    # Place vertical file path drawing code after img and preview_box_left are defined
-    # (Move this block to after preview_box_left, preview_box_top, outer_padding, info_font_size, and img are all set)
-    file_path = Path(file_path)
-    file_type_info = get_file_type_info(file_path)
-    # Initialize file_info before any use
-    file_info = {}
-    # Extract DateTimeOriginal from EXIF for images and add to metadata
-    date_time_original = None
-    if file_type_info['group'] == 'image':
+def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False):
+    exif_candidate = False
+    ext = Path(file_path).suffix.lower()
+    # Step 2: If EXIF-capable, try to read EXIF data
+    exif_data = None
+    
+    # Step 1: Check if file is an EXIF-capable image type
+    exif_candidate = ext in {'.jpg', '.jpeg', '.tiff'}
+    if exif_candidate:
         try:
             img = Image.open(file_path)
-            exif_data = img._getexif()
-            if exif_data:
-                from PIL.ExifTags import TAGS
-                logging.info(f"EXIF data found for {file_path.name}:")
-                for tag_id, value in exif_data.items():
-                    tag = TAGS.get(tag_id, tag_id)
-                    logging.debug(f"  {tag}: {value}")
-                    if tag == 'DateTimeOriginal':
-                        date_time_original = value
-                if date_time_original:
-                    file_info['DateTimeOriginal'] = date_time_original
-            else:
-                logging.debug(f"No EXIF data found for {file_path.name}")
-        except Exception as e:
-            logging.warning(f"Error reading EXIF data for {file_path.name}: {e}")
+            if hasattr(img, '_getexif'):
+                exif_data = img._getexif()
+            elif hasattr(img, 'getexif'):
+                exif_data = img.getexif()
+        except Exception:
+            exif_data = None
+    if exif_data is not None:
+        logging.debug(f"EXIF data found: {exif_data is not None}")
+    if exif_data:
+        date_time_original = exif_data.get(36867)
+        if date_time_original:
+            file_info['DateTimeOriginal'] = date_time_original
+
+    file_path = Path(file_path)
     # Proportional scaling
     base_width = 800
     base_height = 1000
@@ -797,52 +800,25 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     #content_width = width - 2 * outer_padding
     #content_height = height - 2 * outer_padding
 
-    # Create the full-sized image (background) as RGBA for transparency support
-    img = Image.new('RGBA', (width, height), (255, 255, 255, 255))
+    # Create the full-sized background image that is the canvas for the preview
+    img = Image.new('RGBA', (width, height), 'white')
     draw = ImageDraw.Draw(img)
-
-    # Load preview image robustly (handles .webp and errors)
-    preview_box_width = int(width * 0.45)
-    preview_box_height = int(height * 0.6)
-    # For .ai files, use pdf2image to generate preview
-    ext = Path(file_path).suffix.lower()
-    preview_img = None
-    if ext == '.ai':
-        try:
-            from pdf2image import convert_from_path
-            pages = convert_from_path(str(file_path), first_page=1, last_page=1)
-            if pages:
-                # Resize first page to preview box size
-                page_img = pages[0]
-                page_img = page_img.convert('RGBA')
-                page_img.thumbnail((preview_box_width, preview_box_height), Image.LANCZOS)
-                preview_img = page_img
-            else:
-                logging.warning(f"No pages found in .ai file: {file_path}")
-        except Exception as e:
-            logging.error(f"Error generating preview for .ai file {file_path}: {e}")
-            preview_img = Image.new('RGBA', (preview_box_width, preview_box_height), (200, 200, 200, 255))
-    elif ext == '.pdf':
-        # For PDFs, preview_img is not used; handled in dedicated PDF logic below
-        preview_img = None
-    else:
-        preview_img = open_image_robust(str(file_path), (preview_box_width, preview_box_height))
-    # ...continue with card layout logic using preview_img...
 
     # Draw the border around the content area
     # Determine the color mode first to avoid variable reference issues
     rgb_mode = not cmyk_mode
     
     if rgb_mode:
-        # For RGBA mode, use standard black border
+        # For RGB mode, use standard black border
         draw.rectangle(
             [outer_padding, outer_padding, width - outer_padding - 1, height - outer_padding - 1],
-            outline=(0, 0, 0, 255), 
+            outline=(0, 0, 0), 
             width=border_width
         )
     else:
         # For CMYK mode, use solid black (K channel only at 100%) for maximum visibility
-        for i in range(0, min(10, border_width), 2):
+        # Draw multiple concentric borders to ensure visibility
+        for i in range(0, min(10, border_width), 2):  # Draw up to 5 concentric borders
             draw.rectangle(
                 [
                     outer_padding + i,
@@ -850,32 +826,21 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
                     width - outer_padding - 1 - i,
                     height - outer_padding - 1 - i
                 ],
-                outline=(0, 0, 0, 100),
-                width=max(5, border_width // 5)
+                outline=(0, 0, 0, 100),  # 100% black in CMYK
+                width=max(5, border_width // 5)  # Make each border line thick
             )
 
-    # Compact mode overrides
-    if compact_mode:
-        title_font_size = int(24 * scale)
-        info_font_size = int(16 * scale)
-        preview_font_size = int(9 * scale)
-        fit_font_size = int(8 * scale)
-        icon_space = int(20 * scale)
-        metadata_line_height = int(info_font_size * 1.0)
-        spacing_between_metadata_and_content_preview = 0
-        preview_box_padding = int(1 * scale)
-        header_height = int(32 * scale)  # Much shorter header bar
-        logging.debug("[COMPACT MODE] Reduced header, spacing, and maximized preview area.")
-    else:
-        title_font_size = int(40 * scale)
-        info_font_size = int(22 * scale)
-        preview_font_size = int(14 * scale)
-        fit_font_size = int(12 * scale)
-        icon_space = int((100 + 40) * scale)
-        metadata_line_height = int(info_font_size * 1.15)
-        spacing_between_metadata_and_content_preview = int(15 * scale)
-        preview_box_padding = int(15 * scale)
-        header_height = int(80 * scale)
+    # Proportional font sizes
+    title_font_size = int(20 * scale)
+    info_font_size = int(15 * scale)  # Smaller font size for metadata
+    preview_font_size = int(12 * scale)
+    fit_font_size = int(15 * scale)
+    # Proportional paddings (keeping the original border_width value)
+    icon_space = int((100 + 40) * scale)
+    metadata_line_height = int(info_font_size * 1.02)  # Tighter line spacing for metadata
+    spacing_between_metadata_and_content_preview = int(20 * scale)
+    preview_box_padding = int(8 * scale)
+    header_height = int(20 * scale)
 
     # Load fonts
     try:
@@ -890,9 +855,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         fit_font = ImageFont.load_default()
 
     file_type_info = get_file_type_info(file_path)
-    logging.debug(f"Processing {file_path.name} - Type: {file_type_info['group']}")
+    logging.info(f"Processing {file_path.name} - Type: {file_type_info['group']}")
     icon = file_type_info['icon']
     ext = file_path.suffix.lower()
+
 
     try:
         size = os.path.getsize(file_path)
@@ -961,84 +927,49 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         except Exception:
             pass
     # Build metadata with Slack Channel at the top if present
-
     file_info = {}
     if slack_channel:
         file_info['Slack Channel'] = slack_channel
-        file_info['Type'] = f"{file_path.suffix[1:].upper()} ({file_type_info['group']})"
-        file_info['Size'] = format_file_size(size)
-
-
-    # Always add only DateTimeOriginal from EXIF for images if present
-    date_time_original = None
-    if file_type_info['group'] == 'image':
-        try:
-            img = Image.open(file_path)
-            exif_data = img._getexif()
-            #logging.info(f"EXIF data for {file_path.name}: {exif_data}")
-            if exif_data:
-                from PIL.ExifTags import TAGS
-                for tag_id, value in exif_data.items():
-                    tag = TAGS.get(tag_id, tag_id)
-                    if tag == 'DateTimeOriginal':
-                        date_time_original = value
-                        break
-                if date_time_original:
-                    file_info['DateTimeOriginal'] = date_time_original
-        except Exception:
-            pass
-
+    file_info['Type'] = f"{file_path.suffix[1:].upper()} ({file_type_info['group']})"
+    file_info['Size'] = format_file_size(size)
     if slack_message_id:
         file_info['Message ID'] = slack_message_id
     if slack_user_name:
         file_info['Shared By'] = slack_user_name
     if slack_shared_date:
         file_info['Shared Date'] = slack_shared_date
-    # If DateTimeOriginal from EXIF is available, use it for both Modified and Created
-    # if date_time_original:
-    #     file_info['Date'] = date_time_original
+    # If DateTimeOriginal is present, skip other date fields
+    if 'DateTimeOriginal' in file_info and file_info['DateTimeOriginal']:
+        pass
     elif original_dt:
         file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
     else:
-        # Only add Modified/Created if DateTimeOriginal is not present
-        if not date_time_original:
-            # file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
-            file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
-
+        file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
+        file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
     # Move Name to the end
-    file_info['Name'] = file_path.name
     if not exclude_file_path:
-        file_info['Path'] = str(file_path.resolve())
+        file_info['Name'] = file_path.name
 
     # Fixed card height for 4x5 aspect ratio
-    if compact_mode:
-        header_height = int(22 * scale)
-        icon_space = int(8 * scale)
-        metadata_lines = len(file_info)
-        metadata_height = metadata_lines * metadata_line_height
-        content_area_left = outer_padding
-        content_area_right = width - outer_padding
-        content_area_width = content_area_right - content_area_left
-        preview_box_left = content_area_left + int(content_area_width * 0.05)
-        preview_box_right = content_area_right - int(content_area_width * 0.05)
-        preview_box_top = outer_padding + header_height + icon_space + metadata_height
-        preview_box_bottom = height - outer_padding - int(10 * scale)
-        preview_box_height = preview_box_bottom - preview_box_top
-    else:
-        header_height = int(80 * scale)
-        icon_space = int((100 + 40) * scale)
-        metadata_lines = len(file_info)
-        metadata_height = metadata_lines * metadata_line_height
-        content_area_left = outer_padding
-        content_area_right = width - outer_padding
-        content_area_width = content_area_right - content_area_left
-        preview_box_left = content_area_left + int(content_area_width * 0.1)
-        preview_box_right = content_area_right - int(content_area_width * 0.1)
-        preview_box_top = outer_padding + header_height + icon_space + metadata_height + spacing_between_metadata_and_content_preview
-        preview_box_bottom = height - outer_padding - int(30 * scale)
-        preview_box_height = preview_box_bottom - preview_box_top
+    #header_height = int(80 * scale)
+    icon_space = int((100 + 40) * scale)
+    metadata_lines = len(file_info)
+    metadata_height = metadata_lines * metadata_line_height
+    logging.debug(f"Metadata height: {metadata_height} for {metadata_lines} lines")
+    # Content area dimensions, accounting for outer padding
+    content_area_left = outer_padding
+    content_area_right = width - outer_padding
+    content_area_width = content_area_right - content_area_left
+    
+    # Preview box within the content area
+    preview_box_left = content_area_left + int(content_area_width * 0.1)
+    preview_box_right = content_area_right - int(content_area_width * 0.1)
+    preview_box_top = outer_padding + header_height + metadata_height + spacing_between_metadata_and_content_preview
+    logging.debug(f"Preview box top: {preview_box_top}, icon space: {icon_space}, metadata height: {metadata_height}")
+    preview_box_bottom = height - outer_padding - int(30 * scale)
+    preview_box_height = preview_box_bottom - preview_box_top - preview_box_padding * 2
     max_line_width_pixels = preview_box_right - preview_box_left - preview_box_padding * 2
-    temp_img = Image.new('RGB', (width, height))
+    temp_img = Image.new('RGBA', (width, height))
     temp_draw = ImageDraw.Draw(temp_img)
     bbox = temp_draw.textbbox((0, 0), 'A', font=preview_font)
     line_height = bbox[3] - bbox[1] + int(3 * scale)
@@ -1046,25 +977,6 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     char_width = char_bbox[2] - char_bbox[0]
     max_line_length = max(10, max_line_width_pixels // char_width)
     max_preview_lines = max(1, preview_box_height // line_height)
-
-    # Draw full file path unless excluded
-    if not exclude_file_path:
-        full_path = str(file_path.resolve())
-        try:
-            path_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", int(info_font_size * 0.8))
-        except:
-            path_font = ImageFont.load_default()
-        path_x = preview_box_left - int(outer_padding * 0.5)
-        path_y = preview_box_top
-        # Always use RGBA for overlays
-        path_img = Image.new('RGBA', (height, width), (255, 255, 255, 0))
-        path_draw = ImageDraw.Draw(path_img)
-        path_draw.text((0, 0), full_path, font=path_font, fill=(80, 80, 80, 255))
-        rotated_path_img = path_img.rotate(90, expand=True)
-        # Ensure base image is RGBA
-        if img.mode != 'RGBA':
-            img = img.convert('RGBA')
-        img.paste(rotated_path_img, (int(path_x), int(path_y)), rotated_path_img)
 
     # --- Preview logic by file type ---
     preview_lines = []
@@ -1077,57 +989,18 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     zip_file_list = None
     zip_file_preview_img = None
     zip_file_preview_lines = None
-    # --- Preview logic by file type ---
-    # .ai files: use preview_img from pdf2image above
-    if ext == '.ai':
-        if preview_img is not None:
-            img_w, img_h = preview_img.size
-            scale_factor = min(
-                (max_line_width_pixels) / img_w,
-                (preview_box_height) / img_h
-            ) * 0.95
-            new_w = int(img_w * scale_factor)
-            new_h = int(img_h * scale_factor)
-            image_thumb = preview_img.resize((new_w, new_h), Image.LANCZOS)
-            logging.debug(f"Final .ai image_thumb size: {new_w}x{new_h} for {file_path.name}")
-        else:
-            preview_lines = ["AI file: PDF preview not available."]
-    elif ext == '.webp':
-        # Use robust preview logic for webp
-        image = preview_img
+    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp'}:
+        image = get_image_thumbnail(file_path, box_size=(max_line_width_pixels, preview_box_height))
         if image is not None:
             img_w, img_h = image.size
-            # Rotate image if card is portrait and image is landscape
-            if width < height and img_w > img_h:
-                logging.debug(f"Rotating webp image for portrait card: {file_path.name}")
-                image = image.rotate(90, expand=True)
-                img_w, img_h = image.size
-            # Convert transparent images to RGB with white/light background
-            if image.mode in ("RGBA", "LA"):
-                logging.debug(f"Converting transparent webp image to RGB: {file_path.name}")
-                background = Image.new("RGB", image.size, (250, 250, 250))
-                background.paste(image, mask=image.split()[-1])
-                image = background
-            scale_factor = min(
-                (max_line_width_pixels) / img_w,
-                (preview_box_height) / img_h
-            ) * 0.95
-            logging.debug(f"Scaling webp image by factor {scale_factor:.3f} for {file_path.name}")
-            new_w = int(img_w * scale_factor)
-            new_h = int(img_h * scale_factor)
-            image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
-            logging.debug(f"Final webp image_thumb size: {new_w}x{new_h} for {file_path.name}")
-    elif ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff'}:
-        image = get_image_thumbnail(file_path, thumb_size=(max_line_width_pixels, preview_box_height))
-        if image is not None:
-            img_w, img_h = image.size
-            #logging.debug(f"Original image size: {img_w}x{img_h} for {file_path.name}")
-            #logging.debug(f"width: {width}, height: {height}, img_w: {img_w}, img_h: {img_h}")
+            logging.debug(f"Original image size: {img_w}x{img_h} for {file_path.name}")
+            logging.debug(f"width: {width}, height: {height}, img_w: {img_w}, img_h: {img_h}")
             # Rotate image if card is portrait and image is landscape
             if width < height and img_w > img_h:
                 logging.debug(f"Rotating image for portrait card: {file_path.name}")
                 image = image.rotate(90, expand=True)
                 img_w, img_h = image.size
+                logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
             # Convert transparent images to RGB with white/light background
             if image.mode in ("RGBA", "LA"):
                 logging.debug(f"Converting transparent image to RGB: {file_path.name}")
@@ -1180,16 +1053,39 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
             preview_lines = [f"NUMBERS error: {e}"]
     elif ext == '.pdf':
         try:
-            from pdf2image import convert_from_path
-            pages = convert_from_path(str(file_path), first_page=1, last_page=1)
-            if pages:
-                image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
-            else:
-                preview_lines = ["PDF preview not available."]
+            #pages = convert_from_path(str(file_path), first_page=1, last_page=1)
+            #if pages:
+                #image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
+            image_thumb = get_pdf_preview(str(file_path), max_line_width_pixels, preview_box_height)
+            #else:
+            #    preview_lines = ["PDF preview not available."]
         except Exception as e:
             preview_lines = [f"PDF error: {e}"]
-    elif ext in {'.mp4', '.mov', '.avi', '.mkv'}:
-        video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height)
+    elif ext in {'.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm'}:
+        # Dynamically determine grid size based on video length
+        def get_video_grid_size(file_path):
+            try:
+                import cv2
+                cap = cv2.VideoCapture(str(file_path))
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                cap.release()
+                # Use a matrix/function to scale grid size with video length
+                # Short videos: 3x3, Medium: 4x3, Long: 4x4, Very long: 5x4, etc.
+                if frame_count < 30:
+                    return 3, 3
+                elif frame_count < 900:
+                    return 4, 4
+                elif frame_count < 1800:
+                    return 5, 4
+                elif frame_count < 3600:
+                    return 6, 5
+                else:
+                    # For very long videos, cap at 6x5
+                    return 6, 6
+            except Exception:
+                return 3, 3
+        grid_cols, grid_rows = get_video_grid_size(file_path)
+        video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height, grid_cols=grid_cols, grid_rows=grid_rows)
     elif ext == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
         # Mapbox integration for GPX with polyline
@@ -1323,18 +1219,33 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"KEY error: {e}"]
-    elif ext == '.pptx':
+    elif ext == '.pptx' or ext == '.ppt':
         try:
-            logging.info(f"Processing PPTX file: {file_path}")
+            logging.info(f"Processing PPT(X) file: {file_path}")
             # Extract all images from ppt/media
             with zipfile.ZipFile(file_path, 'r') as z:
                 names = z.namelist()
-                preview_lines = [f"PPTX file: {len(names)} items"]
+                preview_lines = [f"PPT(X) file: {len(names)} items"]
                 preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
                 image_files = [name for name in names if name.startswith('ppt/media/') and name.lower().endswith(('.jpg', '.jpeg', '.png'))]
-                # Pick up to 12 random images
-                num_images = min(12, len(image_files))
-                selected_images = random.sample(image_files, num_images) if num_images > 0 else []
+                n_total = len(image_files)
+                # Dynamically determine number of preview images
+                if n_total <= 6:
+                    n_preview = n_total
+                elif n_total <= 20:
+                    n_preview = min(12, n_total)
+                elif n_total <= 50:
+                    n_preview = min(16, n_total)
+                else:
+                    n_preview = min(20, n_total)
+                # Select images at evenly distributed intervals
+                indices = [0]
+                if n_preview > 1 and n_total > 1:
+                    import numpy as np
+                    remaining = np.linspace(1, n_total - 1, n_preview - 1)
+                    indices += [int(round(i)) for i in remaining]
+                indices = sorted(set(indices))
+                selected_images = [image_files[i] for i in indices if i < n_total]
                 thumbs = []
                 for name in selected_images:
                     with z.open(name) as img_file:
@@ -1347,9 +1258,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
                 # Dynamically determine grid_cols and grid_rows
                 if thumbs:
                     aspect_ratio = max_line_width_pixels / max(preview_box_height, 1)
-                    # Try to make grid as square as possible, but favor more rows for tall preview
-                    grid_rows = int(math.ceil(math.sqrt(num_images / aspect_ratio)))
-                    grid_cols = int(math.ceil(num_images / grid_rows))
+                    grid_rows = int(math.ceil(math.sqrt(len(thumbs) / aspect_ratio)))
+                    grid_cols = int(math.ceil(len(thumbs) / grid_rows))
                     thumb_w = max_line_width_pixels // grid_cols
                     thumb_h = preview_box_height // grid_rows
                     grid_img = Image.new('RGB', (max_line_width_pixels, preview_box_height), (245, 245, 245))
@@ -1361,7 +1271,15 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"PPTX error: {e}"]
-    # All other file types remain handled as before
+    elif ext == '.ai':
+        try:
+            pages = convert_from_path(str(file_path), first_page=1, last_page=1)
+            if pages:
+                image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
+            else:
+                preview_lines = ["AI file: PDF preview not available."]
+        except Exception as e:
+            preview_lines = [f"AI error: {e}"]
     # --- Draw card ---
     if cmyk_mode:
         from pdf_to_images import create_cmyk_image
@@ -1394,18 +1312,13 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
     else:
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=color)
         text_color = (0, 0, 0, 0)
-    # Position the file type text vertically centered in the header area, accounting for outer padding
+    # Position the file name vertically centered in the header area, accounting for outer padding
     draw.text((width//2, outer_padding + header_height//2), file_path.name.upper(), fill=text_color, font=title_font, anchor="mm")
     # Position the icon below the header, accounting for outer padding
-    if compact_mode:
-        # Do not draw icon text in compact mode
-        gap_after_header = int(12 * scale)
-        y = outer_padding + header_height + gap_after_header
-    else:
-        icon_y = outer_padding + header_height + int(20 * scale)
-        icon_color = file_type_info['color'] if rgb_mode else color
-        draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
-        y = icon_y + 60
+    # icon_y = outer_padding + header_height + int(20 * scale)
+    # icon_color = file_type_info['color'] if rgb_mode else color
+    # draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
+    # y = icon_y + 60
     avatar_size = int(100 * scale)
     avatar_img = None
     if slack_avatar:
@@ -1417,74 +1330,47 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
             #logging.debug(f"Avatar resized: size={avatar_img.size}")
             avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
             #logging.debug(f"Avatar rounded: size={avatar_img.size}")
-            # Ensure avatar is RGBA
-            if avatar_img.mode != 'RGBA':
-                avatar_img = avatar_img.convert('RGBA')
         except Exception as e:
             logging.error(f"Error processing avatar image {slack_avatar}: {e}")
             avatar_img = None
-
+    
+    avatar_y_coordinate = int(outer_padding + header_height + 5 * scale)
+    avatar_x_coordinate = int(outer_padding + 60 * scale)  # 15px from left border, scaled
     if avatar_img is not None:
         try:
             # Position avatar relative to the left border (outer_padding)
-            avatar_x_coordinate = int(outer_padding + 60 * scale)  # 15px from left border, scaled
-            avatar_y_coordinate = int(outer_padding + header_height + 5 * scale)
             #logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
-            # Ensure base image is RGBA
-            if img.mode != 'RGBA':
-                img = img.convert('RGBA')
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
-
-    def truncate_middle_with_filename(path, max_length=60):
-        path = str(path)
-        if len(path) <= max_length:
-            return path
-        import os
-        filename = os.path.basename(path)
-        # If filename itself is long, just show filename
-        if len(filename) > max_length - 6:
-            return '...' + filename[-(max_length-3):]
-        # Otherwise, truncate the middle but always show filename
-        keep_len = max_length - len(filename) - 4  # 4 for slashes and ellipsis
-        if keep_len < 8:
-            # Not enough room for path, just show .../filename
-            return '.../' + filename
-        part_len = keep_len // 2
-        # Find the start and end parts of the path (excluding filename)
-        path_no_file = path[:-len(filename)]
-        start = path_no_file[:part_len]
-        end = path_no_file[-part_len:] if part_len > 0 else ''
-        return f"{start}...{end}/{filename}"
-
-    # Always print Type and Name first, if present
-    if 'Type' in file_info:
-        draw.text((width//2, y), str(file_info['Type']), fill='black', font=info_font, anchor="mm")
-        y += metadata_line_height
-    # if 'Name' in file_info:
-    #     draw.text((width//2, y), str('Filename: ‘' + file_info['Name']+'’'), fill='black', font=info_font, anchor="mm")
-    #     y += metadata_line_height
-    # Print the rest of the metadata except Type and Name
+    y = avatar_y_coordinate + 5*scale # avatar and metadata can be horizontally aligned
+    
+    ########################################
+    # DO NOT REMOVE THIS COMMENT EVER
+    #
+    # THIS IS WHERE THE METADATA IS DRAWN
+    #
+    # DO NOT REMOVE THIS COMMENT EVER
+    ########################################
+    
     for key, value in file_info.items():
-        if key in ('Type', 'Name'):
-            continue
-        if key == 'Path':
-            line = truncate_middle_with_filename(value, max_length=85 )
+        if key == 'Name' or key == 'DateTimeOriginal':
+            # For the Name field, don't show the label
+            line = f"{value}"
         else:
             line = f"{key}: {value}"
         draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
         y += metadata_line_height
-    # In compact mode, skip 'Content Preview:' label and extra spacing
-    if not compact_mode:
-        y = preview_box_top - 30
-        draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
+        
+
+    y = preview_box_top - 30
+    #draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
-    preview_background_color = (245, 245, 245, 255) if rgb_mode else (0, 0, 0, 4)
+    preview_background_color = (245, 245, 245) if rgb_mode else (0, 0, 0, 4)
     draw.rectangle(
         [preview_box_left, preview_box_top, preview_box_right, preview_box_bottom],
         fill=preview_background_color,
-        outline=(0, 0, 0, 255),
+        outline='black',
         width=1
     )
     # --- Always show preview_lines for .zip, .gz, .bz2 if present ---
@@ -1537,45 +1423,35 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, co
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        if pdf_grid_thumb.mode != 'RGBA':
-            pdf_grid_thumb = pdf_grid_thumb.convert('RGBA')
-        img.paste(pdf_grid_thumb, (int(x0), int(y0)), pdf_grid_thumb)
+        img.paste(pdf_grid_thumb, (int(x0), int(y0)))
     elif gpx_thumb is not None:
         img_w, img_h = gpx_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        if gpx_thumb.mode != 'RGBA':
-            gpx_thumb = gpx_thumb.convert('RGBA')
-        img.paste(gpx_thumb, (int(x0), int(y0)), gpx_thumb)
+        img.paste(gpx_thumb, (int(x0), int(y0)))
     elif video_thumb is not None:
         img_w, img_h = video_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        if video_thumb.mode != 'RGBA':
-            video_thumb = video_thumb.convert('RGBA')
-        img.paste(video_thumb, (int(x0), int(y0)), video_thumb)
+        img.paste(video_thumb, (int(x0), int(y0)))
     elif image_thumb is not None:
         img_w, img_h = image_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        if image_thumb.mode != 'RGBA':
-            image_thumb = image_thumb.convert('RGBA')
-        img.paste(image_thumb, (int(x0), int(y0)), image_thumb)
+        img.paste(image_thumb, (int(x0), int(y0)))
     elif fit_gps_thumb is not None:
         img_w, img_h = fit_gps_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        if fit_gps_thumb.mode != 'RGBA':
-            fit_gps_thumb = fit_gps_thumb.convert('RGBA')
-        img.paste(fit_gps_thumb, (int(x0), int(y0)), fit_gps_thumb)
+        img.paste(fit_gps_thumb, (int(x0), int(y0)))
     elif zip_file_list is not None:
         text_y = preview_box_top + preview_box_padding
         for line in zip_file_list:
@@ -1638,26 +1514,53 @@ def save_card_as_tiff(img, output_path, cmyk_mode=False):
     """
     Save a card image as a TIFF file with proper handling for CMYK mode.
     This function ensures borders are preserved during CMYK conversion.
+    
+    Args:
+        img: The PIL Image object to save
+        output_path: The path where the TIFF should be saved
+        cmyk_mode: Whether to save in CMYK mode (True) or RGB mode (False)
     """
     try:
-        # Save as TIFF if output ends with .tif or .tiff, else JPEG
-        if str(output_path).lower().endswith(('.tif', '.tiff')):
-            img.save(output_path, format='TIFF')
-            logging.info(f"[SUCCESS] Saved TIFF card to {output_path}")
+        if cmyk_mode:
+            # For CMYK mode, we need to make sure the border is even more pronounced
+            # Draw an additional solid border around the entire image
+            draw = ImageDraw.Draw(img)
+            w, h = img.size
+            for i in range(0, 5):  # Draw 5 concentric borders for visibility
+                draw.rectangle(
+                    [i, i, w-1-i, h-1-i],
+                    outline=(0, 0, 0, 100),  # Solid black in CMYK
+                    width=4  # Thick line
+                )
+            
+            # Save with LibTIFF and specific compression settings
+            img.save(
+                output_path, 
+                format='TIFF',
+                compression='none',  # No compression for maximum quality
+                dpi=(300, 300)       # Set DPI to 300
+            )
+            logging.debug(f"Saved CMYK TIFF with reinforced border: {output_path}")
         else:
-            img.save(output_path, format='JPEG', quality=95)
-            logging.info(f"[SUCCESS] Saved JPEG card to {output_path}")
+            # For RGB mode, add a clear border too
+            draw = ImageDraw.Draw(img)
+            w, h = img.size
+            draw.rectangle([0, 0, w-1, h-1], outline=(0, 0, 0), width=5)
+            
+            # Standard save
+            img.save(output_path, format='TIFF', compression='tiff_deflate')
+            logging.debug(f"Saved RGB TIFF with reinforced border: {output_path}")
     except Exception as e:
-        logging.error(f"[ERROR] Exception during card saving: {e}")
-        logging.error(traceback.format_exc())
+        logging.error(f"Error saving TIFF image: {e}")
+        # Fall back to basic save method
+        img.save(output_path)
+        logging.warning(f"Used fallback save method for: {output_path}")
 
 def process_pdf_or_ai_page(page, max_width, max_height):
     """
     Takes a PIL Image (PDF or AI page), rotates if landscape, and scales to fit the preview box.
     Returns the processed image.
-
     """
-    
     img_w, img_h = page.size
     # Rotate if landscape
     if img_w > img_h:
