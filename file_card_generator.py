@@ -450,9 +450,9 @@ def get_pdf_preview(file_path, box_w, box_h, max_pages=6):
         elif n_total <= 20:
             n_preview = min(8, n_total)
         elif n_total <= 50:
-            n_preview = min(12, n_total)
+            n_preview = min(20, n_total)
         else:
-            n_preview = min(16, n_total)
+            n_preview = min(24, n_total)
         if n_preview == 0:
             logging.warning(f"No pages found in PDF: {file_path}")
             return None
@@ -891,7 +891,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         file_info['Shared By'] = slack_user_name
     if slack_shared_date:
         file_info['Shared Date'] = slack_shared_date
-    if original_dt:
+    # If DateTimeOriginal is present, skip other date fields
+    if 'DateTimeOriginal' in file_info and file_info['DateTimeOriginal']:
+        pass
+    elif original_dt:
         file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
     else:
         file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
@@ -919,7 +922,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     preview_box_bottom = height - outer_padding - int(30 * scale)
     preview_box_height = preview_box_bottom - preview_box_top
     max_line_width_pixels = preview_box_right - preview_box_left - preview_box_padding * 2
-    temp_img = Image.new('RGB', (width, height))
+    temp_img = Image.new('RGBA', (width, height))
     temp_draw = ImageDraw.Draw(temp_img)
     bbox = temp_draw.textbbox((0, 0), 'A', font=preview_font)
     line_height = bbox[3] - bbox[1] + int(3 * scale)
@@ -1024,14 +1027,14 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
                 if frame_count < 30:
                     return 3, 3
                 elif frame_count < 900:
-                    return 4, 3
-                elif frame_count < 1800:
                     return 4, 4
-                elif frame_count < 3600:
+                elif frame_count < 1800:
                     return 5, 4
+                elif frame_count < 3600:
+                    return 6, 5
                 else:
                     # For very long videos, cap at 6x5
-                    return 6, 5
+                    return 6, 6
             except Exception:
                 return 3, 3
         grid_cols, grid_rows = get_video_grid_size(file_path)
@@ -1294,14 +1297,25 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
     y = avatar_y_coordinate + 5*scale # avatar and metadata can be horizontally aligned
+    
+    ########################################
+    # DO NOT REMOVE THIS COMMENT EVER
+    #
+    # THIS IS WHERE THE METADATA IS DRAWN
+    #
+    # DO NOT REMOVE THIS COMMENT EVER
+    ########################################
+    
     for key, value in file_info.items():
-        if key == 'Name':
+        if key == 'Name' or key == 'DateTimeOriginal':
             # For the Name field, don't show the label
             line = f"{value}"
         else:
             line = f"{key}: {value}"
         draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
         y += metadata_line_height
+        
+
     y = preview_box_top - 30
     #draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
