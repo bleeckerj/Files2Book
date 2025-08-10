@@ -476,7 +476,7 @@ def get_pdf_preview(file_path, box_w, box_h):
             new_w = int(page.width * scale_factor)
             new_h = int(page.height * scale_factor)
             page = page.resize((new_w, new_h), Image.LANCZOS)
-            grid_img = Image.new('RGBA', (box_w, box_h), (228, 234, 231))
+            grid_img = Image.new('RGB', (box_w, box_h), (254, 254, 254))
             x = (box_w - new_w) // 2
             y = (box_h - new_h) // 2
             grid_img.paste(page, (x, y))
@@ -506,7 +506,7 @@ def get_pdf_preview(file_path, box_w, box_h):
                 page = page.rotate(90, expand=True)
                 page.thumbnail((best_thumb_w, best_thumb_h))
             thumbs.append(page)
-        grid_img = Image.new('RGBA', (box_w, box_h), (228, 234, 231))
+        grid_img = Image.new('RGB', (box_w, box_h), (255, 255, 255))
         for idx, page in enumerate(thumbs):
             x = (idx % best_cols) * best_thumb_w + (best_thumb_w - page.width)//2
             y = (idx // best_cols) * best_thumb_h + (best_thumb_h - page.height)//2
@@ -519,11 +519,26 @@ def get_pdf_preview(file_path, box_w, box_h):
         logging.error(f"PDF preview error for {file_path}: {e}")
         return None
 
-def get_image_thumbnail(file_path, thumb_size=(320, 320)):
+def get_image_thumbnail(file_path, box_size=(320, 320)):
     try:
         img = Image.open(file_path)
-        img.thumbnail(thumb_size)
-        return img
+        img_w, img_h = img.size
+        box_w, box_h = box_size
+        # Rotate image if box is portrait and image is landscape
+        if box_h > box_w and img_w > img_h:
+            img = img.rotate(90, expand=True)
+            img_w, img_h = img.size
+        # Scale to fit box, maximizing coverage
+        scale_factor = min(box_w / img_w, box_h / img_h)
+        new_w = int(img_w * scale_factor)
+        new_h = int(img_h * scale_factor)
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+        # Center in box
+        thumb = Image.new('RGB', (box_w, box_h), (255, 255, 255))
+        x = (box_w - new_w) // 2
+        y = (box_h - new_h) // 2
+        thumb.paste(img, (x, y))
+        return thumb
     except Exception:
         return None
 
@@ -952,7 +967,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     preview_box_top = outer_padding + header_height + metadata_height + spacing_between_metadata_and_content_preview
     logging.debug(f"Preview box top: {preview_box_top}, icon space: {icon_space}, metadata height: {metadata_height}")
     preview_box_bottom = height - outer_padding - int(30 * scale)
-    preview_box_height = preview_box_bottom - preview_box_top
+    preview_box_height = preview_box_bottom - preview_box_top - preview_box_padding * 2
     max_line_width_pixels = preview_box_right - preview_box_left - preview_box_padding * 2
     temp_img = Image.new('RGBA', (width, height))
     temp_draw = ImageDraw.Draw(temp_img)
@@ -975,7 +990,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     zip_file_preview_img = None
     zip_file_preview_lines = None
     if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp'}:
-        image = get_image_thumbnail(file_path, thumb_size=(max_line_width_pixels, preview_box_height))
+        image = get_image_thumbnail(file_path, box_size=(max_line_width_pixels, preview_box_height))
         if image is not None:
             img_w, img_h = image.size
             logging.debug(f"Original image size: {img_w}x{img_h} for {file_path.name}")
