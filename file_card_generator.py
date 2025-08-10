@@ -716,6 +716,29 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 
 
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False):
+    exif_candidate = False
+    ext = Path(file_path).suffix.lower()
+    # Step 2: If EXIF-capable, try to read EXIF data
+    exif_data = None
+    
+    # Step 1: Check if file is an EXIF-capable image type
+    exif_candidate = ext in {'.jpg', '.jpeg', '.tiff'}
+    if exif_candidate:
+        try:
+            img = Image.open(file_path)
+            if hasattr(img, '_getexif'):
+                exif_data = img._getexif()
+            elif hasattr(img, 'getexif'):
+                exif_data = img.getexif()
+        except Exception:
+            exif_data = None
+    if exif_data is not None:
+        logging.debug(f"EXIF data found: {exif_data is not None}")
+    if exif_data:
+        date_time_original = exif_data.get(36867)
+        if date_time_original:
+            file_info['DateTimeOriginal'] = date_time_original
+
     file_path = Path(file_path)
     # Proportional scaling
     base_width = 800
@@ -788,6 +811,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     logging.info(f"Processing {file_path.name} - Type: {file_type_info['group']}")
     icon = file_type_info['icon']
     ext = file_path.suffix.lower()
+
 
     try:
         size = os.path.getsize(file_path)
@@ -1259,12 +1283,12 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         except Exception as e:
             logging.error(f"Error processing avatar image {slack_avatar}: {e}")
             avatar_img = None
-
+    
+    avatar_y_coordinate = int(outer_padding + header_height + 5 * scale)
+    avatar_x_coordinate = int(outer_padding + 60 * scale)  # 15px from left border, scaled
     if avatar_img is not None:
         try:
             # Position avatar relative to the left border (outer_padding)
-            avatar_x_coordinate = int(outer_padding + 60 * scale)  # 15px from left border, scaled
-            avatar_y_coordinate = int(outer_padding + header_height + 5 * scale)
             #logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
