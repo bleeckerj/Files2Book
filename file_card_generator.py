@@ -511,7 +511,7 @@ def get_gpx_preview(file_path, box_w, box_h):
     except Exception:
         return None
 
-def get_video_preview(file_path, box_w, box_h, grid_cols=2, grid_rows=3, rotate_frames_if_portrait=True):
+def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=3, rotate_frames_if_portrait=True):
     try:
         cap = cv2.VideoCapture(str(file_path))
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -970,7 +970,30 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         except Exception as e:
             preview_lines = [f"PDF error: {e}"]
     elif ext in {'.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm'}:
-        video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height)
+        # Dynamically determine grid size based on video length
+        def get_video_grid_size(file_path):
+            try:
+                import cv2
+                cap = cv2.VideoCapture(str(file_path))
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                cap.release()
+                # Use a matrix/function to scale grid size with video length
+                # Short videos: 3x3, Medium: 4x3, Long: 4x4, Very long: 5x4, etc.
+                if frame_count < 30:
+                    return 3, 3
+                elif frame_count < 900:
+                    return 4, 3
+                elif frame_count < 1800:
+                    return 4, 4
+                elif frame_count < 3600:
+                    return 5, 4
+                else:
+                    # For very long videos, cap at 6x5
+                    return 6, 5
+            except Exception:
+                return 3, 3
+        grid_cols, grid_rows = get_video_grid_size(file_path)
+        video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height, grid_cols=grid_cols, grid_rows=grid_rows)
     elif ext == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
         # Mapbox integration for GPX with polyline
