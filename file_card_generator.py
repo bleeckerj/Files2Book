@@ -715,7 +715,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
+def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False):
     file_path = Path(file_path)
     # Proportional scaling
     base_width = 800
@@ -873,7 +873,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
         file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
         file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
     # Move Name to the end
-    file_info['Name'] = file_path.name
+    if not exclude_file_path:
+        file_info['Name'] = file_path.name
 
     # Fixed card height for 4x5 aspect ratio
     #header_height = int(80 * scale)
@@ -1144,18 +1145,33 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"KEY error: {e}"]
-    elif ext == '.pptx':
+    elif ext == '.pptx' or ext == '.ppt':
         try:
-            logging.info(f"Processing PPTX file: {file_path}")
+            logging.info(f"Processing PPT(X) file: {file_path}")
             # Extract all images from ppt/media
             with zipfile.ZipFile(file_path, 'r') as z:
                 names = z.namelist()
-                preview_lines = [f"PPTX file: {len(names)} items"]
+                preview_lines = [f"PPT(X) file: {len(names)} items"]
                 preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
                 image_files = [name for name in names if name.startswith('ppt/media/') and name.lower().endswith(('.jpg', '.jpeg', '.png'))]
-                # Pick up to 12 random images
-                num_images = min(12, len(image_files))
-                selected_images = random.sample(image_files, num_images) if num_images > 0 else []
+                n_total = len(image_files)
+                # Dynamically determine number of preview images
+                if n_total <= 6:
+                    n_preview = n_total
+                elif n_total <= 20:
+                    n_preview = min(12, n_total)
+                elif n_total <= 50:
+                    n_preview = min(16, n_total)
+                else:
+                    n_preview = min(20, n_total)
+                # Select images at evenly distributed intervals
+                indices = [0]
+                if n_preview > 1 and n_total > 1:
+                    import numpy as np
+                    remaining = np.linspace(1, n_total - 1, n_preview - 1)
+                    indices += [int(round(i)) for i in remaining]
+                indices = sorted(set(indices))
+                selected_images = [image_files[i] for i in indices if i < n_total]
                 thumbs = []
                 for name in selected_images:
                     with z.open(name) as img_file:
@@ -1168,9 +1184,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False):
                 # Dynamically determine grid_cols and grid_rows
                 if thumbs:
                     aspect_ratio = max_line_width_pixels / max(preview_box_height, 1)
-                    # Try to make grid as square as possible, but favor more rows for tall preview
-                    grid_rows = int(math.ceil(math.sqrt(num_images / aspect_ratio)))
-                    grid_cols = int(math.ceil(num_images / grid_rows))
+                    grid_rows = int(math.ceil(math.sqrt(len(thumbs) / aspect_ratio)))
+                    grid_cols = int(math.ceil(len(thumbs) / grid_rows))
                     thumb_w = max_line_width_pixels // grid_cols
                     thumb_h = preview_box_height // grid_rows
                     grid_img = Image.new('RGB', (max_line_width_pixels, preview_box_height), (245, 245, 245))

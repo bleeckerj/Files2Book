@@ -29,6 +29,8 @@ def parse_page_size(size_name):
         'LETTER': (8.5, 11),
         'LEGAL': (8.5, 14),
         'TABLOID': (11, 17),
+        'DIGEST': (5.5, 8.5),         # Digest size
+        'POCKETBOOK': (4.25, 6.87),   # PocketBook size
         # Playing card sizes (in inches, rounded to 2 decimals)
         'POKER': (2.48, 3.46),        # 63x88mm
         'BRIDGE': (2.24, 3.46),       # 57x88mm
@@ -55,7 +57,7 @@ def parse_page_size(size_name):
     logging.warning(f"Unknown page size '{size_name}', defaulting to A4")
     return int(8.3 * dpi), int(11.7 * dpi)
 
-def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT'):
+def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', compact_mode=False, exclude_file_path=False):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -83,20 +85,42 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
         print(f"Error: {input_dir} is not a directory")
         return
     
-    logging.info(f"width: {width}, height: {height}, cmyk_mode: {cmyk_mode}")
-    # Process each file in the directory
+    logging.debug(f"width: {width}, height: {height}, cmyk_mode: {cmyk_mode}")
+    # Helper to find files with depth limit
+    def find_files(root_dir, max_depth=None):
+        result = []
+        root_depth = str(root_dir).rstrip(os.sep).count(os.sep)
+        for dirpath, dirnames, filenames in os.walk(root_dir):
+            current_depth = str(dirpath).rstrip(os.sep).count(os.sep) - root_depth
+            if max_depth is not None and current_depth > max_depth:
+                dirnames[:] = []
+                continue
+            for filename in filenames:
+                if filename != '.DS_Store':
+                    result.append(Path(dirpath) / filename)
+        return result
+
+    # Get max_depth from global args if present
+    import sys
+    max_depth = None
+    for arg in sys.argv:
+        if arg.startswith('--max-depth='):
+            try:
+                max_depth = int(arg.split('=')[1])
+            except Exception:
+                pass
     file_count = 0
-    for file_path in sorted(input_path.iterdir()):
-        if file_path.is_file() and file_path.name != '.DS_Store':
+    for file_path in sorted(find_files(input_path, max_depth=max_depth)):
+        if file_path.is_file():
             try:
                 file_type = determine_file_type(file_path)
-                logging.info(f"Processing {file_path.name} - Type: {file_type}")
+                logging.debug(f"Processing {file_path.name} - Type: {file_type}")
 
                 # Log width and height before calling create_file_info_card
                 logging.debug(f"Before create_file_info_card: width={width}, height={height}")
 
                 # Generate the card
-                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode)
+                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, compact_mode=compact_mode, exclude_file_path=exclude_file_path)
                 
                 # Save the card using specialized TIFF save function
                 card_file_name = f"{file_path.stem}_card.tiff"
@@ -104,18 +128,18 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 
                 # Use dedicated function for TIFF saving to preserve borders
                 save_card_as_tiff(card, card_path, cmyk_mode=cmyk_mode)
-                logging.info(f"Saved card: {card_path}")
+                logging.debug(f"Saved card: {card_path}")
                 
                 # Log the size of the saved card
                 card_size = card.size
                 logging.debug(f"Card size: {card_size}")
 
-                logging.info(f"Created card for {file_path.name} with size: {card.size} width: {card.width}, height: {card.height}")
+                logging.debug(f"Created card for {file_path.name} with size: {card.size} width: {card.width}, height: {card.height}")
                 # Save the card as PNG only if not CMYK
                 if not cmyk_mode:
                     output_file = output_path / f"{file_path.stem}_card.png"
                     card.save(output_file)
-                    logging.info(f"Saved card to {output_file} with size: {card.size}")
+                    logging.debug(f"Saved card to {output_file} with size: {card.size}")
                 file_count += 1
             except Exception as e:
                 logging.error(f"Error processing {file_path.name}: {e}")
@@ -134,7 +158,7 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
     # Check if we can use img2pdf which has better TIFF support
     try:
         use_img2pdf = True
-        logging.info("Using img2pdf for PDF generation (better TIFF support)")
+        logging.debug("Using img2pdf for PDF generation (better TIFF support)")
     except ImportError:
         use_img2pdf = False
         logging.info("img2pdf not available, using FPDF")
@@ -143,16 +167,32 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
     
     # Get list of all card files
     card_files = sorted(output_path.glob("*_card.*"))
-    
+
+    # Convert webp images to PNG for img2pdf compatibility
+    converted_files = []
+    for f in card_files:
+        if f.suffix.lower() == '.webp':
+            png_path = f.with_suffix('.png')
+            try:
+                from PIL import Image
+                im = Image.open(f)
+                im.save(png_path)
+                logging.info(f"Converted {f} to {png_path} for PDF assembly.")
+                converted_files.append(str(png_path))
+            except Exception as e:
+                logging.error(f"Error converting {f} to PNG: {e}")
+        else:
+            converted_files.append(str(f))
+
     # If using img2pdf and we have TIFF files, use it directly
-    if use_img2pdf and any(f.suffix.lower() == '.tiff' for f in card_files):
+    if use_img2pdf and any(Path(f).suffix.lower() == '.tiff' for f in converted_files):
         try:
             # Filter to only include image files that img2pdf supports
-            valid_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif']
-            image_files = [str(f) for f in card_files if f.suffix.lower() in valid_extensions]
-            
+            valid_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp']
+            image_files = [str(f) for f in converted_files if Path(f).suffix.lower() in valid_extensions]
+
             if image_files:
-                logging.info(f"Creating PDF with img2pdf using {len(image_files)} images")
+                logging.debug(f"Creating PDF with img2pdf using {len(image_files)} images")
                 with open(pdf_file, "wb") as f:
                     # img2pdf works with points (1/72 inch)
                     # Convert our 300dpi measurements to points
@@ -172,32 +212,28 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
             logging.warning(f"Image files passed to img2pdf: {image_files}")
             logging.warning("Falling back to FPDF")
     
-    # Fallback to FPDF if img2pdf failed or isn't available
-    logging.info("FPDF format {page_size} for PDF generation")
-    pdf = FPDF(unit="pt", format=(page_size[0], page_size[1]))
-    temp_dir = output_path / "temp_pdf_images"
-    temp_dir.mkdir(exist_ok=True, parents=True)
-    
-    for card_file in card_files:
-        try:
-            pdf.add_page()
-            
-            # If it's a TIFF file, convert it to JPEG while preserving color profile
-            if card_file.suffix.lower() == '.tiff':
-                #logging.debug(f"Converting TIFF to JPEG for PDF inclusion: {card_file}")
-                img = Image.open(str(card_file))
-                
-                # Create a temporary JPEG file
-                temp_jpg = temp_dir / f"{card_file.stem}_temp.jpg"
-                
-                # Save as JPEG with high quality - JPEG supports CMYK
-                img.save(str(temp_jpg), format='JPEG', quality=95)
-                
-                # Use the JPEG for PDF
-                pdf.image(str(temp_jpg), x=0, y=0, w=page_size[0], h=page_size[1])
+                # Only include TIFFs for CMYK, PNGs otherwise
+                # Detect CMYK mode by presence of TIFFs (since only CMYK saves TIFFs)
+            tiff_files = sorted(output_path.glob("*_card.tiff"))
+            png_files = sorted(output_path.glob("*_card.png"))
+            if tiff_files:
+                image_files = [str(f) for f in tiff_files]
             else:
-                # Direct inclusion for other formats
-                pdf.image(str(card_file), x=0, y=0, w=page_size[0], h=page_size[1])
+                image_files = [str(f) for f in png_files]
+            if image_files:
+                try:
+                    logging.debug(f"Creating PDF with img2pdf using {len(image_files)} images")
+                    with open(pdf_file, "wb") as f:
+                        width_pt = page_size[0] / 300 * 72
+                        height_pt = page_size[1] / 300 * 72
+                        f.write(img2pdf.convert(image_files, pagesize=(width_pt, height_pt)))
+                    logging.info(f"Combined PDF saved to {pdf_file}")
+                    return
+                except Exception as e:
+                    logging.warning(f"Error using img2pdf: {e} (type: {type(e)})")
+                    logging.warning("Traceback:\n" + traceback.format_exc())
+            # Direct inclusion for other formats
+            pdf.image(str(card_file), x=0, y=0, w=page_size[0], h=page_size[1])
         except Exception as e:
             logging.error(f"Error adding {card_file} to PDF: {e}")
 
@@ -211,16 +247,19 @@ if __name__ == "__main__":
     parser.add_argument('--cmyk-mode', action='store_true', help='Generate cards in CMYK mode')
     parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
+    parser.add_argument('--compact', action='store_true', help='Enable compact mode for file card generation')
+    parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
+    parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
+    parser.add_argument('--exclude-file-path', action='store_true', help='Exclude the vertical file path from the card (default: shown)')
 
     args = parser.parse_args()
     logging.debug(f"Arguments: {args}")
     # Validate and adjust input_dir
     input_path = Path(args.input_dir)
-    last_component = input_path.name
     if not input_path.is_dir():
         print(f"Error: {args.input_dir} is not a directory.")
         sys.exit(1)
-    if last_component != "files":
+    if args.slack:
         files_subdir = input_path / "files"
         if files_subdir.is_dir():
             args.input_dir = str(files_subdir)
@@ -242,7 +281,14 @@ if __name__ == "__main__":
         logging.info(f"Using default PDF output name: {args.pdf_output_name}")
 
     # Generate file cards
-    build_file_cards_from_directory(args.input_dir, args.output_dir, args.cmyk_mode, args.page_size)
+    build_file_cards_from_directory(
+        args.input_dir,
+        args.output_dir,
+        args.cmyk_mode,
+        args.page_size,
+        compact_mode=args.compact,
+        exclude_file_path=args.exclude_file_path
+    )
 
     # Report summary
     output_path = Path(args.output_dir)
