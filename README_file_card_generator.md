@@ -7,7 +7,7 @@
 ## Features
 
 - **Supports Many File Types:**
-  - Images (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif`, `.tiff`, `.heic`)
+  - Images (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif`, `.tif`, `.tiff`, `.heic`)
   - Videos (`.mp4`, `.mov`, `.avi`, `.mkv`)
   - Documents (`.pdf`, `.docx`, `.key`, `.txt`, `.md`, etc.)
     - **Keynote (.key):** Lists contents and shows embedded images in a grid

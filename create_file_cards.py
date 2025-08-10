@@ -189,7 +189,7 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
             converted_files.append(str(f))
 
     # If using img2pdf and we have TIFF files, use it directly
-    if use_img2pdf and any(Path(f).suffix.lower() == '.tiff' for f in converted_files):
+    if use_img2pdf and any(Path(f).suffix.lower() == '.tiff' or Path(f).suffix.lower() == '.tif' for f in converted_files):
         try:
             # Filter to only include image files that img2pdf supports
             valid_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp']
@@ -229,7 +229,7 @@ if __name__ == "__main__":
     parser.add_argument('--exclude-file-path', action='store_true', help='Exclude the vertical file path from the card (default: shown)')
 
     args = parser.parse_args()
-    logging.debug(f"Arguments: {args}")
+    logging.info(f"Arguments: {args}")
     # Validate and adjust input_dir
     input_path = Path(args.input_dir)
     if not input_path.is_dir():
@@ -247,15 +247,26 @@ if __name__ == "__main__":
     # Set default output_dir if not specified
     if not args.output_dir:
         parent_dir_name = os.path.basename(os.path.dirname(os.path.normpath(args.input_dir)))
-        args.output_dir = f"{parent_dir_name}_cards_output"
+        args.output_dir = f"{parent_dir_name}_cards_output_{args.page_size}"
         logging.info(f"Using default output directory: {args.output_dir}")
+    elif args.output_dir:
+        args.output_dir = f"{args.output_dir}_{args.page_size}"
 
     # Set default pdf_output_name if not specified
     if not args.pdf_output_name:
         parent_dir_name = os.path.basename(os.path.dirname(os.path.normpath(args.input_dir)))
-        args.pdf_output_name = f"{parent_dir_name}_combined_pdf.pdf"
+        args.pdf_output_name = f"{parent_dir_name}_combined_pdf_{args.page_size}.pdf"
         logging.info(f"Using default PDF output name: {args.pdf_output_name}")
+    elif args.pdf_output_name:
+        # Remove extension if present
+        pdf_name = args.pdf_output_name
+        if '.' in pdf_name:
+            pdf_name = pdf_name.rsplit('.', 1)[0]
+        args.pdf_output_name = f"{pdf_name}_{args.page_size}.pdf"
 
+    logging.info(f"Will generate file cards in: {args.output_dir}")
+    logging.info(f"Output PDF name: {args.pdf_output_name}")
+    
     # Generate file cards
     build_file_cards_from_directory(
         args.input_dir,
@@ -268,7 +279,7 @@ if __name__ == "__main__":
     # Report summary
     output_path = Path(args.output_dir)
     card_files = sorted(output_path.glob("*_card.*"))
-    logging.info(f"\nSummary:")
+    logging.info(f"Summary +++++++++++++++++++++++++++++")
     logging.info(f"Output directory: {os.path.abspath(args.output_dir)}")
     logging.info(f"Number of card files generated: {len(card_files)}")
     if card_files:

@@ -134,7 +134,7 @@ The tool automatically detects and color-codes these file types:
 - Code files (`.py`, `.js`, `.html`, etc.)
 - Data files (`.json`, `.csv`, `.xml`, etc.)
 - Documents (`.doc`, `.pdf`, `.txt`, etc.)
-- Images (`.jpg`, `.png`, `.tiff`, etc.)
+- Images (`.jpg`, `.png`,`.tif`, `.tiff`, etc.)
 - Videos (`.mp4`, `.mov`, etc.)
 - GPS data (`.gpx`, `.fit`, `.tcx`)
 - Archives (`.zip`, `.tar`, `.gz`, etc.)

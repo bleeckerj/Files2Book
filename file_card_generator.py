@@ -771,7 +771,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     exif_data = None
     
     # Step 1: Check if file is an EXIF-capable image type
-    exif_candidate = ext in {'.jpg', '.jpeg', '.tiff'}
+    exif_candidate = ext in {'.jpg', '.jpeg', '.tif', '.tiff'}
     if exif_candidate:
         try:
             img = Image.open(file_path)
@@ -991,7 +991,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     zip_file_list = None
     zip_file_preview_img = None
     zip_file_preview_lines = None
-    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp'}:
+    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp'}:
         image = get_image_thumbnail(file_path, box_size=(max_line_width_pixels, preview_box_height))
         if image is not None:
             img_w, img_h = image.size
