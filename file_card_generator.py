@@ -139,7 +139,13 @@ FILE_TYPE_GROUPS = {
         'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp'},
         'icon': "IMAGE",
         'color': (0, 244, 240)  # HEX: 00f4f0
+    },
+    'cad': {
+        'extensions': {'.stp', '.step', '.igs', '.iges', '.stl', '.dxf', '.obj'},
+        'icon': "CAD",
+        'color': (45, 150, 230)  # HEX: 2D96E6
     }
+}
 }
 
 def scale_image_by_percent(image, percent):
@@ -566,6 +572,59 @@ def get_image_thumbnail(file_path, box_size=(320, 320)):
         thumb.paste(img, (x, y))
         return thumb
     except Exception:
+        return None
+
+def get_step_preview(file_path, box_w, box_h):
+    """
+    Generate a preview image for STEP/STP files using the step_to_png.sh script
+    
+    Args:
+        file_path: Path to the STEP file
+        box_w: Width of the desired preview
+        box_h: Height of the desired preview
+        
+    Returns:
+        PIL.Image: A preview image of the STEP file or None if conversion failed
+    """
+    try:
+        import subprocess
+        import os
+        from pathlib import Path
+        
+        # Find the step_to_png.sh script in the same directory as this script
+        script_dir = Path(__file__).parent.absolute()
+        converter_script = os.path.join(script_dir, "step_to_png.sh")
+        
+        # Skip if converter script doesn't exist
+        if not os.path.exists(converter_script):
+            logging.warning(f"STEP converter script not found: {converter_script}")
+            return None
+        
+        # Make sure the script is executable
+        if not os.access(converter_script, os.X_OK):
+            os.chmod(converter_script, 0o755)
+        
+        # Run the conversion script
+        logging.info(f"Converting STEP file to PNG: {file_path}")
+        result = subprocess.run(
+            [converter_script, str(file_path), str(box_w), str(box_h)],
+            capture_output=True,
+            text=True,
+            timeout=60  # 60 second timeout
+        )
+        
+        # Get the output PNG path from the last line of output
+        output_png = result.stdout.strip().split('\n')[-1]
+        
+        # Check if the output file exists
+        if os.path.exists(output_png):
+            # Load the generated image
+            return Image.open(output_png)
+        else:
+            logging.warning(f"STEP conversion output file not found: {output_png}")
+            return None
+    except Exception as e:
+        logging.error(f"Error generating STEP preview: {e}")
         return None
 
 def get_gpx_preview(file_path, box_w, box_h):
@@ -1132,6 +1191,25 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
             pass
     elif ext in {'.xlsx', '.xls'}:
         preview_lines = get_excel_preview(file_path, max_rows=max_preview_lines, max_cols=8)
+    elif ext in {'.stp', '.step', '.igs', '.iges'}:
+        # Handle STEP/IGES files
+        preview_lines = [f"CAD File: {file_path.name}", f"Type: {ext[1:].upper()}", "3D Model data"]
+        step_image = get_step_preview(file_path, max_line_width_pixels, preview_box_height)
+        if step_image is not None:
+            img_w, img_h = step_image.size
+            # Scale to fit preview area
+            scale_factor = min(
+                (max_line_width_pixels) / img_w,
+                (preview_box_height) / img_h
+            ) * 0.95
+            new_w = int(img_w * scale_factor)
+            new_h = int(img_h * scale_factor)
+            step_image = step_image.resize((new_w, new_h), Image.LANCZOS)
+            # Center in preview box
+            x = preview_box_left + (max_line_width_pixels - new_w) // 2
+            y = preview_box_top + (preview_box_height - new_h) // 2
+            img.paste(step_image, (x, y))
+            content_rendered = True
     elif ext in {'.fit', '.tcx'}:
         preview_lines, fit_meta = get_fit_summary_preview(file_path)
         fit_gps_thumb = get_fit_gps_preview(file_path, max_line_width_pixels, preview_box_height)
