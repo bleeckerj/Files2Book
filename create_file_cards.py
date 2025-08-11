@@ -230,6 +230,7 @@ if __name__ == "__main__":
     parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
     parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
     parser.add_argument('--exclude-file-path', default=False, action='store_true', help='Exclude the vertical file path from the card (default: shown)')
+    parser.add_argument('--delete-cards-after-pdf', action='store_true', help='Delete individual card files after PDF is created')
 
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
@@ -305,3 +306,15 @@ if __name__ == "__main__":
         width, height = parse_page_size(args.page_size)
         pdf_path = str(Path(args.output_dir) / args.pdf_output_name)
         assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
+        
+        # Delete individual card files if requested
+        if args.delete_cards_after_pdf:
+            logging.info("Deleting individual card files after PDF creation...")
+            for card_file in Path(args.output_dir).glob("*_card.*"):
+                if card_file.name != args.pdf_output_name:  # Make sure we don't delete the PDF
+                    try:
+                        card_file.unlink()
+                        logging.debug(f"Deleted: {card_file}")
+                    except Exception as e:
+                        logging.error(f"Error deleting {card_file}: {e}")
+            logging.info("Card files cleanup complete.")
