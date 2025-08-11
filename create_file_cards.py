@@ -229,7 +229,7 @@ if __name__ == "__main__":
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
     parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
     parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
-    parser.add_argument('--exclude-file-path', action='store_true', help='Exclude the vertical file path from the card (default: shown)')
+    parser.add_argument('--exclude-file-path', default=False, action='store_true', help='Exclude the vertical file path from the card (default: shown)')
 
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")

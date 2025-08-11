@@ -36,6 +36,7 @@ async function combineImagesToPdf(options) {
     'a5': { width: 5.8 * dpi, height: 8.3 * dpi },
     'a4': { width: 8.3 * dpi, height: 11.7 * dpi },
     'a3': { width: 11.7 * dpi, height: 16.5 * dpi },
+    'trade_large': { width: 7 * dpi, height: 9 * dpi },
     'letter': { width: 8.5 * dpi, height: 11 * dpi },
     'legal': { width: 8.5 * dpi, height: 14 * dpi },
     'tabloid': { width: 11 * dpi, height: 17 * dpi },

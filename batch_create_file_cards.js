@@ -27,6 +27,7 @@ const channelDirs = fs.readdirSync(rootDir).filter(dir => {
 channelDirs.forEach(channel => {
   const inputDir = path.join(rootDir, channel, 'files');
   const channelOutputDir = path.join(outputDir, `${channel}_file_cards_output`);
+  console.log(`Processing channel: ${channel}`);
   const cmd = `python3 create_file_cards.py --page-size "${pageSize}" --input-dir "${inputDir}" --output-dir "${channelOutputDir}" --cmyk-mode`;
   try {
     execSync(cmd, { stdio: 'inherit' });

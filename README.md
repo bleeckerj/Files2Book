@@ -360,3 +360,9 @@ For Apple Numbers files (`.numbers`):
 For all image previews (including movie frames and PDF/AI pages):
 - If the preview card is portrait and the image/frame is landscape, the image/frame is rotated 90° before scaling.
 - This ensures the preview makes optimal use of the available space.
+
+## Examples relavant to my work / OMATA
+
+```
+ python3 ./create_file_cards.py --page-size "DIGEST" --input-dir "/Users/julian/OMATA Dropbox/Julian Bleecker/Making Of The OMATA One/Chapters/InDesign/CURRENT/04052021/MakingOfOMATA_8x10_V1_01122021 Folder/Links/" --cmyk --output-dir "/Users/julian/Dropbox (Personal)/Projects By Year/@2025/Making Of Book Images Cards/V1/" --max-depth 1 --exclude-file-path --pdf-output-name MakingOfOMATA_V1_ImageBook.pdf
+ ```

@@ -137,7 +137,7 @@ The tool automatically detects and color-codes these file types:
 - Images (`.jpg`, `.png`,`.tif`, `.tiff`, etc.)
 - Videos (`.mp4`, `.mov`, etc.)
 - GPS data (`.gpx`, `.fit`, `.tcx`)
-- Archives (`.zip`, `.tar`, `.gz`, etc.)
+- Archives (`.zip`, `.tar`, `.gz`, `.rar`, etc.)
 - Binary files (`.bin`, `.hex`, `.dat`, etc.)
 
 ### Special Handling

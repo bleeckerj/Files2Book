@@ -1,3 +1,4 @@
+
 import os
 import time
 from datetime import datetime
@@ -788,6 +789,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 
 
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False):
+    
     file_info = {}
     exif_candidate = False
     ext = Path(file_path).suffix.lower()
@@ -973,8 +975,9 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
         file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
     # Move Name to the end
+    file_info['Name'] = file_path.name
     if not exclude_file_path:
-        file_info['Name'] = file_path.name
+        file_info['Filepath'] = str(file_path.parent)
 
     # Fixed card height for 4x5 aspect ratio
     #header_height = int(80 * scale)
@@ -1176,13 +1179,6 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
             preview_lines = [f"DOCX error: {e}"]
     elif file_type_info['group'] == 'binary' or ext == '.dfu':
         preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
-    elif file_type_info['group'] == 'unknown':
-        logging.info(f"Unknown file type for {file_path.name}. Attempting to read as text or hex.")
-        if is_mostly_text_or_html(file_path):
-            logging.info(f"File is mostly text or HTML {file_path.name} - Reading as text.")
-            preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length)
-        else:
-            preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
     elif file_type_info['group'] in ['code', 'data', 'document', 'log']:
         # Read a large chunk and wrap
         try:
@@ -1319,6 +1315,14 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
                 preview_lines = ["AI file: PDF preview not available."]
         except Exception as e:
             preview_lines = [f"AI error: {e}"]
+    elif file_type_info['group'] == 'unknown':
+        logging.info(f"Unknown file type for {file_path.name}. Attempting to read as text or hex.")
+        if is_mostly_text_or_html(file_path):
+            logging.info(f"File is mostly text or HTML {file_path.name} - Reading as text.")
+            preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length)
+        else:
+            preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
+
     # --- Draw card ---
     if cmyk_mode:
         from pdf_to_images import create_cmyk_image
@@ -1393,7 +1397,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     ########################################
     
     for key, value in file_info.items():
-        if key == 'Name' or key == 'DateTimeOriginal':
+        if key == 'Name' or key == 'DateTimeOriginal' or key == 'Filepath':
             # For the Name field, don't show the label
             line = f"{value}"
         else:
