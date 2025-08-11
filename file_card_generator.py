@@ -54,6 +54,14 @@ logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 logging.getLogger("img2pdf").setLevel(logging.WARNING)
 
+# Try to import fontTools for font metadata
+try:
+    from fontTools import ttLib
+    FONTTOOLS_AVAILABLE = True
+except ImportError:
+    FONTTOOLS_AVAILABLE = False
+    logging.warning("fontTools not available. Font metadata will be limited.")
+
 def round_image_corners(img, radius):
     # Ensure img is RGBA
     img = img.convert("RGBA")
@@ -126,6 +134,11 @@ FILE_TYPE_GROUPS = {
         'extensions': {'.hex', '.bin', '.dat', '.dfu', '.oci'},
         'icon': "BIN",
         'color': (252, 252, 75)  # HEX: fcfc4a
+    },
+    'font': {
+        'extensions': {'.ttf', '.otf', '.woff', '.woff2', '.eot'},
+        'icon': "FONT",
+        'color': (34, 153, 84)  # HEX: #229954
     },
     'gps': {
         'extensions': {'.gpx', '.fit', '.tcx'},
@@ -579,6 +592,137 @@ def get_image_thumbnail(file_path, box_size=(320, 320)):
         return thumb
     except Exception:
         return None
+
+def get_font_preview(file_path, box_w, box_h):
+    """
+    Generate a preview image for a font file (TTF, OTF).
+    
+    Args:
+        file_path: Path to the font file
+        box_w: Width of the preview box
+        box_h: Height of the preview box
+        
+    Returns:
+        A PIL Image containing a preview of the font with sample text
+    """
+    try:
+        # Create a white background image
+        preview = Image.new('RGB', (box_w, box_h), (255, 255, 255))
+        draw = ImageDraw.Draw(preview)
+        
+        # Try to load the font
+        font_path = str(file_path)
+        
+        # Sample text to display
+        sample_text = "The OMATA One. As useful as art."
+        pangram = "The quick brown fox jumps over the lazy dog"
+        numbers = "0123456789"
+        special_chars = "!@#$%^&*()_+-=[]{}|;:'\",.<>/?"
+        
+        # Font sizes to display
+        sizes = [36, 48, 64, 72]
+        
+        # Get font metadata if possible
+        font_metadata = []
+        if FONTTOOLS_AVAILABLE:
+            try:
+                font = ttLib.TTFont(font_path)
+                
+                # Try to get font family name
+                if 'name' in font:
+                    for record in font['name'].names:
+                        if record.nameID == 1 and record.isUnicode():  # Font Family name
+                            family_name = record.toUnicode()
+                            font_metadata.append(f"Family: {family_name}")
+                            break
+                    
+                    for record in font['name'].names:
+                        if record.nameID == 2 and record.isUnicode():  # Font Subfamily name
+                            style = record.toUnicode()
+                            font_metadata.append(f"Style: {style}")
+                            break
+                            
+                    for record in font['name'].names:
+                        if record.nameID == 5 and record.isUnicode():  # Version
+                            version = record.toUnicode()
+                            font_metadata.append(f"Version: {version}")
+                            break
+            except Exception as e:
+                logging.debug(f"Could not read font metadata: {e}")
+        
+        if not font_metadata:
+            font_metadata = ["Font: " + os.path.basename(font_path)]
+        
+        # Draw font metadata
+        # Use a much larger font for metadata
+        big_metadata_font_size = max(24, int(box_h * 0.02))
+        try:
+            metadata_font = ImageFont.truetype(font_path, big_metadata_font_size)
+        except Exception:
+            metadata_font = ImageFont.load_default()
+        y_pos = 10
+        for line in font_metadata:
+            draw.text((10, y_pos), line, fill=(0, 0, 0), font=metadata_font)
+            # Increase spacing for big font
+            y_pos += big_metadata_font_size + 10
+        
+        y_pos += 20  # Extra space after metadata
+        
+        # Draw sample text in different sizes
+        for size in sizes:
+            try:
+                font = ImageFont.truetype(font_path, size)
+                text = f"{size}pt: {sample_text}"
+                draw.text((10, y_pos), text, fill=(0, 0, 0), font=font)
+                y_pos += size + 60
+            except Exception as e:
+                logging.debug(f"Error loading font at size {size}: {e}")
+                # Use default font as fallback
+                fallback_font = ImageFont.load_default()
+                draw.text((10, y_pos), f"Size {size}pt not available", fill=(255, 0, 0), font=fallback_font)
+                y_pos += 80
+        
+        # Draw numbers and special characters
+        try:
+            size = 124
+            font = ImageFont.truetype(font_path, size)
+            draw.text((10, y_pos), numbers, fill=(0, 0, 0), font=font)
+            y_pos += size + 60
+            
+            size=72
+            font = ImageFont.truetype(font_path, size)
+            draw.text((10, y_pos), special_chars, fill=(0, 0, 0), font=font)
+            y_pos += size + 60
+        except Exception as e:
+            logging.debug(f"Error drawing numbers/special chars: {e}")
+        
+        # Draw pangram
+        try:
+            pangram_size = 42
+            font = ImageFont.truetype(font_path, pangram_size)
+            
+            # Wrap text to fit width
+            wrapped_text = textwrap.fill(pangram, width=int(box_w / (pangram_size * 0.6)))
+            draw.text((10, y_pos), wrapped_text, fill=(0, 0, 0), font=font)
+            
+            # Move position down based on number of lines
+            lines = wrapped_text.count('\n') + 1
+            y_pos += (pangram_size + 20) * lines
+        except Exception as e:
+            logging.debug(f"Error drawing pangram: {e}")
+            
+        
+        return preview
+    except Exception as e:
+        logging.error(f"Error creating font preview: {e}")
+        logging.error(traceback.format_exc())
+        # Create a fallback image
+        fallback = Image.new('RGB', (box_w, box_h), (240, 240, 240))
+        draw = ImageDraw.Draw(fallback)
+        fallback_font = ImageFont.load_default()
+        draw.text((10, 10), f"Font preview not available", fill=(255, 0, 0), font=fallback_font)
+        draw.text((10, 30), f"Error: {str(e)}", fill=(255, 0, 0), font=fallback_font)
+        return fallback
 
 def get_gpx_preview(file_path, box_w, box_h):
     try:
@@ -1191,6 +1335,17 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
             preview_lines = preview_lines[:max_preview_lines]
         except Exception as e:
             preview_lines = [f"DOCX error: {e}"]
+    elif file_type_info['group'] == 'font':
+        # For font files, generate a visual preview
+        try:
+            image_thumb = get_font_preview(file_path, max_line_width_pixels, preview_box_height)
+            if image_thumb:
+                preview_text_replaced_with_image = True
+                preview_lines = []  # No text preview needed
+            else:
+                preview_lines = [f"Font preview not available for {os.path.basename(file_path)}"]
+        except Exception as e:
+            preview_lines = [f"Font preview error: {str(e)}"]
     elif file_type_info['group'] == 'binary' or ext == '.dfu':
         preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
     elif file_type_info['group'] in ['code', 'data', 'document', 'log']:

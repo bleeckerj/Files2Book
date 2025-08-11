@@ -250,16 +250,18 @@ if __name__ == "__main__":
 
     # Set default output_dir if not specified
     if not args.output_dir:
-        parent_dir_name = os.path.basename(os.path.dirname(os.path.normpath(args.input_dir)))
-        args.output_dir = f"{parent_dir_name}_cards_output_{args.page_size}"
+        # Use the base name of the input directory for the default output directory
+        input_dir_name = os.path.basename(os.path.normpath(args.input_dir))
+        args.output_dir = f"{input_dir_name}_cards_output_{args.page_size}"
         logging.info(f"Using default output directory: {args.output_dir}")
     elif args.output_dir:
-        args.output_dir = f"{args.output_dir}_{args.page_size}"
+        args.output_dir = f"{args.output_dir}/{args.page_size}"
 
     # Set default pdf_output_name if not specified
     if not args.pdf_output_name:
-        parent_dir_name = os.path.basename(os.path.dirname(os.path.normpath(args.input_dir)))
-        args.pdf_output_name = f"{parent_dir_name}_combined_pdf_{args.page_size}.pdf"
+        # Use the name of the output directory itself for the PDF name
+        output_dir_name = os.path.basename(os.path.normpath(args.output_dir))
+        args.pdf_output_name = f"{output_dir_name}_combined_pdf_{args.page_size}.pdf"
         logging.info(f"Using default PDF output name: {args.pdf_output_name}")
     elif args.pdf_output_name:
         # Remove extension if present
@@ -304,7 +306,19 @@ if __name__ == "__main__":
     if args.pdf_output_name:
         logging.info(f"Assembling cards into PDF: {args.pdf_output_name}")
         width, height = parse_page_size(args.page_size)
-        pdf_path = str(Path(args.output_dir) / args.pdf_output_name)
+        
+        # Determine the PDF path
+        output_path_obj = Path(args.output_dir)
+        # Use the directory name where the PDF will be saved as the base name
+        output_dir_name = output_path_obj.name
+        # If the PDF filename wasn't explicitly provided, use the output directory's parent name
+        if not args.pdf_output_name or args.pdf_output_name.endswith('.pdf'):
+            pdf_name = f"{output_dir_name}_combined_pdf_{args.page_size}.pdf"
+        else:
+            pdf_name = args.pdf_output_name
+            
+        pdf_path = str(output_path_obj / pdf_name)
+        logging.info(f"PDF will be saved at: {pdf_path}")
         assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
         
         # Delete individual card files if requested
