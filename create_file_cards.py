@@ -263,12 +263,12 @@ if __name__ == "__main__":
         output_dir_name = os.path.basename(os.path.normpath(args.output_dir))
         args.pdf_output_name = f"{output_dir_name}_combined_pdf_{args.page_size}.pdf"
         logging.info(f"Using default PDF output name: {args.pdf_output_name}")
-    elif args.pdf_output_name:
-        # Remove extension if present
-        pdf_name = args.pdf_output_name
-        if '.' in pdf_name:
-            pdf_name = pdf_name.rsplit('.', 1)[0]
-        args.pdf_output_name = f"{pdf_name}_{args.page_size}.pdf"
+    # elif args.pdf_output_name:
+    #     # Remove extension if present
+    #     pdf_name = args.pdf_output_name
+    #     if '.' in pdf_name:
+    #         pdf_name = pdf_name.rsplit('.', 1)[0]
+    #     args.pdf_output_name = f"{pdf_name}_{args.page_size}.pdf"
 
     logging.info(f"Will generate file cards in: {args.output_dir}")
     logging.info(f"Output PDF name: {args.pdf_output_name}")
@@ -313,10 +313,12 @@ if __name__ == "__main__":
         output_dir_name = output_path_obj.name
         # If the PDF filename wasn't explicitly provided, use the output directory's parent name
         if not args.pdf_output_name or args.pdf_output_name.endswith('.pdf'):
-            pdf_name = f"{output_dir_name}_combined_pdf_{args.page_size}.pdf"
+            # strip the PDF extension if it exists
+            tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
+            pdf_name = f"{tmp_name}_combined_pdf_{args.page_size}.pdf"
         else:
-            pdf_name = args.pdf_output_name
-            
+            pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}.pdf"
+
         pdf_path = str(output_path_obj / pdf_name)
         logging.info(f"PDF will be saved at: {pdf_path}")
         assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
