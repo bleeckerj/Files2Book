@@ -45,7 +45,7 @@ mimetypes.init()
 dotenv.load_dotenv()
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
 )
 
@@ -945,31 +945,8 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 
 
 def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False):
-    
+    logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
     file_info = {}
-    exif_candidate = False
-    ext = Path(file_path).suffix.lower()
-    # Step 2: If EXIF-capable, try to read EXIF data
-    exif_data = None
-    
-    # Step 1: Check if file is an EXIF-capable image type
-    exif_candidate = ext in {'.jpg', '.jpeg', '.tif', '.tiff'}
-    if exif_candidate:
-        try:
-            img = Image.open(file_path)
-            if hasattr(img, '_getexif'):
-                exif_data = img._getexif()
-            elif hasattr(img, 'getexif'):
-                exif_data = img.getexif()
-        except Exception:
-            exif_data = None
-    if exif_data is not None:
-        logging.debug(f"EXIF data found: {exif_data is not None}")
-    if exif_data:
-        date_time_original = exif_data.get(36867)
-        if date_time_original:
-            file_info['DateTimeOriginal'] = date_time_original
-
     file_path = Path(file_path)
     # Proportional scaling
     base_width = 800
@@ -1066,7 +1043,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     messages_json = channel_dir / "messages.json"
     users_json = channel_dir.parent / "users.json"
     avatars_dir = channel_dir.parent / "avatars_40x40"
-    user_profile = None
+    #user_profile = None
     if messages_json.exists():
         try:
             with open(messages_json, 'r', encoding='utf-8', errors='ignore') as f:
@@ -1110,8 +1087,52 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
                     break
         except Exception:
             pass
+        
+        
+        
+    # Step 2: If EXIF-capable, try to read EXIF data
+    exif_data = None
+    exif_candidate = False
+    ext = Path(file_path).suffix.lower()
+
+
+    # Step 1: Check if file is an EXIF-capable image type
+    exif_candidate = ext in {'.jpg', '.jpeg', '.tif', '.tiff'}
+    if exif_candidate:
+        logging.info(f"File {file_path} is an EXIF-capable image type: {ext}")
+        try:
+            img = Image.open(file_path)
+            if hasattr(img, '_getexif'):
+                exif_data = img._getexif()
+            elif hasattr(img, 'getexif'):
+                exif_data = img.getexif()
+        except Exception:
+            exif_data = None
+    if exif_data is not None:
+        logging.debug(f"EXIF data found: {exif_data is not None}")
+        logging.debug(f"EXIF data : {exif_data.get(36867)}")
+
+    if exif_data is not None:
+        date_time_original = exif_data.get(36867)
+        logging.info(f"EXIF DateTimeOriginal: {date_time_original}")
+        if date_time_original:
+            file_info['DateTimeOriginal'] = date_time_original
+            logging.debug(f"NOW EXIF DateTimeOriginal: {date_time_original}")
+            logging.debug(f"File info before DateTimeOriginal check: {file_info}")
+    # If DateTimeOriginal is present, skip other date fields
+    logging.debug(f"File info before DateTimeOriginal check: {file_info}")
+    if 'DateTimeOriginal' in file_info and file_info['DateTimeOriginal']:
+        logging.debug(f"DateTimeOriginal found: {file_info['DateTimeOriginal']}")
+        pass
+    elif original_dt:
+        file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
+        file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
+    
+    logging.debug(f"--->: {file_info}")
+
     # Build metadata with Slack Channel at the top if present
-    file_info = {}
     if slack_channel:
         file_info['Slack Channel'] = slack_channel
     file_info['Type'] = f"{file_path.suffix[1:].upper()} ({file_type_info['group']})"
@@ -1122,14 +1143,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         file_info['Shared By'] = slack_user_name
     if slack_shared_date:
         file_info['Shared Date'] = slack_shared_date
-    # If DateTimeOriginal is present, skip other date fields
-    if 'DateTimeOriginal' in file_info and file_info['DateTimeOriginal']:
-        pass
-    elif original_dt:
-        file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
-    else:
-        file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
-        file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
+
+    
     # Move Name to the end
     if not exclude_file_path:
         file_info['Filepath'] = str(file_path.parent)
@@ -1564,10 +1579,12 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     #
     # DO NOT REMOVE THIS COMMENT EVER
     ########################################
-    
+    logging.debug(f"Drawing metadata -- {file_info}")
     for key, value in file_info.items():
-        if key == 'Name' or key == 'DateTimeOriginal' or key == 'Filepath':
+        if key == 'Name' or key == 'Filepath':
             # For the Name field, don't show the label
+            logging.debug(f"Drawing metadata line: {key}: {value}")
+            logging.debug(f"File is {file_path.name}")
             line = f"{value}"
         else:
             line = f"{key}: {value}"
