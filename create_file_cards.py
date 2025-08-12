@@ -247,31 +247,37 @@ if __name__ == "__main__":
         else:
             print(f"Error: No 'files' subdirectory found in {args.input_dir}.")
             sys.exit(1)
-
+    
+    input_dir_name = os.path.basename(os.path.normpath(args.input_dir))
     # Set default output_dir if not specified
     if not args.output_dir:
         # Use the base name of the input directory for the default output directory
-        input_dir_name = os.path.basename(os.path.normpath(args.input_dir))
-        args.output_dir = f"{input_dir_name}_cards_output_{args.page_size}"
+        args.output_dir = f"{input_dir_name}_{args.page_size}"
         logging.info(f"Using default output directory: {args.output_dir}")
     elif args.output_dir:
         args.output_dir = f"{args.output_dir}/{args.page_size}"
 
-    # Set default pdf_output_name if not specified
-    if not args.pdf_output_name:
-        # Use the name of the output directory itself for the PDF name
-        output_dir_name = os.path.basename(os.path.normpath(args.output_dir))
-        args.pdf_output_name = f"{output_dir_name}_combined_pdf_{args.page_size}.pdf"
-        logging.info(f"Using default PDF output name: {args.pdf_output_name}")
-    # elif args.pdf_output_name:
-    #     # Remove extension if present
-    #     pdf_name = args.pdf_output_name
-    #     if '.' in pdf_name:
-    #         pdf_name = pdf_name.rsplit('.', 1)[0]
-    #     args.pdf_output_name = f"{pdf_name}_{args.page_size}.pdf"
+        # Determine the PDF path
+        output_path_obj = Path(args.output_dir)
+        # Use the directory name where the PDF will be saved as the base name
+        output_dir_name = output_path_obj.name
+        # If the PDF filename wasn't explicitly provided, use the output directory's parent name
+        if not args.pdf_output_name:
+            pdf_name = f"{input_dir_name}_combined_{args.page_size}.pdf"
+            logging.info(f"No PDF output name provided, using default: {pdf_name}")
+        elif args.pdf_output_name.endswith('.pdf'):
+            # strip the PDF extension if it exists
+            tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
+            pdf_name = f"{tmp_name}_combined_{args.page_size}.pdf"
+        else:
+            pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}.pdf"
+
+        pdf_path = str(output_path_obj / pdf_name)
+        logging.info(f"PDF Name will be {pdf_name}")
+        logging.info(f"PDF will be saved at: {pdf_path}")
 
     logging.info(f"Will generate file cards in: {args.output_dir}")
-    logging.info(f"Output PDF name: {args.pdf_output_name}")
+    logging.info(f"Output PDF name: {pdf_name}")
     
     # Generate file cards
     build_file_cards_from_directory(
@@ -303,24 +309,11 @@ if __name__ == "__main__":
             #logging.info(line)
 
     # Assemble cards into a PDF if requested
-    if args.pdf_output_name:
-        logging.info(f"Assembling cards into PDF: {args.pdf_output_name}")
+    if pdf_name:
+        logging.info(f"Assembling cards into PDF: {pdf_name}")
         width, height = parse_page_size(args.page_size)
         
-        # Determine the PDF path
-        output_path_obj = Path(args.output_dir)
-        # Use the directory name where the PDF will be saved as the base name
-        output_dir_name = output_path_obj.name
-        # If the PDF filename wasn't explicitly provided, use the output directory's parent name
-        if not args.pdf_output_name or args.pdf_output_name.endswith('.pdf'):
-            # strip the PDF extension if it exists
-            tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
-            pdf_name = f"{tmp_name}_combined_pdf_{args.page_size}.pdf"
-        else:
-            pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}.pdf"
 
-        pdf_path = str(output_path_obj / pdf_name)
-        logging.info(f"PDF will be saved at: {pdf_path}")
         assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
         
         # Delete individual card files if requested
