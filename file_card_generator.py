@@ -944,7 +944,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False, border_color=(250, 250, 250)):
+def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False, border_color=(250, 250, 250), border_inch_width=0.125):
     logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
     file_info = {}
     file_path = Path(file_path)
@@ -952,10 +952,10 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     base_width = 800
     base_height = 1000
     scale = min(width / base_width, height / base_height)
-    logging.debug(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
+    logging.info(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
     # Proportional paddings
     border_width = max(2, int(1 * scale))  # Using a more reasonable but still very visible border width
-    outer_padding = max(10, int(25 * scale))  # Padding between border and outer edges of content
+    outer_padding = max(50, int(50 * scale))  # Padding between border and outer edges of content
 
     # Calculate dimensions for the content area
     #content_width = width - 2 * outer_padding
@@ -1731,9 +1731,17 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
             else:
                 draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
             text_y += line_height
+    
+    
     # I need to convert from RGB to CMYK
-    border_width = min(int(20 * scale), 20)  # Scales with 'scale', but never exceeds 15
-    draw.rectangle([0, 0, width, height], outline=rgb_to_cmyk(*border_color), width=border_width)
+    dpi = 300  # or whatever your output DPI is
+    #border_inch_width = 0.125  # Minimum border in inches
+    min_border_px = int(border_inch_width * dpi)  # 0.125 * 300 = 37 pixels
+
+    color_border_width = min_border_px #max(min_border_px, int(10 * scale), 20)
+    
+    # color_border_width = min(int(20 * scale), 20)  # Scales with 'scale', but never exceeds 15
+    draw.rectangle([0, 0, width, height], outline=rgb_to_cmyk(*border_color), width=color_border_width)
     return img
 
 def determine_file_type(file_path):
