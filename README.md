@@ -364,5 +364,11 @@ For all image previews (including movie frames and PDF/AI pages):
 ## Examples relavant to my work / OMATA
 
 ```
- python3 ./create_file_cards.py --page-size "DIGEST" --input-dir "/Users/julian/OMATA Dropbox/Julian Bleecker/Making Of The OMATA One/Chapters/InDesign/CURRENT/04052021/MakingOfOMATA_8x10_V1_01122021 Folder/Links/" --cmyk --output-dir "/Users/julian/Dropbox (Personal)/Projects By Year/@2025/Making Of Book Images Cards/V1/" --max-depth 1 --exclude-file-path --pdf-output-name MakingOfOMATA_V1_ImageBook.pdf
+ python3 ./create_file_cards.py --page-size "DIGEST" --input-dir "./Chapters/InDesign/CURRENT/04052021/MakingOfOMATA_8x10_V1_01122021 Folder/Links/" --cmyk --output-dir "/Users/julian/Dropbox (Personal)/Projects By Year/@2025/Making Of Book Images Cards/V1/" --max-depth 1 --exclude-file-path --pdf-output-name MakingOfOMATA_V1_ImageBook.pdf
  ```
+
+
+## License
+Creative Commons Attribution-NonCommercial (CC BY-NC)
+
+This project is licensed under the Creative Commons Attribution-NonCommercial (CC BY-NC) license. You are free to use, share, and adapt the software, provided you give appropriate credit and do not use it for commercial purposes. For more details, see https://creativecommons.org/licenses/by-nc/4.0/

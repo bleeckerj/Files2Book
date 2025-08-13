@@ -28,7 +28,7 @@ channelDirs.forEach(channel => {
   const inputDir = path.join(rootDir, channel, 'files');
   const channelOutputDir = path.join(outputDir, `${channel}_file_cards_output`);
   console.log(`Processing channel: ${channel}`);
-  const cmd = `python3 create_file_cards.py --page-size "${pageSize}" --input-dir "${inputDir}" --output-dir "${channelOutputDir}" --cmyk-mode`;
+  const cmd = `python3 create_file_cards.py --page-size "${pageSize}" --input-dir "${inputDir}" --output-dir "${channelOutputDir}" --cmyk-mode --max-depth 2 --border-color "250,250,174" --delete-cards-after-pdf`;
   try {
     execSync(cmd, { stdio: 'inherit' });
   } catch (err) {

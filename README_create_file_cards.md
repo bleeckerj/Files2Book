@@ -65,6 +65,7 @@ python create_file_cards.py --input-dir /path/to/files --output-dir ./output --p
 -------------------------------------------
 - `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
 - `--exclude-file-path`: Exclude the vertical file path from the card (default: shown)
+- `--card-background-color`: Set the background color for the card (default: 'white'). Accepts any valid Pillow color string or RGB tuple, eg `--card-background-color "(251,238,104)"`
 
 #### Output
 

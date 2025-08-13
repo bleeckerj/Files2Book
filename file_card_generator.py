@@ -944,7 +944,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False):
+def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False, border_color=(250, 250, 250)):
     logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
     file_info = {}
     file_path = Path(file_path)
@@ -1731,6 +1731,9 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
             else:
                 draw.text((preview_box_left + preview_box_padding, text_y), line, fill='black', font=preview_font, anchor="lt")
             text_y += line_height
+    # I need to convert from RGB to CMYK
+    border_width = min(int(20 * scale), 20)  # Scales with 'scale', but never exceeds 15
+    draw.rectangle([0, 0, width, height], outline=rgb_to_cmyk(*border_color), width=border_width)
     return img
 
 def determine_file_type(file_path):
@@ -1773,13 +1776,13 @@ def save_card_as_tiff(img, output_path, cmyk_mode=False):
             # For CMYK mode, we need to make sure the border is even more pronounced
             # Draw an additional solid border around the entire image
             draw = ImageDraw.Draw(img)
-            w, h = img.size
-            for i in range(0, 5):  # Draw 5 concentric borders for visibility
-                draw.rectangle(
-                    [i, i, w-1-i, h-1-i],
-                    outline=(0, 0, 0, 100),  # Solid black in CMYK
-                    width=4  # Thick line
-                )
+            #w, h = img.size
+            # for i in range(0, 5):  # Draw 5 concentric borders for visibility
+            #     draw.rectangle(
+            #         [i, i, w-1-i, h-1-i],
+            #         outline=(0, 0, 0, 100),  # Solid black in CMYK
+            #         width=4  # Thick line
+            #     )
             
             # Save with LibTIFF and specific compression settings
             img.save(
@@ -1846,3 +1849,15 @@ def get_excel_preview(file_path, max_rows=10, max_cols=8):
     except Exception as e:
         preview_lines = [f"Excel preview error: {e}"]
     return preview_lines
+
+def rgb_to_cmyk(r, g, b):
+    if r == 0 and g == 0 and b == 0:
+        return (0, 0, 0, 100)
+    c = 255 - r
+    m = 255 - g
+    y = 255 - b
+    k = min(c, m, y)
+    c = (c - k) if k < 255 else 0
+    m = (m - k) if k < 255 else 0
+    y = (y - k) if k < 255 else 0
+    return (c, m, y, k)

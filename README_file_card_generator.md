@@ -92,6 +92,7 @@ python file_card_generator.py /path/to/your/file.ext [--compact]
 `--output OUTPUT_PATH`: Path to save the generated image (default: `file_card.png`)
 `--compact`: Enable compact mode for reduced text size, tighter spacing, and maximized preview area
 `--exclude-file-path`: Exclude the vertical file path from the card (by default, the file path is shown vertically along the preview area)
+`--card-background-color`: Set the background color for the card (default: 'white'). Accepts any valid Pillow color string or RGB tuple, eg `--card-background-color "(251,238,104)"`
 
 **Supported page sizes:**
 - A5, A4, A3, A2, A1, A0

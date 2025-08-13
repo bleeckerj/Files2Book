@@ -11,7 +11,8 @@ import shutil
 import itertools
 import traceback
 import img2pdf
-
+import re
+    
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
@@ -64,7 +65,7 @@ def parse_page_size(size_name):
     logging.warning(f"A5 size: {w_in}x{h_in} inches")
     return int(w_in * dpi), int(h_in * dpi)
 
-def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False):
+def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False, border_color=(250, 250, 250)):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -126,8 +127,8 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 logging.debug(f"Before create_file_info_card: width={width}, height={height}")
 
                 # Generate the card
-                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, exclude_file_path=exclude_file_path)
-                
+                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, exclude_file_path=exclude_file_path, border_color=border_color)
+
                 # Save the card using specialized TIFF save function
                 card_file_name = f"{file_path.stem}_card.tiff"
                 card_path = output_path / card_file_name
@@ -231,6 +232,7 @@ if __name__ == "__main__":
     parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
     parser.add_argument('--exclude-file-path', default=False, action='store_true', help='Exclude the vertical file path from the card (default: shown)')
     parser.add_argument('--delete-cards-after-pdf', action='store_true', help='Delete individual card files after PDF is created')
+    parser.add_argument('--border-color', default='250,250,250', help='Border color for the cards in RGB format (default: 250,250,250)')
 
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
@@ -279,13 +281,18 @@ if __name__ == "__main__":
     logging.info(f"Will generate file cards in: {args.output_dir}")
     logging.info(f"Output PDF name: {pdf_name}")
     
+    # pick the border color from the command line
+    border_color_parts = re.split(r'[,\s]+', args.border_color.strip())
+    border_color = tuple(map(int, border_color_parts))
+
     # Generate file cards
     build_file_cards_from_directory(
         args.input_dir,
         args.output_dir,
         args.cmyk_mode,
         args.page_size,
-        exclude_file_path=args.exclude_file_path
+        exclude_file_path=args.exclude_file_path,
+        border_color=border_color
     )
 
     # Report summary
