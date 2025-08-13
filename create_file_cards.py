@@ -65,7 +65,7 @@ def parse_page_size(size_name):
     logging.warning(f"A5 size: {w_in}x{h_in} inches")
     return int(w_in * dpi), int(h_in * dpi)
 
-def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False, border_color=(250, 250, 250), border_width=50):
+def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False, border_color=(250, 250, 250), border_inch_width=0.125):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     
     # pick the border color from the command line
     border_color_parts = re.split(r'[,\s]+', args.border_color.strip())
-    border_color = tuple(map(int, border_color_parts))
+    t_border_color = tuple(map(int, border_color_parts))
 
     # Generate file cards
     build_file_cards_from_directory(
@@ -293,8 +293,8 @@ if __name__ == "__main__":
         args.cmyk_mode,
         args.page_size,
         exclude_file_path=args.exclude_file_path,
-        border_color=border_color,
-        border_inch_width=0.125
+        border_color=t_border_color,
+        border_inch_width=args.border_inch_width
     )
 
     # Report summary
