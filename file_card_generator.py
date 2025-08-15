@@ -6,6 +6,7 @@ import hashlib
 import mimetypes
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
+from pillow_heif import register_heif_opener
 import io
 import math
 import textwrap
@@ -39,6 +40,9 @@ import random
 Image.MAX_IMAGE_PIXELS = 500_000_000  # or any large number
 #Image.MAX_IMAGE_PIXELS = None  # disables the limit (use with caution)
 
+register_heif_opener()
+
+
 # Initialize mimetypes
 mimetypes.init()
 
@@ -46,7 +50,7 @@ dotenv.load_dotenv()
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
+    format='%(asctime)s:%(levelname)s - %(name)s %(filename)s@%(lineno)d - %(message)s'
 )
 
 logging.getLogger("pdf2image").setLevel(logging.WARNING)
@@ -335,7 +339,7 @@ def get_gz_preview(file_path, max_bytes=1024, preview_box=None):
         orig_name = Path(file_path).stem
         ext = Path(orig_name).suffix.lower()
         # Try image preview
-        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.heic', '.webp'} and preview_box:
+        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.heic', '.heif','.webp'} and preview_box:
             try:
                 img = Image.open(io.BytesIO(data))
                 img.thumbnail(preview_box)
@@ -563,16 +567,16 @@ def get_pdf_preview(file_path, box_w, box_h):
         logging.error(f"PDF preview error for {file_path}: {e}")
         return None
 
-def get_image_thumbnail(file_path, box_size=(320, 320)):
+def get_image_thumbnail(file_path, box_size=(320, 320), cmyk_mode=False):
     try:
         img = Image.open(file_path)
         # Composite transparent images onto white/light background BEFORE any CMYK conversion
         if img.mode in ("RGBA", "LA"):
             logging.debug(f"Compositing transparent image onto white background: {file_path.name}")
-            background = Image.new("RGB", img.size, (255, 255, 255))
+            background = Image.new("RGBA", img.size, (250, 250, 250))
             background.paste(img, mask=img.split()[-1])
             img = background
-            
+
         img_w, img_h = img.size
         box_w, box_h = box_size
         # Rotate image if box is portrait and image is landscape
@@ -585,7 +589,15 @@ def get_image_thumbnail(file_path, box_size=(320, 320)):
         new_h = int(img_h * scale_factor)
         img = img.resize((new_w, new_h), Image.LANCZOS)
         # Center in box
-        thumb = Image.new('RGB', (box_w, box_h), (255, 255, 255))
+
+        # Set the background color behind the image thumbnail
+        if cmyk_mode:
+            # Use CMYK equivalent of light gray
+            thumb_bg_color = rgb_to_cmyk(250, 250, 250)
+            thumb = Image.new('CMYK', (box_w, box_h), thumb_bg_color)
+        else:
+            thumb = Image.new('RGB', (box_w, box_h), (250, 250, 250))
+
         x = (box_w - new_w) // 2
         y = (box_h - new_h) // 2
         thumb.paste(img, (x, y))
@@ -813,7 +825,7 @@ try:
 except ImportError:
     PILLOW_HEIF_AVAILABLE = False
 
-def get_heic_image(file_path):
+def get_heif_image(file_path):
     if not PILLOW_HEIF_AVAILABLE:
         logging.warning("pillow-heif library is not available. Cannot process HEIC files.")
         return None
@@ -944,7 +956,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, exclude_file_path=False, border_color=(250, 250, 250), border_inch_width=0.125):
+def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125):
     logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
     file_info = {}
     file_path = Path(file_path)
@@ -952,17 +964,17 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     base_width = 800
     base_height = 1000
     scale = min(width / base_width, height / base_height)
-    logging.info(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
+    logging.debug(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
     # Proportional paddings
     border_width = max(2, int(1 * scale))  # Using a more reasonable but still very visible border width
-    outer_padding = max(50, int(50 * scale))  # Padding between border and outer edges of content
+    outer_padding = max(80, int(50 * scale))  # Padding between border and outer edges of content
 
     # Calculate dimensions for the content area
     #content_width = width - 2 * outer_padding
     #content_height = height - 2 * outer_padding
 
     # Create the full-sized background image that is the canvas for the preview
-    img = Image.new('RGBA', (width, height), 'white')
+    img = Image.new('RGBA', (width, height), 'black')
     draw = ImageDraw.Draw(img)
 
     # Draw the border around the content area
@@ -1000,7 +1012,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     icon_space = int((100 + 40) * scale)
     metadata_line_height = int(info_font_size * 1.02)  # Tighter line spacing for metadata
     spacing_between_metadata_and_content_preview = int(20 * scale)
-    preview_box_padding = int(8 * scale)
+    preview_box_padding = int(2 * scale)
     header_height = int(20 * scale)
 
     # Load fonts
@@ -1163,8 +1175,8 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     content_area_width = content_area_right - content_area_left
     
     # Preview box within the content area
-    preview_box_left = content_area_left + int(content_area_width * 0.1)
-    preview_box_right = content_area_right - int(content_area_width * 0.1)
+    preview_box_left = content_area_left + int(content_area_width * 0.005)
+    preview_box_right = content_area_right - int(content_area_width * 0.005)
     preview_box_top = outer_padding + header_height + metadata_height + spacing_between_metadata_and_content_preview
     logging.debug(f"Preview box top: {preview_box_top}, icon space: {icon_space}, metadata height: {metadata_height}")
     preview_box_bottom = height - outer_padding - int(30 * scale)
@@ -1191,7 +1203,11 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     zip_file_preview_img = None
     zip_file_preview_lines = None
     if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp'}:
-        image = get_image_thumbnail(file_path, box_size=(max_line_width_pixels, preview_box_height))
+        image = get_image_thumbnail(
+            file_path,
+            box_size=(max_line_width_pixels, preview_box_height),
+            cmyk_mode=cmyk_mode
+        )
         if image is not None:
             img_w, img_h = image.size
             logging.debug(f"Original image size: {img_w}x{img_h} for {file_path.name}")
@@ -1214,7 +1230,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
             image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
             logging.debug(f"Final image_thumb size: {new_w}x{new_h} for {file_path.name}")
     elif ext in {'.heic', '.heif'}:
-        image = get_heic_image(file_path)
+        image = get_heif_image(file_path)
         if image is not None:
             img_w, img_h = image.size
             if width < height and img_w > img_h:
@@ -1595,7 +1611,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
     y = preview_box_top - 30
     #draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
-    preview_background_color = (245, 245, 245) if rgb_mode else (0, 0, 0, 4)
+    preview_background_color = (250, 250, 250) if rgb_mode else rgb_to_cmyk(250, 250, 250)
     draw.rectangle(
         [preview_box_left, preview_box_top, preview_box_right, preview_box_bottom],
         fill=preview_background_color,
@@ -1681,6 +1697,7 @@ def create_file_info_card(file_path, width=800, height=1000, cmyk_mode=False, ex
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
+        logging.info(f"Pasting image thumbnail at: x={x0}, y={y0}, size={img_w}x{img_h}")
         img.paste(image_thumb, (int(x0), int(y0)))
     elif fit_gps_thumb is not None:
         img_w, img_h = fit_gps_thumb.size
