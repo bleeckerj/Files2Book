@@ -127,27 +127,38 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 logging.debug(f"Before create_file_info_card: width={width}, height={height}")
 
                 # Generate the card
-                card = create_file_info_card(file_path, width=width, height=height, cmyk_mode=cmyk_mode, exclude_file_path=exclude_file_path, border_color=border_color, border_inch_width=0.125)
+                card = create_file_info_card(
+                    file_path,
+                    width=width,
+                    height=height,
+                    cmyk_mode=args.cmyk_mode,
+                    exclude_file_path=args.exclude_file_path,
+                    border_color=t_border_color,
+                    border_inch_width=args.border_inch_width
+                )
 
-                # Save the card using specialized TIFF save function
-                card_file_name = f"{file_path.stem}_card.tiff"
-                card_path = output_path / card_file_name
-                
-                # Use dedicated function for TIFF saving to preserve borders
-                save_card_as_tiff(card, card_path, cmyk_mode=cmyk_mode)
-                logging.debug(f"Saved card: {card_path}")
-                
-                # Log the size of the saved card
-                card_size = card.size
-                logging.debug(f"Card size: {card_size}")
-
-                logging.debug(f"Created card for {file_path.name} with size: {card.size} width: {card.width}, height: {card.height}")
-                # Save the card as PNG only if not CMYK
-                if not cmyk_mode:
-                    output_file = output_path / f"{file_path.stem}_card.png"
-                    card.save(output_file)
-                    logging.debug(f"Saved card to {output_file} with size: {card.size}")
-                file_count += 1
+                # Handle single card or multiple cards (for video files)
+                if isinstance(card, list):
+                    for idx, card_img in enumerate(card):
+                        card_size = card_img.size
+                        output_file = output_path / f"{file_path.stem}_card_{idx+1}.tiff"
+                        save_card_as_tiff(card_img, output_file, cmyk_mode=args.cmyk_mode)
+                        logging.debug(f"Saved card to {output_file} with size: {card_size}")
+                        if not cmyk_mode:
+                            png_file = output_path / f"{file_path.stem}_card_{idx+1}.png"
+                            card_img.save(png_file)
+                            logging.debug(f"Saved card to {png_file} with size: {card_size}")
+                    file_count += len(card)
+                else:
+                    card_size = card.size
+                    output_file = output_path / f"{file_path.stem}_card.tiff"
+                    save_card_as_tiff(card, output_file, cmyk_mode=args.cmyk_mode)
+                    logging.debug(f"Saved card to {output_file} with size: {card_size}")
+                    if not cmyk_mode:
+                        png_file = output_path / f"{file_path.stem}_card.png"
+                        card.save(png_file)
+                        logging.debug(f"Saved card to {png_file} with size: {card_size}")
+                    file_count += 1
             except Exception as e:
                 logging.error(f"Error processing {file_path.name}: {e}")
                 logging.error("Traceback:\n" + traceback.format_exc())

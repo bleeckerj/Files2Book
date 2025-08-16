@@ -1,6 +1,6 @@
-
 import os
 import time
+import numpy as np
 from datetime import datetime
 import hashlib
 import mimetypes
@@ -818,6 +818,37 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=3, rotate_
     except Exception:
         return None
 
+def get_video_frames(file_path, max_frames=9, rotate_frames_if_portrait=True):
+    """
+    Extracts up to max_frames from the video file and returns them as PIL Images.
+    """
+    try:
+        cap = cv2.VideoCapture(str(file_path))
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_count == 0:
+            cap.release()
+            return []
+        # Evenly spaced frame indices
+        indices = [int(i) for i in np.linspace(0, frame_count - 1, max_frames)]
+        frames = []
+        portrait_mode = False
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(frame)
+            # Rotate individual frame if preview box is portrait
+            if rotate_frames_if_portrait and pil_img.width > pil_img.height:
+                pil_img = pil_img.rotate(90, expand=True)
+            frames.append(pil_img)
+        cap.release()
+        return frames
+    except Exception:
+        logging.warning("Error extracting video frames", exc_info=True)
+        return []
+
 # Check for pillow-heif availability
 try:
     import pillow_heif
@@ -960,6 +991,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
     file_info = {}
     file_path = Path(file_path)
+
     # Proportional scaling
     base_width = 800
     base_height = 1000
@@ -980,7 +1012,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     # Draw the border around the content area
     # Determine the color mode first to avoid variable reference issues
     rgb_mode = not cmyk_mode
-    
+    preview_background_color = (250, 250, 250) if rgb_mode else rgb_to_cmyk(250, 250, 250)
     if rgb_mode:
         # For RGB mode, use standard black border
         draw.rectangle(
@@ -999,7 +1031,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     width - outer_padding - 1 - i,
                     height - outer_padding - 1 - i
                 ],
-                outline=(0, 0, 0, 100),  # 100% black in CMYK
+                outline=(0, 0, 0, 5),  # 100% black in CMYK
                 width=max(5, border_width // 5)  # Make each border line thick
             )
 
@@ -1202,6 +1234,23 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     zip_file_list = None
     zip_file_preview_img = None
     zip_file_preview_lines = None
+    video_frames = []
+    video_frame_thumbs = []
+
+    # --- Preview logic by file type ---
+    preview_lines = []
+    fit_meta = {}
+    image_thumb = None
+    pdf_grid_thumb = None
+    gpx_thumb = None
+    video_thumb = None
+    fit_gps_thumb = None
+    zip_file_list = None
+    zip_file_preview_img = None
+    zip_file_preview_lines = None
+    video_frames = []
+    video_frame_thumbs = []
+
     if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp'}:
         image = get_image_thumbnail(
             file_path,
@@ -1298,6 +1347,49 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 return 3, 3
         grid_cols, grid_rows = get_video_grid_size(file_path)
         video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height, grid_cols=grid_cols, grid_rows=grid_rows)
+        video_frames = get_video_frames(file_path, max_frames=grid_cols * grid_rows)
+        video_frame_thumbs = []
+        for frame in video_frames:
+            scale_factor = min(
+                (max_line_width_pixels) / frame.width,
+                (preview_box_height) / frame.height
+            ) * 0.95
+            new_w = int(frame.width * scale_factor)
+            new_h = int(frame.height * scale_factor)
+            thumb = frame.resize((new_w, new_h), Image.LANCZOS)
+            video_frame_thumbs.append(thumb)
+
+        # Calculate paste coordinates for preview area
+        img_w, img_h = video_thumb.size
+        box_w = preview_box_right - preview_box_left - preview_box_padding * 2
+        box_h = preview_box_height - preview_box_padding * 2
+        x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
+        y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
+
+        # Draw overview card
+        overview_img = img.copy()
+        overview_img.paste(video_thumb, (int(x0), int(y0)))
+        cards = [overview_img]
+
+        # Draw one card per frame (fresh card for each frame)
+        for frame_thumb in video_frame_thumbs:
+            # Calculate paste coordinates for each frame
+            frame_w, frame_h = frame_thumb.size
+            frame_x0 = preview_box_left + preview_box_padding + max(0, (box_w - frame_w)//2)
+            frame_y0 = preview_box_top + preview_box_padding + max(0, (box_h - frame_h)//2)
+
+            frame_img = img.copy()
+            # Fill preview area with preview background color before pasting frame
+            draw_frame = ImageDraw.Draw(frame_img)
+            draw_frame.rectangle(
+                [preview_box_left + preview_box_padding, preview_box_top + preview_box_padding,
+                 preview_box_right - preview_box_padding, preview_box_bottom - preview_box_padding],
+                fill=preview_background_color
+            )
+            frame_img.paste(frame_thumb, (int(frame_x0), int(frame_y0)))
+            cards.append(frame_img)
+
+        return cards
     elif ext == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
         # Mapbox integration for GPX with polyline
@@ -1611,7 +1703,6 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     y = preview_box_top - 30
     #draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
-    preview_background_color = (250, 250, 250) if rgb_mode else rgb_to_cmyk(250, 250, 250)
     draw.rectangle(
         [preview_box_left, preview_box_top, preview_box_right, preview_box_bottom],
         fill=preview_background_color,
@@ -1691,6 +1782,32 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
         img.paste(video_thumb, (int(x0), int(y0)))
+        # NEW: If generating separate pages for each frame, return a list of images
+        if video_frame_thumbs:
+            # Return overview card first, then one card per frame
+            cards = [img.copy()]
+            # Overview card
+            overview_img = img.copy()
+            overview_img.paste(video_thumb, (int(x0), int(y0)))
+            cards.append(overview_img)
+
+            # Individual frame cards
+            for frame_thumb in video_frame_thumbs:
+                frame_img = Image.new(img.mode, img.size, img.getpixel((0, 0)))  # fresh blank card with same mode/size/background
+                # Redraw all static elements (header, metadata, etc.) on frame_img as you do for img
+                # You may need to refactor your drawing logic into a helper function to avoid code duplication
+                # For now, you can use img.copy() and REMOVE the overview grid from the preview area before pasting the frame
+                frame_img = img.copy()
+                # Fill preview area with preview background color before pasting frame
+                draw_frame = ImageDraw.Draw(frame_img)
+                draw_frame.rectangle(
+                    [preview_box_left + preview_box_padding, preview_box_top + preview_box_padding,
+                     preview_box_right - preview_box_padding, preview_box_bottom - preview_box_padding],
+                    fill=preview_background_color
+                )
+                frame_img.paste(frame_thumb, (int(frame_x0), int(frame_y0)))
+                cards.append(frame_img)
+            return cards
     elif image_thumb is not None:
         img_w, img_h = image_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2

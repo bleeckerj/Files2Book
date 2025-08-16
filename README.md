@@ -1,12 +1,25 @@
-# PDF to Grid of Images Converter
+# Files2Books and Slack2Books
 
-A collection of Python utilities that converts PDFs, images, and video files into organized grid layouts with optional flipbook generation.
+This is a collection of utilities that were cobbled together in order to support a project where I wanted to archive all of the Slack channels for https://omata.com into a series of books, one book per channel.
+
+These onvert directories containing PDFs, images, PPTX, and video files into organized print preview cards with optional grid layouts with optional flipbook generation of `movie` file types, although the value of that is more ludic than anything else as `movie` file types will be made into a grid of still frames.
+
+This set of utilities builds on [SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata), which is a generalizable exporter of Slack channels. The output of that is a clobber of JSON files and file-files from the channels (files that were in message payloads).
+
+[SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata) generates a conditioned directory hierarchy for every chanel. File2Card was created to handle the `files` directory that this creates, allowing you to create a PDF document containing representations (`previews`) of many different file types one might encounter that has been shared as message payload.
+
+For me, that means things like PPTX, PNG, JPG, HEIC/HEIF, MOV, MP4, TXT, ZIP, RAR, PDF and so forth. These file types are converted into some kind of generally useful visual preview, although some are jsut represented as hex dumps, which is only useful aas an index and indicator that, you know — there was this file here, and here is what it is called, and here is where it was shared and, through much more effort, here is who shared it (as it should be referred to in the potentially quite extensive message transcripts.)
+
+The utility of these books? 
+
+Well, I wrote more about that here: 
+
 
 ## Features
 
 - Convert PDFs and images into grid layouts
 - Generate flipbooks from video files
-- Support for various page sizes (A4, A5, Letter, etc.)
+- Support for various page sizes (A4, A5, Letter, Digest, Pocketbook, etc.)
 - Configurable grid layouts
 - Customizable margins, gaps, and borders
 - Option to exclude video stills from main grid pages
