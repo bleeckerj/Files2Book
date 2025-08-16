@@ -1006,13 +1006,21 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     #content_height = height - 2 * outer_padding
 
     # Create the full-sized background image that is the canvas for the preview
-    img = Image.new('RGBA', (width, height), 'black')
+    # Use non-alpha modes so downstream PDF assembly doesn't hit alpha issues
+    if cmyk_mode:
+        # Light background in CMYK
+        img = Image.new('CMYK', (width, height), rgb_to_cmyk(250, 250, 250))
+    else:
+        # Light background in RGB
+        img = Image.new('RGB', (width, height), (250, 250, 250))
     draw = ImageDraw.Draw(img)
 
     # Draw the border around the content area
     # Determine the color mode first to avoid variable reference issues
     rgb_mode = not cmyk_mode
     preview_background_color = (250, 250, 250) if rgb_mode else rgb_to_cmyk(250, 250, 250)
+    # Define a reliable black text color for the current mode
+    text_black = (0, 0, 0) if rgb_mode else (0, 0, 0, 100)
     if rgb_mode:
         # For RGB mode, use standard black border
         draw.rectangle(
@@ -1696,9 +1704,13 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             line = f"{value}"
         else:
             line = f"{key}: {value}"
-        draw.text((width//2, y), line, fill='black', font=info_font, anchor="mm")
+        draw.text((width//2, y), line, fill=text_black, font=info_font, anchor="mm")
         y += metadata_line_height
-        
+
+    # Make sure the preview area starts below the last metadata line
+    preview_box_top = max(preview_box_top, int(y + spacing_between_metadata_and_content_preview))
+    preview_box_height = preview_box_bottom - preview_box_top - preview_box_padding * 2
+    max_preview_lines = max(1, preview_box_height // line_height)
 
     y = preview_box_top - 30
     #draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
