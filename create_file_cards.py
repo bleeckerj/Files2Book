@@ -184,8 +184,8 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
     
     output_path = Path(output_dir)
     
-    # Get list of all card files
-    card_files = sorted(output_path.glob("*_card.*"))
+    # Get list of all card files, including multi-page video frames
+    card_files = sorted(list(output_path.glob("*_card.*")) + list(output_path.glob("*_card_*.*")))
 
     # Convert webp images to PNG for img2pdf compatibility
     converted_files = []
