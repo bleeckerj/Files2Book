@@ -35,6 +35,7 @@ python create_file_cards.py --input-dir /path/to/files --output-dir ./output --p
 - `--input-dir`: Directory containing files to process (required)
 - `--output-dir`: Directory to save the generated card images (default: parent directory of input-dir + `_cards_output`)
 - `--cmyk-mode`: Generate cards in CMYK color mode for professional printing (default: RGB mode)
+- `--cmyk`: Alias for `--cmyk-mode`
 - `--page-size`: Card size (default: LARGE_TAROT)
   - Predefined sizes: A0-A5, LETTER, LEGAL, TABLOID, DIGEST
   - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
@@ -66,6 +67,8 @@ python create_file_cards.py --input-dir /path/to/files --output-dir ./output --p
 - `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
 - `--exclude-file-path`: Exclude the vertical file path from the card (default: shown)
 - `--card-background-color`: Set the background color for the card (default: 'white'). Accepts any valid Pillow color string or RGB tuple, eg `--card-background-color "(251,238,104)"`
+- `--include-video-frames`: Also output individual video frames as cards. By default, videos produce a single “overview” card with a grid of frames; with this flag, additional per-frame cards are generated and included in the combined PDF.
+- `--delete-cards-after-pdf`: After assembling the combined PDF, delete the generated card images. This removes both overview cards (`*_card.*`) and per-frame cards (`*_card_*.*`).
 
 #### Output
 
@@ -82,12 +85,15 @@ python generate_flipbook_pages.py --input-dir /path/to/files --output-dir ./outp
 - `--input-dir`: Directory containing files to process (required)
 - `--output-dir`: Directory to save the generated card images (default: parent directory of input-dir + `_cards_output`)
 - `--cmyk-mode`: Generate cards in CMYK color mode for professional printing (default: RGB mode)
+- `--cmyk`: Alias for `--cmyk-mode`
 - `--page-size`: Card size (default: LARGE_TAROT)
   - Predefined sizes: A0-A5, LETTER, LEGAL, TABLOID
   - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
   - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
 - `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
 - `--compact`: Enable compact mode for reduced text size, minimal spacing, and maximized preview area
+- `--include-video-frames`: Generate per-frame video cards alongside the overview card
+- `--delete-cards-after-pdf`: Delete generated card images after the PDF is created
 
 ### Defaults
 
@@ -120,6 +126,18 @@ python create_file_cards.py --input-dir ./my_files/files --cmyk-mode --compact
 
 `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
 `--max-depth`: Maximum folder recursion depth (default: 0, no recursion; set higher for deeper traversal)
+Example including individual video frame cards and cleaning up images after PDF assembly:
+```bash
+python create_file_cards.py \
+  --input-dir ./videos_and_images \
+  --output-dir ./cards_out \
+  --page-size LARGE_TAROT \
+  --cmyk \
+  --include-video-frames \
+  --pdf-output-name my_collection \
+  --delete-cards-after-pdf
+```
+
 ### Compact Mode
 
 When `--compact` is specified, cards are generated with:

@@ -5,11 +5,17 @@ __pycache__/
 .env
 # C extensions
 *.so
+*.pdf
+TEST_FOLDER*/
+*workspace*
 omata-*/
 id-explorations*/
 node_modules/
 test_samples/*
 test_developers*/
+autotrader*cards*/
+instagram-omata-*/
+(wprls[ace])
 general*/
 file_card*/
 ambassador*/

@@ -25,6 +25,8 @@ Well, I wrote more about that here:
 - Option to exclude video stills from main grid pages
 - PDF output support
 - CMYK color mode support with customizable CMYK values
+ - Optional per-frame video cards (`--include-video-frames`) in addition to overview grids
+ - Cleanup flag to remove generated images after PDF assembly (`--delete-cards-after-pdf`)
 
 ## Usage Note
 
@@ -65,6 +67,12 @@ This will go through all the files in the input directory and generate a card th
 ### Combines them into a PDF where each pageis A5
 
 `./combine_images_to_pdf.js --input-dir omata-backoffice_file_cards --cmyk-mode --page-size A5 --dpi 300 --output-file omata-backoffice_file_cards/omata-backoffice_file_cards_combined.pdf`
+
+### New flags in create_file_cards.py
+
+- `--cmyk`: alias for `--cmyk-mode`
+- `--include-video-frames`: include individual video frame cards in addition to the overview
+- `--delete-cards-after-pdf`: delete `*_card.*` and `*_card_*.*` images after combining into a PDF
 
 This will get you a PDF combining all of the cards, each one embedded on an A5 sized page.
 
