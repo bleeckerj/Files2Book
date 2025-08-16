@@ -974,7 +974,12 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     #content_height = height - 2 * outer_padding
 
     # Create the full-sized background image that is the canvas for the preview
-    img = Image.new('RGBA', (width, height), 'black')
+    if cmyk_mode:
+        # Use CMYK mode, no alpha
+        img = Image.new('CMYK', (width, height), rgb_to_cmyk(250, 250, 250))
+    else:
+        # Use RGB mode, no alpha
+        img = Image.new('RGB', (width, height), (250, 250, 250))
     draw = ImageDraw.Draw(img)
 
     # Draw the border around the content area
