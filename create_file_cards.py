@@ -65,7 +65,17 @@ def parse_page_size(size_name):
     logging.warning(f"A5 size: {w_in}x{h_in} inches")
     return int(w_in * dpi), int(h_in * dpi)
 
-def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False, border_color=(250, 250, 250), border_inch_width=0.125, include_video_frames=False):
+def build_file_cards_from_directory(
+    input_dir,
+    output_dir='file_card_tests',
+    cmyk_mode=False,
+    page_size='LARGE_TAROT',
+    exclude_file_path=False,
+    border_color=(250, 250, 250),
+    border_inch_width=0.125,
+    include_video_frames=False,
+    max_depth=0,  # 0 = no recursion; negative => unlimited
+):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -73,10 +83,18 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
         input_dir: Directory containing files to process
         output_dir: Directory to save the generated card images
         cmyk_mode: Whether to use CMYK mode for the cards
-        page_size: Page size for the cards (default is A4)
+        page_size: Page size for the cards (default is LARGE_TAROT)
+        exclude_file_path: Exclude the vertical file path label
+        border_color: RGB tuple for border color
+        border_inch_width: Border width in inches
+        include_video_frames: Also output individual video frames as cards
+        max_depth: Maximum folder recursion depth; 0 = no recursion, negative = unlimited
     """
     logging.info(f"Starting file card with size {page_size}")
     input_path = Path(input_dir)
+    # Normalize max_depth
+    if isinstance(max_depth, int) and max_depth < 0:
+        max_depth = None
     logging.info(f"Input directory: {input_path}")
     logging.info(f"Output directory: {output_dir}")
     output_path = Path(output_dir)
@@ -99,23 +117,15 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
         root_depth = str(root_dir).rstrip(os.sep).count(os.sep)
         for dirpath, dirnames, filenames in os.walk(root_dir):
             current_depth = str(dirpath).rstrip(os.sep).count(os.sep) - root_depth
-            if max_depth is not None and current_depth > max_depth:
+            # Prune when we are at or beyond the max_depth to prevent descending
+            if max_depth is not None and current_depth >= max_depth:
                 dirnames[:] = []
-                continue
             for filename in filenames:
                 if filename != '.DS_Store':
                     result.append(Path(dirpath) / filename)
         return result
 
-    # Get max_depth from global args if present
-    import sys
-    max_depth = None
-    for arg in sys.argv:
-        if arg.startswith('--max-depth='):
-            try:
-                max_depth = int(arg.split('=')[1])
-            except Exception:
-                pass
+    # Use provided max_depth (no sys.argv parsing)
     file_count = 0
     for file_path in sorted(find_files(input_path, max_depth=max_depth)):
         if file_path.is_file():
@@ -306,8 +316,9 @@ if __name__ == "__main__":
         args.page_size,
         exclude_file_path=args.exclude_file_path,
         border_color=t_border_color,
-                    border_inch_width=args.border_inch_width,
-                    include_video_frames=args.include_video_frames
+        border_inch_width=args.border_inch_width,
+        include_video_frames=args.include_video_frames,
+        max_depth=args.max_depth,
     )
 
     # Report summary

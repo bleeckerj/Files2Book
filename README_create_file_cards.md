@@ -98,7 +98,7 @@ python generate_flipbook_pages.py --input-dir /path/to/files --output-dir ./outp
 ### Defaults
 
 
-If `--max-depth` is not specified, only files in the specified folder are processed (no recursion). To include files in subfolders, set `--max-depth` to a higher value.
+If `--max-depth` is not specified, only files in the specified folder are processed (no recursion). To include files in subfolders, set `--max-depth` to a higher value. For unlimited recursion `--max-depth -1` or any negative number.
 
 If `--output-dir` is not specified, it will default to the parent directory name of the input directory with `_cards_output` appended. For example, if your input directory is `/path/to/my_files/files`, the output directory will be `my_files_cards_output`.
 
