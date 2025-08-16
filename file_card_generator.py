@@ -1361,7 +1361,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             scale_factor = min(
                 (max_line_width_pixels) / frame.width,
                 (preview_box_height) / frame.height
-            ) * 0.95
+            ) * 0.98
             new_w = int(frame.width * scale_factor)
             new_h = int(frame.height * scale_factor)
             thumb = frame.resize((new_w, new_h), Image.LANCZOS)
