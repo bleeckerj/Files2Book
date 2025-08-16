@@ -1367,37 +1367,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             thumb = frame.resize((new_w, new_h), Image.LANCZOS)
             video_frame_thumbs.append(thumb)
 
-        # Calculate paste coordinates for preview area
-        img_w, img_h = video_thumb.size
-        box_w = preview_box_right - preview_box_left - preview_box_padding * 2
-        box_h = preview_box_height - preview_box_padding * 2
-        x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
-        y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-
-        # Draw overview card
-        overview_img = img.copy()
-        overview_img.paste(video_thumb, (int(x0), int(y0)))
-        cards = [overview_img]
-
-        # Draw one card per frame (fresh card for each frame)
-        for frame_thumb in video_frame_thumbs:
-            # Calculate paste coordinates for each frame
-            frame_w, frame_h = frame_thumb.size
-            frame_x0 = preview_box_left + preview_box_padding + max(0, (box_w - frame_w)//2)
-            frame_y0 = preview_box_top + preview_box_padding + max(0, (box_h - frame_h)//2)
-
-            frame_img = img.copy()
-            # Fill preview area with preview background color before pasting frame
-            draw_frame = ImageDraw.Draw(frame_img)
-            draw_frame.rectangle(
-                [preview_box_left + preview_box_padding, preview_box_top + preview_box_padding,
-                 preview_box_right - preview_box_padding, preview_box_bottom - preview_box_padding],
-                fill=preview_background_color
-            )
-            frame_img.paste(frame_thumb, (int(frame_x0), int(frame_y0)))
-            cards.append(frame_img)
-
-        return cards
+    # Defer drawing to later section after header/metadata are drawn.
     elif ext == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
         # Mapbox integration for GPX with polyline
@@ -1788,29 +1758,26 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
         img.paste(gpx_thumb, (int(x0), int(y0)))
     elif video_thumb is not None:
+        # Paste the overview thumbnail into the preview area on the base card (which already has header+metadata)
         img_w, img_h = video_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
         img.paste(video_thumb, (int(x0), int(y0)))
-        # NEW: If generating separate pages for each frame, return a list of images
+
         if video_frame_thumbs:
-            # Return overview card first, then one card per frame
-            cards = [img.copy()]
-            # Overview card
+            # Build list: overview card first, then one per frame
+            cards = []
             overview_img = img.copy()
-            overview_img.paste(video_thumb, (int(x0), int(y0)))
             cards.append(overview_img)
 
-            # Individual frame cards
             for frame_thumb in video_frame_thumbs:
-                frame_img = Image.new(img.mode, img.size, img.getpixel((0, 0)))  # fresh blank card with same mode/size/background
-                # Redraw all static elements (header, metadata, etc.) on frame_img as you do for img
-                # You may need to refactor your drawing logic into a helper function to avoid code duplication
-                # For now, you can use img.copy() and REMOVE the overview grid from the preview area before pasting the frame
+                frame_w, frame_h = frame_thumb.size
+                frame_x0 = preview_box_left + preview_box_padding + max(0, (box_w - frame_w)//2)
+                frame_y0 = preview_box_top + preview_box_padding + max(0, (box_h - frame_h)//2)
                 frame_img = img.copy()
-                # Fill preview area with preview background color before pasting frame
+                # Clear the preview area before placing an individual frame
                 draw_frame = ImageDraw.Draw(frame_img)
                 draw_frame.rectangle(
                     [preview_box_left + preview_box_padding, preview_box_top + preview_box_padding,

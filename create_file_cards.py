@@ -237,6 +237,7 @@ if __name__ == "__main__":
     parser.add_argument('--input-dir', help='Directory containing files to create cards for')
     parser.add_argument('--output-dir', help='Directory to save card images')
     parser.add_argument('--cmyk-mode', action='store_true', help='Generate cards in CMYK mode')
+    parser.add_argument('--cmyk', dest='cmyk_mode', action='store_true', help='Alias for --cmyk-mode')
     parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
     parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
