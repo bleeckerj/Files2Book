@@ -1345,12 +1345,12 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 elif frame_count < 900:
                     return 4, 4
                 elif frame_count < 1800:
-                    return 5, 4
+                    return 4, 5
                 elif frame_count < 3600:
-                    return 6, 5
+                    return 4, 5
                 else:
-                    # For very long videos, cap at 6x5
-                    return 6, 6
+                    # For very long videos, cap at 4x6
+                    return 4, 5
             except Exception:
                 return 3, 3
         grid_cols, grid_rows = get_video_grid_size(file_path)
