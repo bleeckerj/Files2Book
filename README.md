@@ -1,17 +1,32 @@
-# PDF to Grid of Images Converter
+# Files2Books and Slack2Books
 
-A collection of Python utilities that converts PDFs, images, and video files into organized grid layouts with optional flipbook generation.
+This is a collection of utilities that were cobbled together in order to support a project where I wanted to archive all of the Slack channels for https://omata.com into a series of books, one book per channel.
+
+These onvert directories containing PDFs, images, PPTX, and video files into organized print preview cards with optional grid layouts with optional flipbook generation of `movie` file types, although the value of that is more ludic than anything else as `movie` file types will be made into a grid of still frames.
+
+This set of utilities builds on [SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata), which is a generalizable exporter of Slack channels. The output of that is a clobber of JSON files and file-files from the channels (files that were in message payloads).
+
+[SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata) generates a conditioned directory hierarchy for every chanel. File2Card was created to handle the `files` directory that this creates, allowing you to create a PDF document containing representations (`previews`) of many different file types one might encounter that has been shared as message payload.
+
+For me, that means things like PPTX, PNG, JPG, HEIC/HEIF, MOV, MP4, TXT, ZIP, RAR, PDF and so forth. These file types are converted into some kind of generally useful visual preview, although some are jsut represented as hex dumps, which is only useful aas an index and indicator that, you know — there was this file here, and here is what it is called, and here is where it was shared and, through much more effort, here is who shared it (as it should be referred to in the potentially quite extensive message transcripts.)
+
+The utility of these books? 
+
+Well, I wrote more about that here: 
+
 
 ## Features
 
 - Convert PDFs and images into grid layouts
 - Generate flipbooks from video files
-- Support for various page sizes (A4, A5, Letter, etc.)
+- Support for various page sizes (A4, A5, Letter, Digest, Pocketbook, etc.)
 - Configurable grid layouts
 - Customizable margins, gaps, and borders
 - Option to exclude video stills from main grid pages
 - PDF output support
 - CMYK color mode support with customizable CMYK values
+ - Optional per-frame video cards (`--include-video-frames`) in addition to overview grids
+ - Cleanup flag to remove generated images after PDF assembly (`--delete-cards-after-pdf`)
 
 ## Usage Note
 
@@ -52,6 +67,12 @@ This will go through all the files in the input directory and generate a card th
 ### Combines them into a PDF where each pageis A5
 
 `./combine_images_to_pdf.js --input-dir omata-backoffice_file_cards --cmyk-mode --page-size A5 --dpi 300 --output-file omata-backoffice_file_cards/omata-backoffice_file_cards_combined.pdf`
+
+### New flags in create_file_cards.py
+
+- `--cmyk`: alias for `--cmyk-mode`
+- `--include-video-frames`: include individual video frame cards in addition to the overview
+- `--delete-cards-after-pdf`: delete `*_card.*` and `*_card_*.*` images after combining into a PDF
 
 This will get you a PDF combining all of the cards, each one embedded on an A5 sized page.
 

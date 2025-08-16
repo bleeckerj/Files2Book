@@ -88,7 +88,7 @@ python file_card_generator.py /path/to/your/file.ext [--compact]
 `file_path` (required): Path to the file you want to generate a card for.
 `--width WIDTH`: Output card width (default: 800)
 `--height HEIGHT`: Output card height (default: 1000)
-`--cmyk`: Enable CMYK mode for print
+`--cmyk`: Enable CMYK mode for print (alias for `--cmyk-mode` in other scripts)
 `--output OUTPUT_PATH`: Path to save the generated image (default: `file_card.png`)
 `--compact`: Enable compact mode for reduced text size, tighter spacing, and maximized preview area
 `--exclude-file-path`: Exclude the vertical file path from the card (by default, the file path is shown vertically along the preview area)
@@ -120,6 +120,10 @@ img.save('my_card.png')
 ```
 
 ## New Features and Enhancements
+### Video Cards: Overview vs. Per-frame
+- By default, video files render a single overview card with a grid of representative frames.
+- When running via `create_file_cards.py`, you can pass `--include-video-frames` to also generate a separate card for each selected frame.
+
 
 ### Compact Mode
 - Use the `--compact` flag to generate cards with reduced font size, minimal spacing, and a maximized preview area.
