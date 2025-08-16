@@ -65,7 +65,7 @@ def parse_page_size(size_name):
     logging.warning(f"A5 size: {w_in}x{h_in} inches")
     return int(w_in * dpi), int(h_in * dpi)
 
-def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False, border_color=(250, 250, 250), border_inch_width=0.125):
+def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmyk_mode=False, page_size='LARGE_TAROT', exclude_file_path=False, border_color=(250, 250, 250), border_inch_width=0.125, include_video_frames=False):
     """
     Test the file card generation by creating cards for all files in a directory.
     
@@ -131,10 +131,11 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                     file_path,
                     width=width,
                     height=height,
-                    cmyk_mode=args.cmyk_mode,
-                    exclude_file_path=args.exclude_file_path,
-                    border_color=t_border_color,
-                    border_inch_width=args.border_inch_width
+                    cmyk_mode=cmyk_mode,
+                    exclude_file_path=exclude_file_path,
+                    border_color=border_color,
+                    border_inch_width=border_inch_width,
+                    include_video_frames=include_video_frames
                 )
 
                 # Handle single card or multiple cards (for video files)
@@ -142,7 +143,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                     for idx, card_img in enumerate(card):
                         card_size = card_img.size
                         output_file = output_path / f"{file_path.stem}_card_{idx+1}.tiff"
-                        save_card_as_tiff(card_img, output_file, cmyk_mode=args.cmyk_mode)
+                        save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
                         logging.debug(f"Saved card to {output_file} with size: {card_size}")
                         if not cmyk_mode:
                             png_file = output_path / f"{file_path.stem}_card_{idx+1}.png"
@@ -152,7 +153,7 @@ def build_file_cards_from_directory(input_dir, output_dir='file_card_tests', cmy
                 else:
                     card_size = card.size
                     output_file = output_path / f"{file_path.stem}_card.tiff"
-                    save_card_as_tiff(card, output_file, cmyk_mode=args.cmyk_mode)
+                    save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
                     logging.debug(f"Saved card to {output_file} with size: {card_size}")
                     if not cmyk_mode:
                         png_file = output_path / f"{file_path.stem}_card.png"
@@ -246,6 +247,7 @@ if __name__ == "__main__":
     parser.add_argument('--delete-cards-after-pdf', action='store_true', help='Delete individual card files after PDF is created')
     parser.add_argument('--border-color', default='250,250,250', help='Border color for the cards in RGB format (default: 250,250,250)')
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
+    parser.add_argument('--include-video-frames', action='store_true', help='Also output individual video frames as cards (default: overview only)')
 
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
@@ -269,27 +271,25 @@ if __name__ == "__main__":
         # Use the base name of the input directory for the default output directory
         args.output_dir = f"{input_dir_name}_{args.page_size}"
         logging.info(f"Using default output directory: {args.output_dir}")
-    elif args.output_dir:
+    else:
         args.output_dir = f"{args.output_dir}/{args.page_size}"
 
-        # Determine the PDF path
-        output_path_obj = Path(args.output_dir)
-        # Use the directory name where the PDF will be saved as the base name
-        output_dir_name = output_path_obj.name
-        # If the PDF filename wasn't explicitly provided, use the output directory's parent name
-        if not args.pdf_output_name:
-            pdf_name = f"{input_dir_name}_combined_{args.page_size}.pdf"
-            logging.info(f"No PDF output name provided, using default: {pdf_name}")
-        elif args.pdf_output_name.endswith('.pdf'):
-            # strip the PDF extension if it exists
-            tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
-            pdf_name = f"{tmp_name}_combined_{args.page_size}.pdf"
-        else:
-            pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}.pdf"
+    # Determine the PDF path (in both cases above)
+    output_path_obj = Path(args.output_dir)
+    output_dir_name = output_path_obj.name
+    # Compute pdf_name consistently
+    if not args.pdf_output_name:
+        pdf_name = f"{input_dir_name}_combined_{args.page_size}.pdf"
+        logging.info(f"No PDF output name provided, using default: {pdf_name}")
+    elif args.pdf_output_name.endswith('.pdf'):
+        tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
+        pdf_name = f"{tmp_name}_combined_{args.page_size}.pdf"
+    else:
+        pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}.pdf"
 
-        pdf_path = str(output_path_obj / pdf_name)
-        logging.info(f"PDF Name will be {pdf_name}")
-        logging.info(f"PDF will be saved at: {pdf_path}")
+    pdf_path = str(output_path_obj / pdf_name)
+    logging.info(f"PDF Name will be {pdf_name}")
+    logging.info(f"PDF will be saved at: {pdf_path}")
 
     logging.info(f"Will generate file cards in: {args.output_dir}")
     logging.info(f"Output PDF name: {pdf_name}")
@@ -306,7 +306,8 @@ if __name__ == "__main__":
         args.page_size,
         exclude_file_path=args.exclude_file_path,
         border_color=t_border_color,
-        border_inch_width=args.border_inch_width
+                    border_inch_width=args.border_inch_width,
+                    include_video_frames=args.include_video_frames
     )
 
     # Report summary
@@ -340,11 +341,19 @@ if __name__ == "__main__":
         # Delete individual card files if requested
         if args.delete_cards_after_pdf:
             logging.info("Deleting individual card files after PDF creation...")
-            for card_file in Path(args.output_dir).glob("*_card.*"):
-                if card_file.name != args.pdf_output_name:  # Make sure we don't delete the PDF
+            output_dir_path = Path(args.output_dir)
+            # Collect both single-card and per-frame card outputs
+            delete_patterns = ["*_card.*", "*_card_*.*"]
+            deleted = 0
+            for pattern in delete_patterns:
+                for card_file in output_dir_path.glob(pattern):
+                    # Skip the combined PDF if it ever matched (it shouldn't with these patterns)
+                    if Path(card_file).resolve() == Path(pdf_path).resolve():
+                        continue
                     try:
                         card_file.unlink()
+                        deleted += 1
                         logging.debug(f"Deleted: {card_file}")
                     except Exception as e:
                         logging.error(f"Error deleting {card_file}: {e}")
-            logging.info("Card files cleanup complete.")
+            logging.info(f"Card files cleanup complete. Deleted {deleted} files.")

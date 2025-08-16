@@ -987,7 +987,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125):
+def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False):
     logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
     file_info = {}
     file_path = Path(file_path)
@@ -1767,11 +1767,12 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         img.paste(video_thumb, (int(x0), int(y0)))
 
         if video_frame_thumbs:
-            # Build list: overview card first, then one per frame
-            cards = []
+            # Always produce an overview card
             overview_img = img.copy()
-            cards.append(overview_img)
-
+            if not include_video_frames:
+                return overview_img
+            # Otherwise, build list: overview first, then one per frame
+            cards = [overview_img]
             for frame_thumb in video_frame_thumbs:
                 frame_w, frame_h = frame_thumb.size
                 frame_x0 = preview_box_left + preview_box_padding + max(0, (box_w - frame_w)//2)
