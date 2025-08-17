@@ -38,10 +38,21 @@ def build_file_cards_from_json(
     output_path.mkdir(exist_ok=True, parents=True)
     width, height = parse_page_size(page_size)
     logging.info(f"Parsed page size: {page_size} -> {width}x{height} pixels")
-
+    # if the filename is like 'stories.json' or similar, then just note that
+    if "stories" in json_path.stem:
+        logging.info("Detected 'stories' in JSON filename.")
+    if "posts" in json_path.stem:
+        logging.info("Detected 'posts' in JSON filename.")
+        
     # Load JSON
     with open(json_path, "r", encoding="utf-8") as f:
-        posts = json.load(f)
+        data = json.load(f)
+    if isinstance(data, dict) and "ig_stories" in data:
+        posts = data["ig_stories"]
+        logging.info(f"Loaded {len(posts)} stories from {json_path}")
+    else:
+        posts = data
+        logging.info(f"Loaded {len(posts)} posts from {json_path}")
 
     # Sort posts by creation_timestamp (earliest to most recent)
     posts = sorted(posts, key=lambda post: post.get("creation_timestamp", 0))
