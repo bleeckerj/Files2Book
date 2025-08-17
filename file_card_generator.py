@@ -36,6 +36,7 @@ import polyline
 import logging
 import traceback
 import random
+from pillow_textbox import draw_text_box
 
 Image.MAX_IMAGE_PIXELS = 500_000_000  # or any large number
 #Image.MAX_IMAGE_PIXELS = None  # disables the limit (use with caution)
@@ -987,7 +988,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False):
+def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None):
     logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
     file_info = {}
     file_path = Path(file_path)
@@ -1054,6 +1055,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     spacing_between_metadata_and_content_preview = int(20 * scale)
     preview_box_padding = int(2 * scale)
     header_height = int(20 * scale)
+
+    # Add a margin between the header/title and the metadata box
+    metadata_top_margin = int(12 * scale)
 
     # Load fonts
     try:
@@ -1202,13 +1206,58 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         file_info['Filepath'] = str(file_path.parent)
         #file_info['Name'] = file_path.name
 
+    # --- Custom metadata_text support (multiline, wrapped) ---
+    # If metadata_text is provided, use it instead of the default metadata lines.
+    custom_metadata_text = None
+    if metadata_text is not None:
+        if isinstance(metadata_text, str):
+            custom_metadata_text = metadata_text
+        elif isinstance(metadata_text, (list, tuple)):
+            custom_metadata_text = "\n".join(str(x) for x in metadata_text)
+        else:
+            custom_metadata_text = str(metadata_text)
 
-    # Fixed card height for 4x5 aspect ratio
-    #header_height = int(80 * scale)
-    icon_space = int((100 + 40) * scale)
-    metadata_lines = len(file_info)
-    metadata_height = metadata_lines * metadata_line_height
-    logging.debug(f"Metadata height: {metadata_height} for {metadata_lines} lines")
+    # Compute metadata block height
+    # Default: number of key/value pairs * line height
+    content_area_width_for_wrap = width - 2 * outer_padding
+    if custom_metadata_text:
+        # Measure single-line height and derive spacing to match metadata_line_height advance
+        tmp_img = Image.new("RGBA", (width, height))
+        tmp_draw = ImageDraw.Draw(tmp_img)
+        l, t, r, b = tmp_draw.textbbox((0, 0), "Ag", font=info_font)
+        single_h = b - t
+        custom_line_spacing_px = max(0, int(metadata_line_height - single_h))
+
+        # Use the SAME padding for measure and draw
+        meta_pad = int(30 * scale)
+
+        # Choose background colors matching the target image mode
+        bg_rgb = (245, 245, 245)
+        bg_outline_rgb = (200, 200, 200)
+        if cmyk_mode:
+            bg_fill = rgb_to_cmyk(*bg_rgb)
+            bg_outline = rgb_to_cmyk(*bg_outline_rgb)
+        else:
+            bg_fill = bg_rgb
+            bg_outline = bg_outline_rgb
+
+        # Measure wrapped text height (text only), then add vertical padding
+        measure = draw_text_box(
+            tmp_draw,
+            custom_metadata_text,
+            info_font,
+            box=(outer_padding, outer_padding + header_height, content_area_width_for_wrap, height - (outer_padding + header_height)),
+            padding=meta_pad,
+            line_spacing=custom_line_spacing_px,
+            align="center",
+            v_align="top",
+            fill=(0, 0, 0)
+        )
+        metadata_height = measure["used_size"][1] + (meta_pad * 2)
+    else:
+        metadata_lines = len(file_info)
+        metadata_height = metadata_lines * metadata_line_height
+    logging.debug(f"Metadata height: {metadata_height}")
     # Content area dimensions, accounting for outer padding
     content_area_left = outer_padding
     content_area_right = width - outer_padding
@@ -1217,7 +1266,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     # Preview box within the content area
     preview_box_left = content_area_left + int(content_area_width * 0.005)
     preview_box_right = content_area_right - int(content_area_width * 0.005)
-    preview_box_top = outer_padding + header_height + metadata_height + spacing_between_metadata_and_content_preview
+    preview_box_top = outer_padding + header_height + metadata_top_margin + metadata_height + spacing_between_metadata_and_content_preview
     logging.debug(f"Preview box top: {preview_box_top}, icon space: {icon_space}, metadata height: {metadata_height}")
     preview_box_bottom = height - outer_padding - int(30 * scale)
     preview_box_height = preview_box_bottom - preview_box_top - preview_box_padding * 2
@@ -1666,16 +1715,53 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     # DO NOT REMOVE THIS COMMENT EVER
     ########################################
     logging.debug(f"Drawing metadata -- {file_info}")
-    for key, value in file_info.items():
-        if key == 'Name' or key == 'Filepath':
-            # For the Name field, don't show the label
-            logging.debug(f"Drawing metadata line: {key}: {value}")
-            logging.debug(f"File is {file_path.name}")
-            line = f"{value}"
+    if custom_metadata_text:
+        # Recompute spacing to match measurement
+        tmp_img2 = Image.new("RGBA", (width, height))
+        tmp_draw2 = ImageDraw.Draw(tmp_img2)
+        l, t, r, b = tmp_draw2.textbbox((0, 0), "Ag", font=info_font)
+        single_h = b - t
+        custom_line_spacing_px = max(0, int(metadata_line_height - single_h))
+
+        meta_pad = int(30 * scale)
+
+        bg_rgb = (255, 255, 255)
+        bg_outline_rgb = (0, 0, 0)
+        if cmyk_mode:
+            bg_fill = rgb_to_cmyk(*bg_rgb)
+            bg_outline = rgb_to_cmyk(*bg_outline_rgb)
+            text_fill = (0, 0, 0, 255)  # K-only text
         else:
-            line = f"{key}: {value}"
-        draw.text((width//2, y), line, fill=text_black, font=info_font, anchor="mm")
-        y += metadata_line_height
+            bg_fill = bg_rgb
+            bg_outline = bg_outline_rgb
+            text_fill = (0, 0, 0)
+
+        draw_text_box(
+            draw,
+            custom_metadata_text,
+            info_font,
+            box=(outer_padding, outer_padding + header_height + metadata_top_margin, content_area_width_for_wrap, metadata_height),
+            padding=meta_pad,
+            line_spacing=custom_line_spacing_px,
+            align="left",
+            v_align="top",
+            fill=text_fill,
+            background_fill=bg_fill,
+            background_radius=int(8 * scale),
+            background_outline=bg_outline,
+            background_outline_width=1,
+        )
+        y = outer_padding + header_height + metadata_top_margin + metadata_height
+    else:
+        for key, value in file_info.items():
+            if key == 'Name' or key == 'Filepath':
+                logging.debug(f"Drawing metadata line: {key}: {value}")
+                logging.debug(f"File is {file_path.name}")
+                line = f"{value}"
+            else:
+                line = f"{key}: {value}"
+            draw.text((width//2, y), line, fill=text_black, font=info_font, anchor="mm")
+            y += metadata_line_height
 
     # Make sure the preview area starts below the last metadata line
     preview_box_top = max(preview_box_top, int(y + spacing_between_metadata_and_content_preview))

@@ -75,6 +75,7 @@ def build_file_cards_from_directory(
     border_inch_width=0.125,
     include_video_frames=False,
     max_depth=0,  # 0 = no recursion; negative => unlimited
+    metadata_text=None
 ):
     """
     Test the file card generation by creating cards for all files in a directory.
@@ -89,6 +90,7 @@ def build_file_cards_from_directory(
         border_inch_width: Border width in inches
         include_video_frames: Also output individual video frames as cards
         max_depth: Maximum folder recursion depth; 0 = no recursion, negative = unlimited
+        metadata_text: Custom metadata text to include on the card
     """
     logging.info(f"Starting file card with size {page_size}")
     input_path = Path(input_dir)
@@ -145,7 +147,8 @@ def build_file_cards_from_directory(
                     exclude_file_path=exclude_file_path,
                     border_color=border_color,
                     border_inch_width=border_inch_width,
-                    include_video_frames=include_video_frames
+                    include_video_frames=include_video_frames,
+                    metadata_text=metadata_text
                 )
 
                 # Handle single card or multiple cards (for video files)
@@ -242,6 +245,13 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
             logging.error(f"Image files passed to img2pdf: {image_files}")
             logging.error("Bust.")
 
+def _decode_metadata_text(s: str) -> str:
+    # Minimal, safe escape handling for CLI input
+    return (
+        s.replace('\\n', '\n')
+         .replace('\\r', '\r')
+         .replace('\\t', '\t')
+    )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test file card generation and PDF assembly for various file types')
@@ -258,6 +268,7 @@ if __name__ == "__main__":
     parser.add_argument('--border-color', default='250,250,250', help='Border color for the cards in RGB format (default: 250,250,250)')
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
     parser.add_argument('--include-video-frames', action='store_true', help='Also output individual video frames as cards (default: overview only)')
+    parser.add_argument('--metadata-text', default=None, help='Custom metadata text to include on the card')
 
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
@@ -308,6 +319,9 @@ if __name__ == "__main__":
     border_color_parts = re.split(r'[,\s]+', args.border_color.strip())
     t_border_color = tuple(map(int, border_color_parts))
 
+    if args.metadata_text:
+        args.metadata_text = _decode_metadata_text(args.metadata_text)
+
     # Generate file cards
     build_file_cards_from_directory(
         args.input_dir,
@@ -319,6 +333,7 @@ if __name__ == "__main__":
         border_inch_width=args.border_inch_width,
         include_video_frames=args.include_video_frames,
         max_depth=args.max_depth,
+        metadata_text=args.metadata_text
     )
 
     # Report summary
