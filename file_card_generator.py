@@ -50,7 +50,7 @@ mimetypes.init()
 dotenv.load_dotenv()
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format='%(asctime)s:%(levelname)s - %(name)s %(filename)s@%(lineno)d - %(message)s'
 )
 
@@ -988,9 +988,9 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None):
-    logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
-    logging.debug(f"File path: {file_path}, exclude_file_path={exclude_file_path}, border_color={border_color}, border_inch_width={border_inch_width}, include_video_frames={include_video_frames}, metadata_text={metadata_text}")
+def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None, title=None):
+    #logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
+    #logging.debug(f"File path: {file_path}, exclude_file_path={exclude_file_path}, border_color={border_color}, border_inch_width={border_inch_width}, include_video_frames={include_video_frames}, metadata_text={metadata_text}")
     
     file_info = {}
     file_path = Path(file_path)
@@ -1218,7 +1218,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             custom_metadata_text = "\n".join(str(x) for x in metadata_text)
         else:
             custom_metadata_text = str(metadata_text)
-
+        if exclude_file_path is not False:
+            custom_metadata_text = f"{custom_metadata_text}\n\n{str(file_path.parent)}"
     # Compute metadata block height
     # Default: number of key/value pairs * line height
     content_area_width_for_wrap = width - 2 * outer_padding
@@ -1679,7 +1680,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=color)
         text_color = (0, 0, 0, 0)
     # Position the file name vertically centered in the header area, accounting for outer padding
-    draw.text((width//2, outer_padding + header_height//2), file_path.name.upper(), fill=text_color, font=title_font, anchor="mm")
+    header_text = title.upper() if title is not None else file_path.name.upper()
+    draw.text((width//2, outer_padding + header_height//2), header_text, fill=text_color, font=title_font, anchor="mm")
+    # draw.text((width//2, outer_padding + header_height//2), file_path.name.upper(), fill=text_color, font=title_font, anchor="mm")
     # Position the icon below the header, accounting for outer padding
     # icon_y = outer_padding + header_height + int(20 * scale)
     # icon_color = file_type_info['color'] if rgb_mode else color
@@ -1772,8 +1775,6 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     preview_box_height = preview_box_bottom - preview_box_top - preview_box_padding * 2
     max_preview_lines = max(1, preview_box_height // line_height)
 
-    y = preview_box_top - 30
-    #draw.text((width//2, y), "Content Preview:", fill='black', font=info_font, anchor="mm")
     y = preview_box_top
     draw.rectangle(
         [preview_box_left, preview_box_top, preview_box_right, preview_box_bottom],

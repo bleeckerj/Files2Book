@@ -47,6 +47,7 @@ def build_file_cards_from_json(
     posts = sorted(posts, key=lambda post: post.get("creation_timestamp", 0))
 
     file_count = 0
+    media_idx = 0
     for post in posts:
         media_list = post.get("media", [])
         for media in media_list:
@@ -69,7 +70,7 @@ def build_file_cards_from_json(
 
             # Format metadata_text
             metadata_text = concat_timestamp_title(creation_ts, title)
-
+            human_readable_date = datetime.fromtimestamp(creation_ts).strftime('%Y-%m-%d %H:%M:%S') if creation_ts else None
             try:
                 card = create_file_info_card(
                     abs_file_path,
@@ -80,12 +81,14 @@ def build_file_cards_from_json(
                     border_color=border_color,
                     border_inch_width=border_inch_width,
                     include_video_frames=include_video_frames,
-                    metadata_text=metadata_text
+                    metadata_text=metadata_text,
+                    title=human_readable_date
                 )
-                output_file = output_path / f"{Path(abs_file_path).stem}_card.tiff"
+                output_file = output_path / f"{media_idx:04d}_{Path(abs_file_path).stem}_card.tiff"
                 save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
                 logging.info(f"Saved card to {output_file}")
                 file_count += 1
+                media_idx += 1
             except Exception as e:
                 logging.error(f"Error processing {abs_file_path}: {e}")
 
