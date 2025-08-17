@@ -188,7 +188,7 @@ def get_file_type_info(file_path):
     # Check if the extension is in any of our groups
     for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
-            logging.debug(f"Found group {group} for extension {ext} for file {file_path}")
+            #logging.debug(f"Found group {group} for extension {ext} for file {file_path}")
             return {
                 'group': group,
                 'icon': info['icon'],
@@ -529,7 +529,7 @@ def get_pdf_preview(file_path, box_w, box_h):
             x = (box_w - new_w) // 2
             y = (box_h - new_h) // 2
             grid_img.paste(page, (x, y))
-            logging.debug(f"Single page preview: scaled to ({new_w}, {new_h}) at ({x}, {y})")
+            #logging.debug(f"Single page preview: scaled to ({new_w}, {new_h}) at ({x}, {y})")
             return grid_img
         # Multi-page: maximize grid coverage
         best_thumb_w = 0
@@ -560,9 +560,9 @@ def get_pdf_preview(file_path, box_w, box_h):
             x = (idx % best_cols) * best_thumb_w + (best_thumb_w - page.width)//2
             y = (idx // best_cols) * best_thumb_h + (best_thumb_h - page.height)//2
             grid_img.paste(page, (x, y))
-            logging.debug(f"Pasted page {indices[idx]+1} at ({x}, {y}), size ({page.width}, {page.height})")
-        logging.debug(f"Preview box: width={box_w}, height={box_h}")
-        logging.debug(f"Grid created at: width={grid_img.width}, height={grid_img.height}")
+            #logging.debug(f"Pasted page {indices[idx]+1} at ({x}, {y}), size ({page.width}, {page.height})")
+        #logging.debug(f"Preview box: width={box_w}, height={box_h}")
+        #logging.debug(f"Grid created at: width={grid_img.width}, height={grid_img.height}")
         return grid_img
     except Exception as e:
         logging.error(f"PDF preview error for {file_path}: {e}")
@@ -573,7 +573,7 @@ def get_image_thumbnail(file_path, box_size=(320, 320), cmyk_mode=False):
         img = Image.open(file_path)
         # Composite transparent images onto white/light background BEFORE any CMYK conversion
         if img.mode in ("RGBA", "LA"):
-            logging.debug(f"Compositing transparent image onto white background: {file_path.name}")
+            #logging.debug(f"Compositing transparent image onto white background: {file_path.name}")
             background = Image.new("RGBA", img.size, (250, 250, 250))
             background.paste(img, mask=img.split()[-1])
             img = background
@@ -661,7 +661,7 @@ def get_font_preview(file_path, box_w, box_h):
                             font_metadata.append(f"Version: {version}")
                             break
             except Exception as e:
-                logging.debug(f"Could not read font metadata: {e}")
+                logging.error(f"Could not read font metadata: {e}")
         
         if not font_metadata:
             font_metadata = ["Font: " + os.path.basename(font_path)]
@@ -689,7 +689,7 @@ def get_font_preview(file_path, box_w, box_h):
                 draw.text((10, y_pos), text, fill=(0, 0, 0), font=font)
                 y_pos += size + 60
             except Exception as e:
-                logging.debug(f"Error loading font at size {size}: {e}")
+                logging.warning(f"Error loading font at size {size}: {e}")
                 # Use default font as fallback
                 fallback_font = ImageFont.load_default()
                 draw.text((10, y_pos), f"Size {size}pt not available", fill=(255, 0, 0), font=fallback_font)
@@ -707,7 +707,7 @@ def get_font_preview(file_path, box_w, box_h):
             draw.text((10, y_pos), special_chars, fill=(0, 0, 0), font=font)
             y_pos += size + 60
         except Exception as e:
-            logging.debug(f"Error drawing numbers/special chars: {e}")
+            logging.warning(f"Error drawing numbers/special chars: {e}")
         
         # Draw pangram
         try:
@@ -722,9 +722,9 @@ def get_font_preview(file_path, box_w, box_h):
             lines = wrapped_text.count('\n') + 1
             y_pos += (pangram_size + 20) * lines
         except Exception as e:
-            logging.debug(f"Error drawing pangram: {e}")
-            
-        
+            logging.warning(f"Error drawing pangram: {e}")
+
+
         return preview
     except Exception as e:
         logging.error(f"Error creating font preview: {e}")
@@ -814,7 +814,7 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=3, rotate_
             x = (i % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
             y = (i // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
             grid_img.paste(thumb, (x, y))
-        logging.debug(f"Grid size: {grid_img.size} for file {file_path}")
+        #logging.debug(f"Grid size: {grid_img.size} for file {file_path}")
         return grid_img
     except Exception:
         return None
@@ -990,6 +990,8 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 
 def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None):
     logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
+    logging.debug(f"File path: {file_path}, exclude_file_path={exclude_file_path}, border_color={border_color}, border_inch_width={border_inch_width}, include_video_frames={include_video_frames}, metadata_text={metadata_text}")
+    
     file_info = {}
     file_path = Path(file_path)
 
@@ -997,7 +999,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     base_width = 800
     base_height = 1000
     scale = min(width / base_width, height / base_height)
-    logging.debug(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
+    #logging.debug(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
     # Proportional paddings
     border_width = max(2, int(1 * scale))  # Using a more reasonable but still very visible border width
     outer_padding = max(80, int(50 * scale))  # Padding between border and outer edges of content
@@ -1021,7 +1023,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     rgb_mode = not cmyk_mode
     preview_background_color = (250, 250, 250) if rgb_mode else rgb_to_cmyk(250, 250, 250)
     # Define a reliable black text color for the current mode
-    text_black = (0, 0, 0) if rgb_mode else (0, 0, 0, 100)
+    text_black = (0, 0, 0) if rgb_mode else (0, 0, 0, 255)
     if rgb_mode:
         # For RGB mode, use standard black border
         draw.rectangle(
@@ -1120,13 +1122,13 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                                     slack_shared_date = str(ts)
                             # Resolve avatar from local 'avatars' directory
                             avatars_dir = channel_dir.parent / "avatars"
-                            logging.debug(f"Looking for avatars in: {avatars_dir}")
+                            #logging.debug(f"Looking for avatars in: {avatars_dir}")
                             if slack_user_id and avatars_dir.exists():
                                 avatar_path = avatars_dir / f"{slack_user_id}.jpg"
-                                logging.debug(f"Checking avatar path: {avatar_path}")
+                                #logging.debug(f"Checking avatar path: {avatar_path}")
                                 if avatar_path.exists():
                                     slack_avatar = str(avatar_path)
-                                    logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
+                                    #logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
                             # Resolve user name from users.json
                             if users_json.exists() and slack_user_id:
                                 try:
@@ -1251,7 +1253,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             line_spacing=custom_line_spacing_px,
             align="center",
             v_align="top",
-            fill=(0, 0, 0)
+            fill=bg_fill,
+            stroke_fill=bg_outline,
+            stroke_width=1
         )
         metadata_height = measure["used_size"][1] + (meta_pad * 2)
     else:
@@ -1723,13 +1727,13 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         single_h = b - t
         custom_line_spacing_px = max(0, int(metadata_line_height - single_h))
 
-        meta_pad = int(30 * scale)
+        meta_pad = int(10 * scale)
 
         bg_rgb = (255, 255, 255)
         bg_outline_rgb = (0, 0, 0)
         if cmyk_mode:
-            bg_fill = rgb_to_cmyk(*bg_rgb)
-            bg_outline = rgb_to_cmyk(*bg_outline_rgb)
+            bg_fill = (0,0,0, 1)
+            bg_outline = (0, 0, 0, 255)  # K-only outline
             text_fill = (0, 0, 0, 255)  # K-only text
         else:
             bg_fill = bg_rgb
@@ -1747,7 +1751,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             v_align="top",
             fill=text_fill,
             background_fill=bg_fill,
-            background_radius=int(8 * scale),
+            background_radius=int(3 * scale),
             background_outline=bg_outline,
             background_outline_width=1,
         )

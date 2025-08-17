@@ -18,9 +18,14 @@
   "dependencies": {
     "commander": "^11.1.0",
     "pdfkit": "^0.14.0",
-    "sharp": "^0.33.1"
+    "sharp": "^0.33.1",
+    "zod": "^4.0.17"
   },
   "bin": {
     "combine-images-to-pdf": "./combine_images_to_pdf.js"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
   }
 }

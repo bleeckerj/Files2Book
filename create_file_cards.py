@@ -148,7 +148,7 @@ def build_file_cards_from_directory(
                     border_color=border_color,
                     border_inch_width=border_inch_width,
                     include_video_frames=include_video_frames,
-                    metadata_text=metadata_text
+                    metadata_text="HELLO!"
                 )
 
                 # Handle single card or multiple cards (for video files)
