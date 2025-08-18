@@ -1877,6 +1877,14 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     fill=preview_background_color
                 )
                 frame_img.paste(frame_thumb, (int(frame_x0), int(frame_y0)))
+                # Add border around the frame card
+                dpi = 300
+                min_border_px = int(border_inch_width * dpi)
+                color_border_width = min_border_px
+                if cmyk_mode:
+                    draw_frame.rectangle([0, 0, width, height], outline=rgb_to_cmyk(*border_color), width=color_border_width)
+                else:
+                    draw_frame.rectangle([0, 0, width, height], outline=border_color, width=color_border_width)
                 cards.append(frame_img)
             return cards
     elif image_thumb is not None:
