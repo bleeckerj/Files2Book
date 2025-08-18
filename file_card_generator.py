@@ -50,7 +50,7 @@ mimetypes.init()
 dotenv.load_dotenv()
 
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format='%(asctime)s:%(levelname)s - %(name)s %(filename)s@%(lineno)d - %(message)s'
 )
 

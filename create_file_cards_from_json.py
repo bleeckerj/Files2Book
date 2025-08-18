@@ -6,6 +6,8 @@ import re
 import json
 import logging
 import shutil
+import time
+import hashlib
 from pathlib import Path
 from datetime import datetime
 import argparse
@@ -18,6 +20,10 @@ logging.basicConfig(
 )
 
 logging.getLogger("file_card_generator").setLevel(logging.INFO)
+
+
+def short_hash(s, length=8):
+    return hashlib.md5(s.encode('utf-8')).hexdigest()[:length]
 
 def build_file_cards_from_json(
     json_path,
@@ -32,16 +38,21 @@ def build_file_cards_from_json(
     metadata_text=None
 ):
     logging.info(f"Starting file card generation from JSON: {json_path}")
+    is_stories = False
     output_path = Path(output_dir)
     if output_path.exists():
         shutil.rmtree(output_path)
+        time.sleep(5)
     output_path.mkdir(exist_ok=True, parents=True)
     width, height = parse_page_size(page_size)
     logging.info(f"Parsed page size: {page_size} -> {width}x{height} pixels")
     # if the filename is like 'stories.json' or similar, then just note that
-    if "stories" in json_path.stem:
+    json_path_obj = Path(json_path)
+    if "stories" in json_path_obj.stem:
+        is_stories = True
         logging.info("Detected 'stories' in JSON filename.")
-    if "posts" in json_path.stem:
+    if "posts" in json_path_obj.stem:
+        is_stories = False
         logging.info("Detected 'posts' in JSON filename.")
         
     # Load JSON
@@ -60,25 +71,23 @@ def build_file_cards_from_json(
     file_count = 0
     media_idx = 0
     for post in posts:
-        media_list = post.get("media", [])
-        for media in media_list:
-            uri = media.get("uri")
-            
-            title = media.get("title", "")
-            if not title:
-                title = post.get("title", "")            
-            
-            creation_ts = media.get("creation_timestamp")
+        # Regular Stories JSON
+        media_idx = 0
+        if is_stories:
+            uri = post.get("uri")
+            title = post.get("title", "")
+            creation_ts = post.get("creation_timestamp")
             if not uri:
                 logging.warning("Skipping media with missing 'uri'")
                 continue
-
+            if uri.startswith('http://') or uri.startswith('https://'):
+                logging.warning(f"Skipping URI that looks like a URL, not a file: {uri}")
+                continue
             # Construct absolute image path
             abs_file_path = str(Path(image_base_dir) / uri)
             if not Path(abs_file_path).is_file():
                 logging.warning(f"Image file does not exist: {abs_file_path}")
                 continue
-
             # Format metadata_text
             metadata_text = concat_timestamp_title(creation_ts, title)
             human_readable_date = datetime.fromtimestamp(creation_ts).strftime('%Y-%m-%d %H:%M:%S') if creation_ts else None
@@ -95,13 +104,71 @@ def build_file_cards_from_json(
                     metadata_text=metadata_text,
                     title=human_readable_date
                 )
-                output_file = output_path / f"{media_idx:04d}_{Path(abs_file_path).stem}_card.tiff"
-                save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
-                logging.info(f"Saved card to {output_file}")
-                file_count += 1
-                media_idx += 1
+                if isinstance(card, list):
+                    for idx, img in enumerate(card):
+                        short_path = short_hash(abs_file_path)
+                        output_file = output_path / f"{creation_ts}_{media_idx:04d}_{short_path}_card_{idx+1}.tiff"
+                        save_card_as_tiff(img, output_file, cmyk_mode=cmyk_mode)
+                        media_idx += 1
+                        file_count += 1
+                else:
+                    short_path = short_hash(abs_file_path)
+                    output_file = output_path / f"{creation_ts}_{short_path}_card.tiff"
+                    save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
+                    logging.info(f"Saved card to {output_file}")
+                    file_count += 1
             except Exception as e:
                 logging.error(f"Error processing {abs_file_path}: {e}")
+        
+        # Regular Post JSON        
+        else:
+            media_list = post.get("media", [])
+            for media in media_list:
+                uri = media.get("uri")
+                
+                title = media.get("title", "")
+                if not title:
+                    title = post.get("title", "")            
+                
+                creation_ts = media.get("creation_timestamp")
+                if not uri:
+                    logging.warning("Skipping media with missing 'uri'")
+                    continue
+                
+                if uri.startswith('http://') or uri.startswith('https://'):
+                    logging.warning(f"Skipping URI that looks like a URL, not a file: {uri}")
+                    continue
+
+                # Construct absolute image path
+                abs_file_path = str(Path(image_base_dir) / uri)
+                if not Path(abs_file_path).is_file():
+                    logging.warning(f"Image file does not exist: {abs_file_path}")
+                    continue
+
+                # Format metadata_text
+                metadata_text = concat_timestamp_title(creation_ts, title)
+                human_readable_date = datetime.fromtimestamp(creation_ts).strftime('%Y-%m-%d %H:%M:%S') if creation_ts else None
+                try:
+                    card = create_file_info_card(
+                        abs_file_path,
+                        width=width,
+                        height=height,
+                        cmyk_mode=cmyk_mode,
+                        exclude_file_path=exclude_file_path,
+                        border_color=border_color,
+                        border_inch_width=border_inch_width,
+                        include_video_frames=include_video_frames,
+                        metadata_text=metadata_text,
+                        title=human_readable_date
+                    )
+                    short_path = short_hash(abs_file_path)
+                    output_file = output_path / f"{creation_ts}_{media_idx:04d}_{short_path}_card.tiff"
+                    save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
+                    logging.info(f"Saved card to {output_file}")
+                    file_count += 1
+                    media_idx += 1
+                except Exception as e:
+                    logging.error(f"Error processing {abs_file_path}: {e}")
 
     logging.info(f"Processing complete. Generated {file_count} file cards in {output_path}")
 
@@ -198,3 +265,4 @@ if __name__ == "__main__":
                 except Exception as e:
                     logging.error(f"Error deleting {card_file}: {e}")
         logging.info(f"Card files cleanup complete. Deleted {deleted} files.")
+

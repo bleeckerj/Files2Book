@@ -148,7 +148,7 @@ def build_file_cards_from_directory(
                     border_color=border_color,
                     border_inch_width=border_inch_width,
                     include_video_frames=include_video_frames,
-                    metadata_text="HELLO!"
+                    metadata_text=None
                 )
 
                 # Handle single card or multiple cards (for video files)
@@ -267,7 +267,7 @@ if __name__ == "__main__":
     parser.add_argument('--delete-cards-after-pdf', action='store_true', help='Delete individual card files after PDF is created')
     parser.add_argument('--border-color', default='250,250,250', help='Border color for the cards in RGB format (default: 250,250,250)')
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
-    parser.add_argument('--include-video-frames', action='store_true', help='Also output individual video frames as cards (default: overview only)')
+    parser.add_argument('--include-video-frames', default=False, action='store_true', help='Also output individual video frames as cards (default: overview only)')
     parser.add_argument('--metadata-text', default=None, help='Custom metadata text to include on the card')
 
     args = parser.parse_args()
