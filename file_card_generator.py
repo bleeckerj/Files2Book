@@ -1756,7 +1756,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         else:
             draw.text((width//2, outer_padding + header_height + metadata_top_margin), filename, fill=text_black, font=info_font, anchor="mm")
             y_offset = metadata_line_height + 5
-        #logging.info(f"File Path is {short_path}")
+        logging.info(f"File Path is {short_path}")
         draw_text_box(
             draw,
             custom_metadata_text,
