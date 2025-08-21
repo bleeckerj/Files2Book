@@ -75,7 +75,8 @@ def build_file_cards_from_directory(
     border_inch_width=0.125,
     include_video_frames=False,
     max_depth=0,  # 0 = no recursion; negative => unlimited
-    metadata_text=None
+    metadata_text=None,
+    cards_per_chunk=0  # <--- Add this parameter
 ):
     """
     Test the file card generation by creating cards for all files in a directory.
@@ -91,6 +92,7 @@ def build_file_cards_from_directory(
         include_video_frames: Also output individual video frames as cards
         max_depth: Maximum folder recursion depth; 0 = no recursion, negative = unlimited
         metadata_text: Custom metadata text to include on the card
+        cards_per_chunk: If >0, split card images into chunked folders of this many cards and produce one PDF per chunk
     """
     logging.info(f"Starting file card with size {page_size}")
     input_path = Path(input_dir)
@@ -129,16 +131,14 @@ def build_file_cards_from_directory(
 
     # Use provided max_depth (no sys.argv parsing)
     file_count = 0
+    chunk_idx = 0
+    chunk_dir = output_path
     for file_path in sorted(find_files(input_path, max_depth=max_depth)):
         if file_path.is_file():
             try:
                 file_type = determine_file_type(file_path)
                 logging.debug(f"Processing {file_path.name} - Type: {file_type}")
 
-                # Log width and height before calling create_file_info_card
-                logging.debug(f"Before create_file_info_card: width={width}, height={height}")
-
-                # Generate the card
                 card = create_file_info_card(
                     file_path,
                     width=width,
@@ -151,28 +151,74 @@ def build_file_cards_from_directory(
                     metadata_text=None
                 )
 
-                # Handle single card or multiple cards (for video files)
                 if isinstance(card, list):
                     for idx, card_img in enumerate(card):
                         card_size = card_img.size
-                        output_file = output_path / f"{file_path.stem}_card_{idx+1}.tiff"
+                        # Chunking logic
+                        if cards_per_chunk and cards_per_chunk > 0:
+                            if file_count % cards_per_chunk == 0:
+                                chunk_idx = file_count // cards_per_chunk
+                                chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                                chunk_dir.mkdir(exist_ok=True, parents=True)
+                            output_file = chunk_dir / f"{file_path.stem}_card_{idx+1}.tiff"
+                        else:
+                            output_file = output_path / f"{file_path.stem}_card_{idx+1}.tiff"
                         save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
                         logging.debug(f"Saved card to {output_file} with size: {card_size}")
                         if not cmyk_mode:
-                            png_file = output_path / f"{file_path.stem}_card_{idx+1}.png"
+                            png_file = output_file.with_suffix('.png')
                             card_img.save(png_file)
                             logging.debug(f"Saved card to {png_file} with size: {card_size}")
-                    file_count += len(card)
+                        file_count += 1
+
+                        # After saving each card, check if chunk is full
+                        if cards_per_chunk and cards_per_chunk > 0 and file_count % cards_per_chunk == 0:
+                            pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                            pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                            logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                            assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                            logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+                            # Delete images in chunk_dir
+                            for card_file in chunk_dir.glob("*_card.*"):
+                                try:
+                                    card_file.unlink()
+                                except Exception as e:
+                                    logging.error(f"Error deleting {card_file}: {e}")
+                            logging.info(f"Deleted images in {chunk_dir}")
+                            chunk_idx += 1
                 else:
                     card_size = card.size
-                    output_file = output_path / f"{file_path.stem}_card.tiff"
+                    if cards_per_chunk and cards_per_chunk > 0:
+                        if file_count % cards_per_chunk == 0:
+                            chunk_idx = file_count // cards_per_chunk
+                            chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                            chunk_dir.mkdir(exist_ok=True, parents=True)
+                        output_file = chunk_dir / f"{file_path.stem}_card.tiff"
+                    else:
+                        output_file = output_path / f"{file_path.stem}_card.tiff"
                     save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
                     logging.debug(f"Saved card to {output_file} with size: {card_size}")
                     if not cmyk_mode:
-                        png_file = output_path / f"{file_path.stem}_card.png"
+                        png_file = output_file.with_suffix('.png')
                         card.save(png_file)
                         logging.debug(f"Saved card to {png_file} with size: {card_size}")
                     file_count += 1
+
+                    # After saving each card, check if chunk is full
+                    if cards_per_chunk and cards_per_chunk > 0 and file_count % cards_per_chunk == 0:
+                        pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                        pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                        logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                        logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+                        # Delete images in chunk_dir
+                        for card_file in chunk_dir.glob("*_card.*"):
+                            try:
+                                card_file.unlink()
+                            except Exception as e:
+                                logging.error(f"Error deleting {card_file}: {e}")
+                        logging.info(f"Deleted images in {chunk_dir}")
+                        chunk_idx += 1
             except Exception as e:
                 logging.error(f"Error processing {file_path.name}: {e}")
                 logging.error("Traceback:\n" + traceback.format_exc())
@@ -199,8 +245,19 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
     output_path = Path(output_dir)
     
     # Get list of all card files, including multi-page video frames
-    card_files = sorted(list(output_path.glob("*_card.*")) + list(output_path.glob("*_card_*.*")))
-
+    try:
+        # Only include files whose name does not start with "." or "._"
+        # and whose extension is a supported image type
+        valid_exts = ['.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp']
+        card_files = sorted(
+            f for f in output_path.glob("*_card.*")
+            if f.is_file()
+            and f.suffix.lower() in valid_exts
+            and not (f.name.startswith(".") or f.name.startswith("._"))
+        )
+    except Exception as e:
+        logging.error(f"Error while processing card files: {e}")
+    
     # Convert webp images to PNG for img2pdf compatibility
     converted_files = []
     for f in card_files:
@@ -269,6 +326,7 @@ if __name__ == "__main__":
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
     parser.add_argument('--include-video-frames', default=False, action='store_true', help='Also output individual video frames as cards (default: overview only)')
     parser.add_argument('--metadata-text', default=None, help='Custom metadata text to include on the card')
+    parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
 
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
@@ -333,7 +391,8 @@ if __name__ == "__main__":
         border_inch_width=args.border_inch_width,
         include_video_frames=args.include_video_frames,
         max_depth=args.max_depth,
-        metadata_text=args.metadata_text
+        metadata_text=args.metadata_text,
+        cards_per_chunk=args.cards_per_chunk  # <--- Pass chunk size
     )
 
     # Report summary
@@ -383,3 +442,22 @@ if __name__ == "__main__":
                     except Exception as e:
                         logging.error(f"Error deleting {card_file}: {e}")
             logging.info(f"Card files cleanup complete. Deleted {deleted} files.")
+    
+        # Chunked PDF assembly
+        cards_per_chunk = getattr(args, "cards_per_chunk", 0) or 0
+        output_dir_path = Path(args.output_dir)
+        if cards_per_chunk and cards_per_chunk > 0:
+            chunk_dirs = sorted([d for d in output_dir_path.iterdir() if d.is_dir() and d.name.startswith("chunk_")])
+            for chunk_dir in chunk_dirs:
+                try:
+                    chunk_idx = int(chunk_dir.name.split("_")[1])
+                except Exception:
+                    chunk_idx = 0
+                base_name = output_dir_path.name
+                pdf_name_chunk = f"{base_name}_chunk_{chunk_idx:04d}.pdf"
+                pdf_path_chunk = str(output_dir_path / pdf_name_chunk)
+                logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+        else:
+            assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))

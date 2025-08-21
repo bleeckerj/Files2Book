@@ -35,7 +35,8 @@ def build_file_cards_from_json(
     border_color=(250, 250, 250),
     border_inch_width=0.125,
     include_video_frames=False,
-    metadata_text=None
+    metadata_text=None,
+    cards_per_chunk=0
 ):
     logging.info(f"Starting file card generation from JSON: {json_path}")
     is_stories = False
@@ -78,6 +79,8 @@ def build_file_cards_from_json(
 
     file_count = 0
     media_idx = 0
+    chunk_idx = 0
+    chunk_dir = output_path
     for post in posts:
         # Regular Stories JSON
         media_idx = 0
@@ -115,16 +118,46 @@ def build_file_cards_from_json(
                 if isinstance(card, list):
                     for idx, img in enumerate(card):
                         short_path = short_hash(abs_file_path)
-                        output_file = output_path / f"{creation_ts}_{media_idx:04d}_{short_path}_card_{idx+1}.tiff"
+                        # Chunking logic
+                        if cards_per_chunk and cards_per_chunk > 0:
+                            if file_count % cards_per_chunk == 0:
+                                chunk_idx = file_count // cards_per_chunk
+                                chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                                chunk_dir.mkdir(exist_ok=True, parents=True)
+                            output_file = chunk_dir / f"{creation_ts}_{media_idx:04d}_{short_path}_card_{idx+1}.tiff"
+                        else:
+                            output_file = output_path / f"{creation_ts}_{media_idx:04d}_{short_path}_card_{idx+1}.tiff"
                         save_card_as_tiff(img, output_file, cmyk_mode=cmyk_mode)
                         media_idx += 1
                         file_count += 1
                 else:
                     short_path = short_hash(abs_file_path)
-                    output_file = output_path / f"{creation_ts}_{short_path}_card.tiff"
+                    if cards_per_chunk and cards_per_chunk > 0:
+                        if file_count % cards_per_chunk == 0:
+                            chunk_idx = file_count // cards_per_chunk
+                            chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                            chunk_dir.mkdir(exist_ok=True, parents=True)
+                        output_file = chunk_dir / f"{creation_ts}_{short_path}_card.tiff"
+                    else:
+                        output_file = output_path / f"{creation_ts}_{short_path}_card.tiff"
                     save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
-                    logging.info(f"Saved card to {output_file}")
+                    logging.debug(f"Saved card to {output_file}")
                     file_count += 1
+                # After saving each card, check if chunk is full
+                if cards_per_chunk and cards_per_chunk > 0 and file_count % cards_per_chunk == 0:
+                    pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                    pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                    logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                    assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                    logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+                    # Delete images in chunk_dir
+                    for card_file in chunk_dir.glob("*_card.*"):
+                        try:
+                            card_file.unlink()
+                        except Exception as e:
+                            logging.error(f"Error deleting {card_file}: {e}")
+                    logging.info(f"Deleted images in {chunk_dir}")
+                    chunk_idx += 1
             except Exception as e:
                 logging.error(f"Error processing {abs_file_path}: {e}")
         
@@ -170,13 +203,33 @@ def build_file_cards_from_json(
                         title=human_readable_date
                     )
                     short_path = short_hash(abs_file_path)
-                    output_file = output_path / f"{creation_ts}_{media_idx:04d}_{short_path}_card.tiff"
+                    if cards_per_chunk and cards_per_chunk > 0:
+                        if file_count % cards_per_chunk == 0:
+                            chunk_idx = file_count // cards_per_chunk
+                            chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                            chunk_dir.mkdir(exist_ok=True, parents=True)
+                        output_file = chunk_dir / f"{creation_ts}_{media_idx:04d}_{short_path}_card.tiff"
+                    else:
+                        output_file = output_path / f"{creation_ts}_{media_idx:04d}_{short_path}_card.tiff"
                     save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
-                    logging.info(f"Saved card to {output_file}")
+                    logging.debug(f"Saved card to {output_file}")
                     file_count += 1
                     media_idx += 1
                 except Exception as e:
                     logging.error(f"Error processing {abs_file_path}: {e}")
+            if cards_per_chunk and cards_per_chunk > 0 and file_count % cards_per_chunk == 0:
+                pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+                for card_file in chunk_dir.glob("*_card.*"):
+                    try:
+                        card_file.unlink()
+                    except Exception as e:
+                        logging.error(f"Error deleting {card_file}: {e}")
+                logging.info(f"Deleted images in {chunk_dir}")
+                chunk_idx += 1
 
     logging.info(f"Processing complete. Generated {file_count} file cards in {output_path}")
 
@@ -205,6 +258,7 @@ if __name__ == "__main__":
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
     parser.add_argument('--include-video-frames', action='store_true', help='Also output individual video frames as cards (default: overview only)')
     parser.add_argument('--exclude-file-path', default=False, action='store_true', help='Exclude the vertical file path from the card (default: shown)')  # <-- Add this back
+    parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
 
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
@@ -249,6 +303,7 @@ if __name__ == "__main__":
         border_color=t_border_color,
         border_inch_width=args.border_inch_width,
         include_video_frames=args.include_video_frames,
+        cards_per_chunk=args.cards_per_chunk
     )
 
     # Assemble cards into a PDF

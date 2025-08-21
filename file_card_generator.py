@@ -1157,7 +1157,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     # Step 1: Check if file is an EXIF-capable image type
     exif_candidate = ext in {'.jpg', '.jpeg', '.tif', '.tiff'}
     if exif_candidate:
-        logging.info(f"File {file_path} is an EXIF-capable image type: {ext}")
+        logging.debug(f"File {file_path} is an EXIF-capable image type: {ext}")
         try:
             img = Image.open(file_path)
             if hasattr(img, '_getexif'):
@@ -1205,7 +1205,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     
     # Move Name to the end
     if not exclude_file_path:
-        file_info['Filepath'] = str(file_path.parent)
+        file_info['Filepath'] = "/".join(Path(file_path).parts[-3:])
         #file_info['Name'] = file_path.name
 
     # --- Custom metadata_text support (multiline, wrapped) ---
@@ -1722,6 +1722,20 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     # DO NOT REMOVE THIS COMMENT EVER
     ########################################
     logging.debug(f"Drawing metadata -- {file_info}")
+    # Initialize variables to safe defaults before conditionals
+    meta_pad = int(10 * scale)
+    custom_line_spacing_px = 0
+    if cmyk_mode:
+        bg_fill = (0, 0, 0, 1)  # CMYK very light gray
+        bg_outline = (0, 0, 0, 255)  # 100% black
+        text_fill = (0, 0, 0, 255)
+    else:
+        bg_rgb = (255, 255, 255)
+        bg_outline_rgb = (0, 0, 0)
+        bg_fill = bg_rgb
+        bg_outline = bg_outline_rgb
+        text_fill = (0, 0, 0)
+
     if custom_metadata_text:
         # Recompute spacing to match measurement
         y_offset = 0
@@ -1730,33 +1744,37 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         l, t, r, b = tmp_draw2.textbbox((0, 0), "Ag", font=info_font)
         single_h = b - t
         custom_line_spacing_px = max(0, int(metadata_line_height - single_h))
-
         meta_pad = int(10 * scale)
 
-        bg_rgb = (255, 255, 255)
-        bg_outline_rgb = (0, 0, 0)
         if cmyk_mode:
-            bg_fill = (0,0,0, 1)
-            bg_outline = (0, 0, 0, 255)  # K-only outline
+            bg_fill = (0, 0, 0, 1)  # CMYK white
+            bg_outline = (0, 0, 0, 255)  # 100% black
             text_fill = (0, 0, 0, 255)  # K-only text
         else:
             bg_fill = bg_rgb
             bg_outline = bg_outline_rgb
             text_fill = (0, 0, 0)
 
-    if exclude_file_path is False:
-        last_parts = Path(file_path).parts[-4:]
-        short_path = "/".join(last_parts)
-        filename = Path(file_path).name
-        # Draw the short path (excluding filename) above the filename
-        if len(last_parts) > 1:
-            draw.text((width//2, outer_padding + header_height + metadata_top_margin), "/".join(last_parts[:-1]), fill=text_black, font=info_font, anchor="mm")
-            draw.text((width//2, outer_padding + header_height + metadata_top_margin + metadata_line_height), filename, fill=text_black, font=info_font, anchor="mm")
-            y_offset = metadata_line_height * 2 + 5
-        else:
-            draw.text((width//2, outer_padding + header_height + metadata_top_margin), filename, fill=text_black, font=info_font, anchor="mm")
-            y_offset = metadata_line_height + 5
-        logging.info(f"File Path is {short_path}")
+        if exclude_file_path is False:
+            last_parts = Path(file_path).parts[-3:]
+            short_path = "/".join(last_parts)
+            filename = Path(file_path).name
+            # Truncate filename if longer than 25 characters
+            # And if we have one of those huge unwieldly filenames that
+            # Instagram produces, just show the last two parts of the file path
+            if len(filename) > 50:
+                filename = f"{filename[:25]}...{filename[-25:]}"
+                short_path = "/".join(last_parts[:-1])
+            # Draw the short path (excluding filename) above the filename
+            if len(last_parts) > 1:
+                draw.text((width//2, outer_padding + header_height + metadata_top_margin), short_path, fill=text_black, font=info_font, anchor="mm")
+                draw.text((width//2, outer_padding + header_height + metadata_top_margin + metadata_line_height), filename, fill=text_black, font=info_font, anchor="mm")
+                y_offset = metadata_line_height * 2 + 5
+            else:
+                draw.text((width//2, outer_padding + header_height + metadata_top_margin), filename, fill=text_black, font=info_font, anchor="mm")
+                y_offset = metadata_line_height + 5
+            logging.debug(f"File Path is {short_path}")
+            logging.debug(f"Last Parts is {last_parts} and it is {len(last_parts)} elements long")
         draw_text_box(
             draw,
             custom_metadata_text,
@@ -1872,8 +1890,16 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         img.paste(video_thumb, (int(x0), int(y0)))
 
         if video_frame_thumbs:
-            # Always produce an overview card
+            dpi = 300
             overview_img = img.copy()
+            draw_frame = ImageDraw.Draw(overview_img)
+            min_border_px = int(border_inch_width * dpi)
+            color_border_width = min_border_px
+            if cmyk_mode:
+                draw_frame.rectangle([0, 0, width, height], outline=rgb_to_cmyk(*border_color), width=color_border_width)
+            else:
+                draw_frame.rectangle([0, 0, width, height], outline=border_color, width=color_border_width)
+            # Always produce an overview card
             if not include_video_frames:
                 return overview_img
             # Otherwise, build list: overview first, then one per frame
