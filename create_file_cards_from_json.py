@@ -39,6 +39,7 @@ def build_file_cards_from_json(
 ):
     logging.info(f"Starting file card generation from JSON: {json_path}")
     is_stories = False
+    is_other_media = False
     output_path = Path(output_dir)
     if output_path.exists():
         shutil.rmtree(output_path)
@@ -54,13 +55,20 @@ def build_file_cards_from_json(
     if "posts" in json_path_obj.stem:
         is_stories = False
         logging.info("Detected 'posts' in JSON filename.")
-        
+    if "ig_other_media" in json_path_obj.stem:
+        is_stories = False
+        is_other_media = True
+        logging.info("Detected 'ig_other_media' in JSON filename.")
+
     # Load JSON
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if isinstance(data, dict) and "ig_stories" in data:
         posts = data["ig_stories"]
         logging.info(f"Loaded {len(posts)} stories from {json_path}")
+    elif isinstance(data, dict) and "ig_other_media" in data:
+        posts = data["ig_other_media"]
+        logging.info(f"Loaded {len(posts)} ig other media from {json_path}")
     else:
         posts = data
         logging.info(f"Loaded {len(posts)} posts from {json_path}")
