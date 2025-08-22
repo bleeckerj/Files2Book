@@ -25,6 +25,15 @@ logging.getLogger("file_card_generator").setLevel(logging.INFO)
 def short_hash(s, length=8):
     return hashlib.md5(s.encode('utf-8')).hexdigest()[:length]
 
+def delete_image_files_in_directory(directory):
+    logging.info(f"Deleting image files in directory: {directory}")
+    for image_file in directory.glob("*"):
+        if image_file.suffix.lower() in {".tiff", ".tif", ".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+            try:
+                image_file.unlink()
+            except Exception as e:
+                logging.error(f"Error deleting {image_file}: {e}")
+
 def build_file_cards_from_json(
     json_path,
     image_base_dir,
@@ -81,8 +90,10 @@ def build_file_cards_from_json(
     media_idx = 0
     chunk_idx = 0
     chunk_dir = output_path
+    posts_handled = 0
     for post in posts:
-        # Regular Stories JSON
+        posts_handled += 1
+        # Stories JSON
         media_idx = 0
         if is_stories:
             uri = post.get("uri")
@@ -152,6 +163,10 @@ def build_file_cards_from_json(
                     logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
                     # Delete images in chunk_dir
                     for card_file in chunk_dir.glob("*_card.*"):
+                        if card_file.name.startswith("._"):
+                            continue  # Skip macOS metadata files
+                        if card_file.suffix.lower() not in {".tiff", ".tif", ".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                            continue  # Skip non-image files
                         try:
                             card_file.unlink()
                         except Exception as e:
@@ -217,21 +232,42 @@ def build_file_cards_from_json(
                     media_idx += 1
                 except Exception as e:
                     logging.error(f"Error processing {abs_file_path}: {e}")
-            if cards_per_chunk and cards_per_chunk > 0 and file_count % cards_per_chunk == 0:
-                pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
-                pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
-                logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
-                assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
-                logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
-                for card_file in chunk_dir.glob("*_card.*"):
-                    try:
-                        card_file.unlink()
-                    except Exception as e:
-                        logging.error(f"Error deleting {card_file}: {e}")
-                logging.info(f"Deleted images in {chunk_dir}")
-                chunk_idx += 1
-
-    logging.info(f"Processing complete. Generated {file_count} file cards in {output_path}")
+                    
+                if cards_per_chunk and cards_per_chunk > 0 and (file_count % cards_per_chunk == 0):
+                    pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                    pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                    logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                    assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                    logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+                    for card_file in chunk_dir.glob("*_card.*"):
+                        if card_file.name.startswith("._"):
+                            continue  # Skip macOS metadata files
+                        if card_file.suffix.lower() not in {".tiff", ".tif", ".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                            continue  # Skip non-image files
+                        try:
+                            card_file.unlink()
+                        except Exception as e:
+                            logging.error(f"Error deleting {card_file}: {e}")
+                    chunk_idx += 1
+    # After the loop: Handle the last chunk (if any cards remain)
+    if cards_per_chunk and cards_per_chunk > 0 and (file_count % cards_per_chunk != 0 or posts_handled >= len(posts)):
+        pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+        pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+        logging.info(f"Assembling final PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+        logging.info(f"Saved final chunk PDF: {pdf_path_chunk}")
+        # Optionally delete images in the last chunk
+        for card_file in chunk_dir.glob("*_card.*"):
+            if card_file.name.startswith("._"):
+                continue  # Skip macOS metadata files
+            if card_file.suffix.lower() not in {".tiff", ".tif", ".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                continue  # Skip non-image files
+            try:
+                card_file.unlink()
+            except Exception as e:
+                logging.error(f"Error deleting {card_file}: {e}")
+        logging.info(f"Deleted images in {chunk_dir}")
+        logging.info(f"Processing complete. Generated {file_count} file cards in {output_path}")
 
 def concat_timestamp_title(creation_timestamp, title):
     if creation_timestamp:
