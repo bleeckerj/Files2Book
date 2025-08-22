@@ -79,12 +79,21 @@ def build_file_cards_from_json(
     elif isinstance(data, dict) and "ig_other_media" in data:
         posts = data["ig_other_media"]
         logging.info(f"Loaded {len(posts)} ig other media from {json_path}")
+    elif isinstance(data, dict) and "ig_reels" in data:
+        posts = data["ig_reels"]
+        logging.info(f"Loaded {len(posts)} ig reels from {json_path}")
+    elif isinstance(data, dict) and "ig_igtv_media" in data:
+        posts = data["ig_igtv_media"]
+        logging.info(f"Loaded {len(posts)} ig igtv media from {json_path}")
+    elif isinstance(data, dict) and "ig_archived_posts" in data:
+        posts = data["ig_archived_posts"]
+        logging.info(f"Loaded {len(posts)} ig archived posts from {json_path}")
     else:
         posts = data
         logging.info(f"Loaded {len(posts)} posts from {json_path}")
 
-    # Sort posts by creation_timestamp (earliest to most recent)
-    posts = sorted(posts, key=lambda post: post.get("creation_timestamp", 0))
+    # Sort posts by the creation_timestamp of the first media (earliest to most recent)
+    posts = sorted(posts, key=lambda post: post.get("media", [{}])[0].get("creation_timestamp", 0))
 
     file_count = 0
     media_idx = 0
