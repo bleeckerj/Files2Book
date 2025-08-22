@@ -76,7 +76,8 @@ def build_file_cards_from_directory(
     include_video_frames=False,
     max_depth=0,  # 0 = no recursion; negative => unlimited
     metadata_text=None,
-    cards_per_chunk=0  # <--- Add this parameter
+    cards_per_chunk=0,
+    pdf_name=None
 ):
     """
     Test the file card generation by creating cards for all files in a directory.
@@ -93,6 +94,7 @@ def build_file_cards_from_directory(
         max_depth: Maximum folder recursion depth; 0 = no recursion, negative = unlimited
         metadata_text: Custom metadata text to include on the card
         cards_per_chunk: If >0, split card images into chunked folders of this many cards and produce one PDF per chunk
+        pdf_name: Name of the output PDF file (default: assembled)
     """
     logging.info(f"Starting file card with size {page_size}")
     input_path = Path(input_dir)
@@ -222,6 +224,27 @@ def build_file_cards_from_directory(
             except Exception as e:
                 logging.error(f"Error processing {file_path.name}: {e}")
                 logging.error("Traceback:\n" + traceback.format_exc())
+                
+                
+    # After the loop: Handle the last chunk (if any cards remain)
+    if cards_per_chunk and cards_per_chunk > 0 and (file_count % cards_per_chunk != 0 or posts_handled >= len(posts)):
+        pdf_name_chunk = f"{pdf_name}_chunk_{chunk_idx:04d}.pdf"
+        pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+        logging.info(f"Assembling final PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+        logging.info(f"Saved final chunk PDF: {pdf_path_chunk}")
+        # Optionally delete images in the last chunk
+        for card_file in chunk_dir.glob("*_card.*"):
+            if card_file.name.startswith("._"):
+                continue  # Skip macOS metadata files
+            if card_file.suffix.lower() not in {".tiff", ".tif", ".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                continue  # Skip non-image files
+            try:
+                card_file.unlink()
+            except Exception as e:
+                logging.error(f"Error deleting {card_file}: {e}")
+        logging.info(f"Deleted images in {chunk_dir}")
+        logging.info(f"Processing complete. Generated {file_count} file cards in {output_path}")    
     
     logging.info(f"\nProcessing complete. Generated {file_count} file cards in {output_path}")
 
@@ -358,13 +381,13 @@ if __name__ == "__main__":
     output_dir_name = output_path_obj.name
     # Compute pdf_name consistently
     if not args.pdf_output_name:
-        pdf_name = f"{input_dir_name}_combined_{args.page_size}.pdf"
+        pdf_name = f"{input_dir_name}_combined_{args.page_size}"
         logging.info(f"No PDF output name provided, using default: {pdf_name}")
     elif args.pdf_output_name.endswith('.pdf'):
         tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
-        pdf_name = f"{tmp_name}_combined_{args.page_size}.pdf"
+        pdf_name = f"{tmp_name}_combined_{args.page_size}"
     else:
-        pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}.pdf"
+        pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}"
 
     pdf_path = str(output_path_obj / pdf_name)
     logging.info(f"PDF Name will be {pdf_name}")
@@ -392,7 +415,8 @@ if __name__ == "__main__":
         include_video_frames=args.include_video_frames,
         max_depth=args.max_depth,
         metadata_text=args.metadata_text,
-        cards_per_chunk=args.cards_per_chunk  # <--- Pass chunk size
+        cards_per_chunk=args.cards_per_chunk,  # <--- Pass chunk size
+        pdf_name=args.pdf_name
     )
 
     # Report summary
