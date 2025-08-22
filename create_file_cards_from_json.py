@@ -45,12 +45,14 @@ def build_file_cards_from_json(
     border_inch_width=0.125,
     include_video_frames=False,
     metadata_text=None,
-    cards_per_chunk=0
+    cards_per_chunk=0,
+    pdf_name="assembled"
 ):
     logging.info(f"Starting file card generation from JSON: {json_path}")
     is_stories = False
     is_other_media = False
     output_path = Path(output_dir)
+    pdf_path = Path(output_dir) / Path(pdf_name)
     if output_path.exists():
         shutil.rmtree(output_path)
         time.sleep(5)
@@ -93,7 +95,10 @@ def build_file_cards_from_json(
         logging.info(f"Loaded {len(posts)} posts from {json_path}")
 
     # Sort posts by the creation_timestamp of the first media (earliest to most recent)
-    posts = sorted(posts, key=lambda post: post.get("media", [{}])[0].get("creation_timestamp", 0))
+    if not is_stories:
+        posts = sorted(posts, key=lambda post: post.get("media", [{}])[0].get("creation_timestamp", 0))
+    else:
+        posts = sorted(posts, key=lambda post: post.get("creation_timestamp", 0))
 
     file_count = 0
     media_idx = 0
@@ -165,7 +170,7 @@ def build_file_cards_from_json(
                     file_count += 1
                 # After saving each card, check if chunk is full
                 if cards_per_chunk and cards_per_chunk > 0 and file_count % cards_per_chunk == 0:
-                    pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                    pdf_name_chunk = f"{pdf_name}_chunk_{chunk_idx:04d}.pdf" # f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
                     pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                     logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
                     assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
@@ -243,7 +248,7 @@ def build_file_cards_from_json(
                     logging.error(f"Error processing {abs_file_path}: {e}")
                     
                 if cards_per_chunk and cards_per_chunk > 0 and (file_count % cards_per_chunk == 0):
-                    pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                    pdf_name_chunk = f"{pdf_name}_chunk_{chunk_idx:04d}.pdf"
                     pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                     logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
                     assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
@@ -260,7 +265,7 @@ def build_file_cards_from_json(
                     chunk_idx += 1
     # After the loop: Handle the last chunk (if any cards remain)
     if cards_per_chunk and cards_per_chunk > 0 and (file_count % cards_per_chunk != 0 or posts_handled >= len(posts)):
-        pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+        pdf_name_chunk = f"{pdf_name}_chunk_{chunk_idx:04d}.pdf"
         pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
         logging.info(f"Assembling final PDF for chunk {chunk_idx}: {pdf_path_chunk}")
         assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
@@ -303,6 +308,7 @@ if __name__ == "__main__":
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
     parser.add_argument('--include-video-frames', action='store_true', help='Also output individual video frames as cards (default: overview only)')
     parser.add_argument('--exclude-file-path', default=False, action='store_true', help='Exclude the vertical file path from the card (default: shown)')  # <-- Add this back
+    parser.add_argument('--pdf-name', help='Name of the output PDF file (default: assembled)')
     parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
 
     args = parser.parse_args()
@@ -320,14 +326,14 @@ if __name__ == "__main__":
     output_dir_name = output_path_obj.name
 
     # Determine the PDF path
-    if not args.pdf_output_name:
-        pdf_name = f"{input_json_name}_combined_{args.page_size}.pdf"
+    if not args.pdf_name:
+        pdf_name = f"{input_json_name}_combined_{args.page_size}"
         logging.info(f"No PDF output name provided, using default: {pdf_name}")
-    elif args.pdf_output_name.endswith('.pdf'):
-        tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
-        pdf_name = f"{tmp_name}_combined_{args.page_size}.pdf"
+    elif args.pdf_name.endswith('.pdf'):
+        tmp_name = args.pdf_name.rsplit('.', 1)[0]
+        pdf_name = f"{tmp_name}_combined_{args.page_size}"
     else:
-        pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}.pdf"
+        pdf_name = f"{args.pdf_name}_combined_{args.page_size}"
 
     pdf_path = str(output_path_obj / pdf_name)
     logging.info(f"PDF Name will be {pdf_name}")
@@ -348,7 +354,8 @@ if __name__ == "__main__":
         border_color=t_border_color,
         border_inch_width=args.border_inch_width,
         include_video_frames=args.include_video_frames,
-        cards_per_chunk=args.cards_per_chunk
+        cards_per_chunk=args.cards_per_chunk,
+        pdf_name=pdf_name
     )
 
     # Assemble cards into a PDF
