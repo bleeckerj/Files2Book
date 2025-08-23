@@ -1,19 +1,19 @@
 # File Card Generator
 
-This tool creates visual information cards for files. It's designed to generate cards that display file metadata, previews, and type indicators, making it useful for cataloging files, creating visual indices, or preparing file information for print.
+This tool creates visual preview / information cards for files. It's designed to generate cards that display file metadata, previews, and type indicators, making it useful for cataloging files, creating visual indices, or preparing file information for print.
 
 ## Overview
 
-`generate_flipbook_pages.py` processes files from a directory and creates visual information cards for each file. These cards include:
+`create_file_cards.py` is a Python script designed to generate visual information cards for files in a specified directory. These cards provide a detailed overview of each file, including metadata, previews, and type indicators. The script is particularly useful for cataloging files, creating visual indices, or preparing file information for print or digital archives.
 
-- File name and file extension
-- File type indicator and color coding
-- File size and metadata (creation/modification dates)
-- Content preview (when applicable)
-- Visual thumbnails for images, PDFs, and videos
-- GPS track visualization for GPS data files
-- Code/text preview for text-based files
-- Hex preview for binary files
+### Key Features:
+
+- **Metadata Display**: Includes file name, extension, size, creation/modification dates, and more.
+- **Content Previews**: Generates visual thumbnails for images, PDFs, and videos, as well as previews for text/code, GPS tracks, and binary files.
+- **Customizable Output**: Supports various card sizes, color modes (RGB/CMYK), and background colors.
+- **PDF Assembly**: Combines generated cards into a single PDF for easy sharing or printing.
+- **Specialized Handling**: Provides enhanced previews for specific file types, such as multi-page PDFs, video frame grids, and GPS visualizations.
+- **Slack Integration**: Displays additional metadata for files originating from Slack exports, including channel name, user details, and timestamps.
 
 ## Usage
 ## `create_file_cards.py`

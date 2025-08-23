@@ -3,6 +3,8 @@
 ## Overview
 `directory_to_flipbooks.py` is a Python script designed to create flipbooks from movie/video files in a specified input directory. It does **not** generate standard image grids or pages for other file types. The output consists of flipbook pages and optional PDFs, organized by channel (parent directory name) and video file name.
 
+`generate_flipbook_pages.py` processes files from a directory and creates visual information cards for each file. These cards are placed on the RECTO (right) side of the spread, making it ideal for generating flipbooks. The cards include:
+
 ## Features
 - Processes only movie/video files (`.mp4`, `.mov`, `.avi`, `.mkv`) in the input directory.
 - Extracts frames at a user-defined rate (frames per second) for flipbook creation.
