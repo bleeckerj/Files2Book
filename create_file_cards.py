@@ -18,7 +18,22 @@ logging.basicConfig(
     format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
 )
 # Import the file card generator
+IMAGE_EXTS = frozenset({'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'})
+
+def is_valid_card_file(p: Path) -> bool:
+    """
+    Return True if p is a regular file (not a dotfile) and has a supported image extension.
+    """
+    if not isinstance(p, Path):
+        return False
+    name = p.name
+    if name.startswith(".") or name.startswith("._"):
+        return False
+    return p.is_file() and p.suffix.lower() in IMAGE_EXTS
+
 from file_card_generator import create_file_info_card, determine_file_type, save_card_as_tiff
+
+global_glob_pattern = ["*_card.*", "*_card_*.*", "* card.*", "* card_*.*"]
 
 def parse_page_size(size_name):
     # Returns (width, height) in pixels at 300dpi
@@ -134,8 +149,16 @@ def build_file_cards_from_directory(
     # Use provided max_depth (no sys.argv parsing)
     file_count = 0
     chunk_idx = 0
+    files_handled_count = 0  # Count of number of files handled
+    total_files_count = 0
     chunk_dir = output_path
-    for file_path in sorted(find_files(input_path, max_depth=max_depth)):
+    for file_path in find_files(input_path, max_depth=max_depth):
+        if file_path.is_file():
+            total_files_count += 1
+
+    logging.info(f"Total files to process: {total_files_count}")
+    
+    for file_path in find_files(input_path, max_depth=max_depth):
         if file_path.is_file():
             try:
                 file_type = determine_file_type(file_path)
@@ -162,31 +185,39 @@ def build_file_cards_from_directory(
                                 chunk_idx = file_count // cards_per_chunk
                                 chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
                                 chunk_dir.mkdir(exist_ok=True, parents=True)
-                            output_file = chunk_dir / f"{file_path.stem}_card_{idx+1}.tiff"
+                            output_file = chunk_dir / f"{file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
                         else:
-                            output_file = output_path / f"{file_path.stem}_card_{idx+1}.tiff"
+                            output_file = output_path / f"{file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
                         save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
                         logging.debug(f"Saved card to {output_file} with size: {card_size}")
-                        if not cmyk_mode:
-                            png_file = output_file.with_suffix('.png')
-                            card_img.save(png_file)
-                            logging.debug(f"Saved card to {png_file} with size: {card_size}")
+                        ## save_card_as_tiff is preferred
+                        # if not cmyk_mode:
+                        #     png_file = output_file.with_suffix('.png')
+                        #     card_img.save(png_file)
+                        #     logging.debug(f"Saved card to {png_file} with size: {card_size}")
                         file_count += 1
-
+                        chunk_file_count = sum(
+                            len(list(chunk_dir.glob(pattern)))
+                            for pattern in global_glob_pattern
+                        )
+                        if (chunk_file_count != file_count):
+                            file_count = chunk_file_count
+                        #logging.info(f"Chunk {chunk_idx} contains {chunk_file_count} card files.")
                         # After saving each card, check if chunk is full
-                        if cards_per_chunk and cards_per_chunk > 0 and file_count % cards_per_chunk == 0:
+                        if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
                             pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
                             pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                             logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
                             assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
                             logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
-                            # Delete images in chunk_dir
-                            for card_file in chunk_dir.glob("*_card.*"):
-                                try:
-                                    card_file.unlink()
-                                except Exception as e:
-                                    logging.error(f"Error deleting {card_file}: {e}")
-                            logging.info(f"Deleted images in {chunk_dir}")
+
+                            ## DO NOT DELETE THIS LINE
+                            ## Optionally delete images in the last chunk
+
+                            if args.delete_cards_after_pdf:
+                                delete_cards_in_directory(chunk_dir)
+                                
+                            ## DO NOT DELETE THIS LINE
                             chunk_idx += 1
                 else:
                     card_size = card.size
@@ -195,31 +226,43 @@ def build_file_cards_from_directory(
                             chunk_idx = file_count // cards_per_chunk
                             chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
                             chunk_dir.mkdir(exist_ok=True, parents=True)
-                        output_file = chunk_dir / f"{file_path.stem}_card.tiff"
+                        output_file = chunk_dir / f"{file_count:04d}_{file_path.stem}_card.tiff"
                     else:
-                        output_file = output_path / f"{file_path.stem}_card.tiff"
+                        output_file = output_path / f"{file_count:04d}_{file_path.stem}_card.tiff"
                     save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
                     logging.debug(f"Saved card to {output_file} with size: {card_size}")
-                    if not cmyk_mode:
-                        png_file = output_file.with_suffix('.png')
-                        card.save(png_file)
-                        logging.debug(f"Saved card to {png_file} with size: {card_size}")
+                    ## save_card_as_tiff is preferred
+                    # if not cmyk_mode:
+                    #     png_file = output_file.with_suffix('.png')
+                    #     card.save(png_file)
+                    #     logging.debug(f"Saved card to {png_file} with size: {card_size}")
                     file_count += 1
-
+                    ## double check how many files we are at..in some cases for some reason
+                    ## I have noticed that file_count is not reflective of the numbers of files
+                    ## in the directory, typically less than the number of files, presumably
+                    ## because some files do not get saved for some reason that escapes me (wrong type, e.g.? system file?)
+                    chunk_file_count = sum(
+                        len(list(chunk_dir.glob(pattern)))
+                        for pattern in global_glob_pattern
+                    )
+                    if (chunk_file_count != file_count):
+                        file_count = chunk_file_count
                     # After saving each card, check if chunk is full
-                    if cards_per_chunk and cards_per_chunk > 0 and file_count % cards_per_chunk == 0:
+                    if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
                         pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
                         pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                         logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
                         assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
                         logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
-                        # Delete images in chunk_dir
-                        for card_file in chunk_dir.glob("*_card.*"):
-                            try:
-                                card_file.unlink()
-                            except Exception as e:
-                                logging.error(f"Error deleting {card_file}: {e}")
-                        logging.info(f"Deleted images in {chunk_dir}")
+                        
+                        ## DO NOT DELETE THIS LINE
+                        ## Optionally delete images in the last chunk
+
+                        if args.delete_cards_after_pdf:
+                            delete_cards_in_directory(chunk_dir)
+                            
+                        ## DO NOT DELETE THIS LINE
+                                    
                         chunk_idx += 1
             except Exception as e:
                 logging.error(f"Error processing {file_path.name}: {e}")
@@ -227,23 +270,21 @@ def build_file_cards_from_directory(
                 
                 
     # After the loop: Handle the last chunk (if any cards remain)
-    if cards_per_chunk and cards_per_chunk > 0 and (file_count % cards_per_chunk != 0 or posts_handled >= len(posts)):
+    if cards_per_chunk and cards_per_chunk > 0 and (chunk_file_count % cards_per_chunk != 0 or files_handled_count >= total_files_count):
         pdf_name_chunk = f"{pdf_name}_chunk_{chunk_idx:04d}.pdf"
         pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
         logging.info(f"Assembling final PDF for chunk {chunk_idx}: {pdf_path_chunk}")
         assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
         logging.info(f"Saved final chunk PDF: {pdf_path_chunk}")
-        # Optionally delete images in the last chunk
-        for card_file in chunk_dir.glob("*_card.*"):
-            if card_file.name.startswith("._"):
-                continue  # Skip macOS metadata files
-            if card_file.suffix.lower() not in {".tiff", ".tif", ".png", ".jpg", ".jpeg", ".webp", ".gif"}:
-                continue  # Skip non-image files
-            try:
-                card_file.unlink()
-            except Exception as e:
-                logging.error(f"Error deleting {card_file}: {e}")
-        logging.info(f"Deleted images in {chunk_dir}")
+        
+        ## DO NOT DELETE THIS LINE
+        ## Optionally delete images in the last chunk
+
+        if args.delete_cards_after_pdf:
+            delete_cards_in_directory(chunk_dir)
+            
+        ## DO NOT DELETE THIS LINE
+        
         logging.info(f"Processing complete. Generated {file_count} file cards in {output_path}")    
     
     logging.info(f"\nProcessing complete. Generated {file_count} file cards in {output_path}")
@@ -272,12 +313,15 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
         # Only include files whose name does not start with "." or "._"
         # and whose extension is a supported image type
         valid_exts = ['.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp']
-        card_files = sorted(
-            f for f in output_path.glob("*_card.*")
+        card_files = []
+        for pattern in global_glob_pattern:
+            card_files.extend(
+            f for f in output_path.glob(pattern)
             if f.is_file()
             and f.suffix.lower() in valid_exts
             and not (f.name.startswith(".") or f.name.startswith("._"))
-        )
+            )
+        card_files = sorted(card_files)
     except Exception as e:
         logging.error(f"Error while processing card files: {e}")
     
@@ -332,6 +376,24 @@ def _decode_metadata_text(s: str) -> str:
          .replace('\\r', '\r')
          .replace('\\t', '\t')
     )
+
+def delete_cards_in_directory(chunk_dir: Path):
+    # Delete card files in the specified directory
+    delete_patterns = global_glob_pattern
+    for pattern in delete_patterns:
+        for card_file in chunk_dir.glob(pattern):
+            if card_file.name.startswith("._"):
+                continue  # Skip macOS metadata files
+            if card_file.suffix.lower() not in {".tiff", ".tif", ".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                continue  # Skip non-image files
+            try:
+                card_file.unlink()
+                time.sleep(0.01)
+            except Exception as e:
+                logging.error(f"Error deleting {card_file}: {e}")
+                logging.error("Traceback:\n" + traceback.format_exc())
+    logging.info(f"Deleted images in {chunk_dir}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test file card generation and PDF assembly for various file types')
@@ -452,7 +514,7 @@ if __name__ == "__main__":
             logging.info("Deleting individual card files after PDF creation...")
             output_dir_path = Path(args.output_dir)
             # Collect both single-card and per-frame card outputs
-            delete_patterns = ["*_card.*", "*_card_*.*", "* card.*", "* card_*.*"]
+            delete_patterns = global_glob_pattern
             deleted = 0
             for pattern in delete_patterns:
                 for card_file in output_dir_path.glob(pattern):

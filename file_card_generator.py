@@ -1933,7 +1933,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        logging.info(f"Pasting image thumbnail at: x={x0}, y={y0}, size={img_w}x{img_h}")
+        logging.debug(f"Pasting image thumbnail at: x={x0}, y={y0}, size={img_w}x{img_h}")
         img.paste(image_thumb, (int(x0), int(y0)))
     elif fit_gps_thumb is not None:
         img_w, img_h = fit_gps_thumb.size
