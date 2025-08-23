@@ -416,7 +416,7 @@ if __name__ == "__main__":
         max_depth=args.max_depth,
         metadata_text=args.metadata_text,
         cards_per_chunk=args.cards_per_chunk,  # <--- Pass chunk size
-        pdf_name=args.pdf_name
+        pdf_name=pdf_name
     )
 
     # Report summary
