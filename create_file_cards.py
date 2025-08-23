@@ -452,7 +452,7 @@ if __name__ == "__main__":
             logging.info("Deleting individual card files after PDF creation...")
             output_dir_path = Path(args.output_dir)
             # Collect both single-card and per-frame card outputs
-            delete_patterns = ["*_card.*", "*_card_*.*"]
+            delete_patterns = ["*_card.*", "*_card_*.*", "* card.*", "* card_*.*"]
             deleted = 0
             for pattern in delete_patterns:
                 for card_file in output_dir_path.glob(pattern):
