@@ -113,6 +113,7 @@ def build_file_cards_from_directory(
     """
     logging.info(f"Starting file card with size {page_size}")
     input_path = Path(input_dir)
+    messages_json_path = input_path.parent / "messages.json"
     # Normalize max_depth
     if isinstance(max_depth, int) and max_depth < 0:
         max_depth = None
@@ -160,7 +161,7 @@ def build_file_cards_from_directory(
     for file_path in find_files(input_path, max_depth=max_depth):
         if file_path.is_file():
             total_files_count += 1
-            original_timestamp = get_original_timestamp(file_path)
+            original_timestamp = get_original_timestamp(file_path, messages_json_path)
 
             # Add the card and its timestamp to the list
             card_ordering_list.append((file_path, original_timestamp))
@@ -168,13 +169,13 @@ def build_file_cards_from_directory(
     card_ordering_list.sort(key=lambda x: x[1])
     logging.info(f"Total files to process: {total_files_count} {len(card_ordering_list)}")
 
-
+    cards_of_chunk = []
     for file_path, _ in card_ordering_list:
         if file_path.is_file():
             try:
                 #file_type = determine_file_type(file_path)
                 #logging.debug(f"Processing {file_path.name} - Type: {file_type}")
-                file_stem = file_path.stem
+                file_stem = file_path.stem + "." + file_path.suffix
                 # Kludgy way to get the files in order. There's a better way.
                 # Must be..
                 # if file_stem.startswith("ts_") and "_ts__" in file_stem:
@@ -191,7 +192,6 @@ def build_file_cards_from_directory(
                     metadata_text=None,
                     title=file_stem
                 )
-
                 if isinstance(card, list):
                     for idx, card_img in enumerate(card):
                         card_size = card_img.size
@@ -207,7 +207,8 @@ def build_file_cards_from_directory(
                         
                         
                         save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
-                        
+                        logging.info(get_original_timestamp(file_path, messages_json_path))
+                        cards_of_chunk.append(output_file)
                         logging.debug(f"Saved card to {output_file} with size: {card_size}")
 
                         file_count += 1
@@ -224,9 +225,9 @@ def build_file_cards_from_directory(
                             pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                             logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
                             
-                            assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height), card_ordering_list)
+                            assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height), cards_of_chunk)
                             logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
-                            card_ordering_list = []
+                            cards_of_chunk = []
                             
                             ## DO NOT DELETE THIS LINE
                             ## Optionally delete images in the last chunk
@@ -236,6 +237,7 @@ def build_file_cards_from_directory(
                                 
                             ## DO NOT DELETE THIS LINE
                             chunk_idx += 1
+                # otherwise the card is not a list of cards (from a movie or something)
                 else:
                     card_size = card.size
                     if cards_per_chunk and cards_per_chunk > 0:
@@ -248,15 +250,9 @@ def build_file_cards_from_directory(
                         output_file = output_path / f"{file_path.stem}_card.tiff"
                         
                     save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
-                    logging.debug(f"Saved card to {output_file} with size: {card_size}")
                     
-                    original_timestamp = get_original_timestamp(file_path)
-
-                    # Add the card and its timestamp to the list
-                    card_ordering_list.append((output_file, original_timestamp))
+                    cards_of_chunk.append(output_file)
                         
-    
-
                     file_count += 1
                     
                     ## double check how many files we are at..in some cases for some reason
@@ -275,11 +271,9 @@ def build_file_cards_from_directory(
                         pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                         logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
 
-                        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height), card_ordering_list)
+                        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height), cards_of_chunk)
                         
-                        
-                        card_ordering_list = []
-                        
+                        cards_of_chunk = []                        
                         logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
                         
                         ## DO NOT DELETE THIS LINE
@@ -304,10 +298,10 @@ def build_file_cards_from_directory(
         pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
         logging.info(f"Assembling final PDF for chunk {chunk_idx}: {pdf_path_chunk}")
 
-        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height), card_ordering_list)
-        
-        card_ordering_list = []
-        
+        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height), cards_of_chunk)
+
+        cards_of_chunk = []
+
         logging.info(f"Saved final chunk PDF: {pdf_path_chunk}")
         
         ## DO NOT DELETE THIS LINE
@@ -322,15 +316,15 @@ def build_file_cards_from_directory(
     
     logging.info(f"\nProcessing complete. Generated {file_count} file cards in {output_path}")
 
-def assemble_cards_to_pdf(output_dir, pdf_file, page_size, cards=None):
+def assemble_cards_to_pdf(output_dir, pdf_file, page_size, list_of_cards=None):
     """
     Assemble all generated file cards into a single PDF.
 
     Args:
-        output_dir: Directory containing the generated card images (ignored if `cards` is provided)
+        output_dir: Directory containing the generated card images (ignored if `list_of_cards` is provided)
         pdf_file: Path to save the combined PDF
         page_size: Page size for the PDF (width, height in pixels at 300 dpi)
-        cards: Optional list of card file paths to include in the PDF
+        list_of_cards: Optional list of card file paths to include in the PDF
     """
     # Check if we can use img2pdf which has better TIFF support
     try:
@@ -341,7 +335,7 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size, cards=None):
         logging.info("img2pdf not available, using FPDF")
     
     # If no cards are provided, use files from the output directory
-    if cards is None:
+    if list_of_cards is None:
         output_path = Path(output_dir)
         try:
             # Only include files whose name does not start with "." or "._"
@@ -362,7 +356,7 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size, cards=None):
     else:
         # Use the provided list of cards
         try:
-            card_files = [Path(card[0]) for card in cards]
+            card_files = [Path(card) for card in list_of_cards]
         except Exception as e:
             logging.error(f"Error while processing provided card files: {e}")
             return

@@ -253,15 +253,15 @@ def preview_text_content(file_path, max_lines=5, max_line_length=40):
     except Exception:
         return None
 
-def get_original_timestamp(file_path):
+def get_original_timestamp(file_path, path_to_messages_json):
     """Try to find the original timestamp for a file from messages.json in the parent directory."""
-    parent = file_path.parent
-    messages_json = parent.parent / "messages.json"
-    if not messages_json.exists():
+    #parent = file_path.parent
+    #messages_json = parent.parent / "messages.json"
+    if not path_to_messages_json.exists():
         #raise FileNotFoundError(f"messages.json not found in {messages_json}")
-        logging.warning(f"messages.json not found in {messages_json}")
+        logging.warning(f"messages.json not found in {path_to_messages_json}")
     try:
-        with open(messages_json, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(path_to_messages_json, 'r', encoding='utf-8', errors='ignore') as f:
             messages = json.load(f)
         for msg in messages:
             if 'files' in msg:
@@ -1098,7 +1098,6 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         created_time = 0
 
     # Try to get original timestamp and Slack metadata
-    original_dt = get_original_timestamp(file_path)
     slack_channel = None
     slack_message_id = None
     slack_user_id = None
@@ -1108,6 +1107,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     parent = file_path.parent
     channel_dir = parent.parent
     messages_json = channel_dir / "messages.json"
+
+    original_dt = get_original_timestamp(file_path, messages_json)
+
     users_json = channel_dir.parent / "users.json"
     avatars_dir = channel_dir.parent / "avatars_40x40"
     #user_profile = None
@@ -1192,7 +1194,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         logging.debug(f"DateTimeOriginal found: {file_info['DateTimeOriginal']}")
         pass
     elif original_dt:
-        file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
+        file_info['Original Share Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
     else:
         file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
         file_info['Created'] = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
