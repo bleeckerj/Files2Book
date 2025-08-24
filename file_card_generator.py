@@ -23,6 +23,7 @@ import json
 from pdf2image import convert_from_path
 import gpxpy
 import cv2
+import re
 
 # Patch for Python 3.13 compatibility
 import collections
@@ -257,7 +258,8 @@ def get_original_timestamp(file_path):
     parent = file_path.parent
     messages_json = parent.parent / "messages.json"
     if not messages_json.exists():
-        return None
+        #raise FileNotFoundError(f"messages.json not found in {messages_json}")
+        logging.warning(f"messages.json not found in {messages_json}")
     try:
         with open(messages_json, 'r', encoding='utf-8', errors='ignore') as f:
             messages = json.load(f)
@@ -265,7 +267,13 @@ def get_original_timestamp(file_path):
             if 'files' in msg:
                 for fobj in msg['files']:
                     # Match by filename
-                    if fobj.get('name') == file_path.name:
+                    file_stem = file_path.stem
+                    # Remove the "ts_{timestamp}_ts__" prefix if it exists
+                    if file_stem.startswith("ts_") or "_ts__" in file_stem:
+                        file_stem = file_stem.split("_ts__")[-1]
+
+
+                    if file_stem in fobj.get('name', ''):
                         # Prefer human-readable timestamp if available
                         ts_human = msg.get('ts_human') or fobj.get('ts_human')
                         if ts_human:
@@ -280,9 +288,10 @@ def get_original_timestamp(file_path):
                                 return datetime.fromtimestamp(float(ts))
                             except Exception:
                                 pass
-        return None
     except Exception:
-        return None
+        pass
+    # Default to December 31, 2014, if no timestamp is found
+    return datetime(2014, 12, 31)
 
 def get_zip_preview(file_path, max_files=40):
     try:
@@ -1075,7 +1084,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     file_type_info = get_file_type_info(file_path)
     logging.info(f"Processing {file_path.name} - Type: {file_type_info['group']}")
-    icon = file_type_info['icon']
+    #icon = file_type_info['icon']
     ext = file_path.suffix.lower()
 
 
