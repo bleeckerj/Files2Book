@@ -163,8 +163,11 @@ def _process_file_iterable(
                                 except Exception:
                                     matched_files.add(f)
                     chunk_file_count = len(matched_files)
-                    if (chunk_file_count != file_count):
-                        file_count = chunk_file_count
+                    # Do NOT overwrite the global file_count with the per-chunk count.
+                    # file_count is the absolute index across all cards; chunk_file_count
+                    # is only used to decide when a chunk is complete.
+                    if chunk_file_count != file_count:
+                        logging.debug(f"Chunk file count ({chunk_file_count}) differs from absolute file_count ({file_count}); keeping absolute count.")
 
                     if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
                         pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
@@ -200,8 +203,11 @@ def _process_file_iterable(
                             except Exception:
                                 matched_files.add(f)
                 chunk_file_count = len(matched_files)
-                if (chunk_file_count != file_count):
-                    file_count = chunk_file_count
+                # Do NOT overwrite the global file_count with the per-chunk count.
+                # file_count is the absolute index across all cards; chunk_file_count
+                # is only used to decide when a chunk is complete.
+                if chunk_file_count != file_count:
+                    logging.debug(f"Chunk file count ({chunk_file_count}) differs from absolute file_count ({file_count}); keeping absolute count.")
 
                 if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
                     pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
@@ -234,7 +240,8 @@ def _process_file_iterable(
             logging.error(f"Error assembling final chunk PDF: {e}")
 
     try:
-        n_cards = sum(1 for _ in output_path.glob('*.tiff'))
+        # Count recursively to include cards saved in chunk subdirectories
+        n_cards = sum(1 for _ in output_path.rglob('*.tiff'))
     except Exception:
         n_cards = ''
     logging.info(f"\nProcessing complete. Generated {n_cards} file cards in {output_path}")
@@ -372,7 +379,8 @@ def build_file_cards_from_directory(
     )
 
     try:
-        n_cards = sum(1 for _ in output_path.glob('*.tiff'))
+        # Count recursively to include cards in chunk folders
+        n_cards = sum(1 for _ in output_path.rglob('*.tiff'))
     except Exception:
         n_cards = ''
     logging.info(f"\nProcessing complete. Generated {n_cards} file cards in {output_path}")
@@ -609,22 +617,29 @@ if __name__ == "__main__":
     else:
         args.output_dir = f"{args.output_dir}/{args.page_size}"
 
-    # Determine the PDF path (in both cases above)
     output_path_obj = Path(args.output_dir)
     output_dir_name = output_path_obj.name
     # Compute pdf_name consistently
-    if not args.pdf_output_name:
-        pdf_name = f"{input_dir_name}_combined_{args.page_size}"
-        logging.info(f"No PDF output name provided, using default: {pdf_name}")
-    elif args.pdf_output_name.endswith('.pdf'):
-        tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
-        pdf_name = f"{tmp_name}_combined_{args.page_size}"
+    if getattr(args, "cards_per_chunk", 0) and args.cards_per_chunk > 0:
+        pdf_name = None
+        logging.info("cards_per_chunk specified; skipping creation of a top-level combined PDF (chunk-level PDFs will be created).")
     else:
-        pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}"
+        if not args.pdf_output_name:
+            pdf_name = f"{input_dir_name}_combined_{args.page_size}"
+            logging.info(f"No PDF output name provided, using default: {pdf_name}")
+        elif args.pdf_output_name.endswith('.pdf'):
+            tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
+            pdf_name = f"{tmp_name}_combined_{args.page_size}"
+        else:
+            pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}"
 
-    pdf_path = str(output_path_obj / pdf_name)
-    logging.info(f"PDF Name will be {pdf_name}")
-    logging.info(f"PDF will be saved at: {pdf_path}")
+    if pdf_name:
+        pdf_path = str(output_path_obj / pdf_name)
+        logging.info(f"PDF Name will be {pdf_name}")
+        logging.info(f"PDF will be saved at: {pdf_path}")
+    else:
+        pdf_path = None
+        logging.info("No top-level combined PDF will be generated due to chunked output.")
 
     logging.info(f"Will generate file cards in: {args.output_dir}")
     logging.info(f"Output PDF name: {pdf_name}")
@@ -671,7 +686,8 @@ if __name__ == "__main__":
 
     # Report summary
     output_path = Path(args.output_dir)
-    card_files = sorted(output_path.glob("*_card.*"))
+    # Include chunk subdirectories when counting card files
+    card_files = sorted(output_path.rglob("*_card.*"))
     logging.info(f"Summary +++++++++++++++++++++++++++++")
     logging.info(f"Output directory: {os.path.abspath(args.output_dir)}")
     logging.info(f"Number of card files generated: {len(card_files)}")
@@ -706,7 +722,7 @@ if __name__ == "__main__":
             for pattern in delete_patterns:
                 for card_file in output_dir_path.glob(pattern):
                     # Skip the combined PDF if it ever matched (it shouldn't with these patterns)
-                    if Path(card_file).resolve() == Path(pdf_path).resolve():
+                    if pdf_path and Path(card_file).resolve() == Path(pdf_path).resolve():
                         continue
                     try:
                         card_file.unlink()
