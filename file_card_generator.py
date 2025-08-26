@@ -1159,11 +1159,15 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     if exif_candidate:
         logging.debug(f"File {file_path} is an EXIF-capable image type: {ext}")
         try:
-            img = Image.open(file_path)
-            if hasattr(img, '_getexif'):
-                exif_data = img._getexif()
-            elif hasattr(img, 'getexif'):
-                exif_data = img.getexif()
+            exif_img = Image.open(file_path)
+            if hasattr(exif_img, '_getexif'):
+                exif_data = exif_img._getexif()
+            elif hasattr(exif_img, 'getexif'):
+                exif_data = exif_img.getexif()
+            try:
+                exif_img.close()
+            except Exception:
+                pass
         except Exception:
             exif_data = None
     if exif_data is not None:
@@ -2122,3 +2126,33 @@ def rgb_to_cmyk(r, g, b):
     m = (m - k) if k < 255 else 0
     y = (y - k) if k < 255 else 0
     return (c, m, y, k)
+
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Generate debug file cards for given files")
+    parser.add_argument("files", nargs="+", help="One or more input files to generate cards for")
+    parser.add_argument("--output-dir", default="./cards_out", help="Directory to write generated TIFFs into")
+    parser.add_argument("--width", type=int, default=800, help="Card width in pixels")
+    parser.add_argument("--height", type=int, default=1000, help="Card height in pixels")
+    parser.add_argument("--cmyk", action="store_true", help="Save cards in CMYK mode")
+    parser.add_argument("--include-video-frames", action="store_true", help="If a video, include per-frame cards")
+    args = parser.parse_args()
+
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for fp in args.files:
+        try:
+            cards = create_file_info_card(fp, width=args.width, height=args.height, cmyk_mode=args.cmyk, include_video_frames=args.include_video_frames)
+            if isinstance(cards, list):
+                for idx, card in enumerate(cards):
+                    out_path = out_dir / f"{Path(fp).stem}_{idx}.tiff"
+                    save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)
+            else:
+                out_path = out_dir / f"{Path(fp).stem}.tiff"
+                save_card_as_tiff(cards, str(out_path), cmyk_mode=args.cmyk)
+            print(f"Saved card(s) for {fp} to {out_dir}")
+        except Exception as e:
+            logging.error("Error processing %s: %s", fp, e, exc_info=True)

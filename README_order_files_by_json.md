@@ -1,65 +1,112 @@
-# order_files_by_json.py
+# order_files_by_json.py — README
 
 ## Purpose
-The `order_files_by_json.py` script is designed to rename files in a specified directory based on metadata provided in a JSON file. This is particularly useful for organizing files systematically, such as appending timestamps or other metadata to filenames for better sorting and identification.
 
-## Functionality
-The script reads a JSON file containing metadata about files and renames the files in the target directory according to the specified rules. It ensures that only the root of the filename is modified, while preserving the original file extension.
+This utility parses a JSON export that contains file entries and timestamps, sorts the files by their timestamp, and writes an ordered list in CSV and/or JSON formats. It is intended to prepare an ordered file list for downstream processing (for example, feeding into create_file_cards.py using the --file-list flag).
 
-### Key Features
-- Reads metadata from a JSON file.
-- Renames files in a directory based on the metadata.
-- Modifies only the root of the filename, keeping the original extension intact.
-- Provides error handling for missing files or invalid directories.
+## Key features
 
-## Usage
+- Accepts JSON input in two common structures:
+  - Legacy format where each top-level element contains a "files" array with objects containing "name" and "timestamp" fields.
+  - Flattened format where each element is an object with keys like "filepath", "raw_ts" and "actual_ts".
+- Sorts entries by actual timestamp (numeric epoch). Items with missing or unparsable timestamps are placed at the end of the list.
+- Produces CSV output (path,timestamp_raw,timestamp_epoch) and/or JSON output (array of objects with filepath, raw_ts, actual_ts).
+- Resolves relative paths against a provided target directory; absolute file paths are preserved.
 
-### Command-Line Arguments
-The script accepts the following arguments:
+## Requirements
 
-- `--json-file`: Path to the JSON file containing metadata.
-- `--target-directory`: Path to the directory containing the files to rename.
+- Python 3.x
+- Standard library only (json, csv, argparse, pathlib, os)
 
-### Example Command
-```bash
-python order_files_by_json.py --json-file /path/to/messages.json --target-directory /path/to/directory
-```
+## Files
 
-### JSON File Format
-The JSON file should be structured as follows:
+- order_files_by_json.py — script that generates ordered CSV/JSON output.
+- README_order_files_by_json.md — this README.
+
+## Input formats
+
+1) Legacy structure (example):
+
 ```json
 [
-    {
-        "files": [
-            {
-                "name": "example_file.txt",
-                "timestamp": "20250823"
-            },
-            {
-                "name": "another_file.doc",
-                "timestamp": "20250822"
-            }
-        ]
-    }
+  {
+    "files": [
+      {"name": "image1.png", "timestamp": "1441122360"},
+      {"name": "document.pdf", "timestamp": "1441125000"}
+    ]
+  }
 ]
 ```
 
-### Output
-For each file, the script renames it to include the timestamp in the root of the filename. For example:
-- `example_file.txt` becomes `ts_20250823_example_file_ts.txt`
-- `another_file.doc` becomes `ts_20250822_another_file_ts.doc`
+Here, names are resolved relative to the provided target directory.
 
-## Error Handling
-- If the specified directory does not exist, the script will print an error message and exit.
-- If a file listed in the JSON file is not found in the directory, the script will print a warning message.
+2) Flattened structure (example):
 
-## Requirements
-- Python 3.6 or higher
-- `argparse` and `json` modules (both included in the Python standard library)
+```json
+[
+  {
+    "filepath": "/full/path/to/image1.png",
+    "raw_ts": "1441122360",
+    "actual_ts": "1441122360.000000"
+  },
+  {
+    "filepath": "relative/path/document.pdf",
+    "raw_ts": "1441125000",
+    "actual_ts": "1441125000.000000"
+  }
+]
+```
 
-## Notes
-- Ensure that the JSON file and the target directory paths are correct.
-- The script does not create backups of the original filenames, so use it cautiously.
+Relative filepaths are resolved against the --target-directory argument.
 
-## Author
-This script was developed as part of the Files2Book project.
+## Timestamp parsing rules
+
+- The script prefers an explicit numeric timestamp (epoch seconds) when available.
+- If the timestamp is a string representing a float (e.g. "1441122360.000000"), it is converted to float and used for sorting.
+- If numeric conversion fails, the script attempts to parse ISO date/time strings using datetime.fromisoformat and converts to epoch seconds.
+- If parsing fails or the timestamp is missing, that item is kept but sorted after all valid timestamps (i.e., at the end).
+
+## Output
+
+- CSV (default if no output option is provided): columns are path,timestamp_raw,timestamp_epoch. The path column contains the absolute path when resolvable.
+- JSON (optional): array of objects, each with keys: filepath, raw_ts, actual_ts.
+
+## Usage examples
+
+Write default CSV in target directory:
+
+```bash
+python3 order_files_by_json.py --json-file export.json --target-directory /path/to/files
+```
+
+Write a specific CSV:
+
+```bash
+python3 order_files_by_json.py --json-file export.json --target-directory /path/to/files --output-csv ordered.csv
+```
+
+Write JSON output instead (or in addition):
+
+```bash
+python3 order_files_by_json.py --json-file export.json --target-directory /path/to/files --output-json ordered.json
+```
+
+Write both CSV and JSON:
+
+```bash
+python3 order_files_by_json.py --json-file export.json --target-directory /path/to/files --output-csv ordered.csv --output-json ordered.json
+```
+
+## Notes and edge cases
+
+- Non-existent files: the script will include the supplied filepath (resolved) even if the file does not exist, but it resolves paths to absolute where possible. Consumers should handle missing files.
+- Duplicate file entries: preserved in the output in the same order relative to matching timestamps.
+- Large JSON files: reading is done in-memory; for extremely large exports, consider pre-filtering or streaming approaches.
+
+## Integration tip
+
+The generated CSV or JSON can be used as the --file-list input to create_file_cards.py (the script supports JSON arrays or CSVs with a path/filepath column). Using an ordered file list ensures the card generation follows the desired chronological order.
+
+## License and attribution
+
+This utility is a small tool for file ordering and is provided as-is. Modify and integrate into workflows as needed.

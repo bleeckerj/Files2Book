@@ -12,6 +12,8 @@ import itertools
 import traceback
 import img2pdf
 import re
+import csv
+import json
     
 logging.basicConfig(
     level=logging.INFO,
@@ -80,6 +82,225 @@ def parse_page_size(size_name):
     logging.warning(f"A5 size: {w_in}x{h_in} inches")
     return int(w_in * dpi), int(h_in * dpi)
 
+def _process_file_iterable(
+    file_iterable,
+    output_path: Path,
+    width: int,
+    height: int,
+    cmyk_mode: bool = False,
+    exclude_file_path: bool = False,
+    border_color=(250, 250, 250),
+    border_inch_width: float = 0.125,
+    include_video_frames: bool = False,
+    metadata_text=None,
+    cards_per_chunk: int = 0,
+    pdf_name=None,
+    delete_cards_after_pdf: bool = False
+):
+    """
+    Shared processing loop for an iterable of file paths. Handles card creation,
+    saving, chunking, PDF assembly per-chunk, and optional deletion of chunk
+    images after PDF creation.
+    """
+    file_count = 0
+    chunk_idx = 0
+    files_handled_count = 0
+    total_files_count = 0
+    chunk_dir = output_path
+
+    # Pre-count valid files
+    for p in file_iterable:
+        pth = Path(p)
+        if pth.is_file():
+            total_files_count += 1
+
+    logging.info(f"Total files to process: {total_files_count}")
+
+    # Iterate again for actual processing
+    for file_path in file_iterable:
+        file_path = Path(file_path)
+        if not file_path.is_file():
+            logging.debug(f"Skipping non-file entry: {file_path}")
+            continue
+        try:
+            files_handled_count += 1
+            file_type = determine_file_type(file_path)
+            logging.debug(f"Processing {file_path.name} - Type: {file_type}")
+
+            card = create_file_info_card(
+                file_path,
+                width=width,
+                height=height,
+                cmyk_mode=cmyk_mode,
+                exclude_file_path=exclude_file_path,
+                border_color=border_color,
+                border_inch_width=border_inch_width,
+                include_video_frames=include_video_frames,
+                metadata_text=metadata_text
+            )
+
+            if isinstance(card, list):
+                for idx, card_img in enumerate(card):
+                    card_size = card_img.size
+                    if cards_per_chunk and cards_per_chunk > 0:
+                        if file_count % cards_per_chunk == 0:
+                            chunk_idx = file_count // cards_per_chunk
+                            chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                            chunk_dir.mkdir(exist_ok=True, parents=True)
+                        output_file = chunk_dir / f"{file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
+                    else:
+                        output_file = output_path / f"{file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
+                    save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
+                    logging.debug(f"Saved card to {output_file} with size: {card_size}")
+                    file_count += 1
+                    # Count unique files in the chunk directory to avoid double-counting overlapping glob patterns
+                    matched_files = set()
+                    for pattern in global_glob_pattern:
+                        for f in chunk_dir.glob(pattern):
+                            if f.is_file():
+                                try:
+                                    matched_files.add(f.resolve())
+                                except Exception:
+                                    matched_files.add(f)
+                    chunk_file_count = len(matched_files)
+                    if (chunk_file_count != file_count):
+                        file_count = chunk_file_count
+
+                    if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
+                        pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                        pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                        logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                        logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+
+                        if delete_cards_after_pdf:
+                            delete_cards_in_directory(chunk_dir)
+
+                        chunk_idx += 1
+            else:
+                card_size = card.size
+                if cards_per_chunk and cards_per_chunk > 0:
+                    if file_count % cards_per_chunk == 0:
+                        chunk_idx = file_count // cards_per_chunk
+                        chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                        chunk_dir.mkdir(exist_ok=True, parents=True)
+                    output_file = chunk_dir / f"{file_count:04d}_{file_path.stem}_card.tiff"
+                else:
+                    output_file = output_path / f"{file_count:04d}_{file_path.stem}_card.tiff"
+                save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
+                logging.debug(f"Saved card to {output_file} with size: {card_size}")
+                file_count += 1
+                # Count unique files in the chunk directory to avoid double-counting overlapping glob patterns
+                matched_files = set()
+                for pattern in global_glob_pattern:
+                    for f in chunk_dir.glob(pattern):
+                        if f.is_file():
+                            try:
+                                matched_files.add(f.resolve())
+                            except Exception:
+                                matched_files.add(f)
+                chunk_file_count = len(matched_files)
+                if (chunk_file_count != file_count):
+                    file_count = chunk_file_count
+
+                if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
+                    pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                    pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                    logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                    assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                    logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+
+                    if delete_cards_after_pdf:
+                        delete_cards_in_directory(chunk_dir)
+
+                    chunk_idx += 1
+        except Exception as e:
+            logging.error(f"Error processing {file_path.name}: {e}")
+            logging.error("Traceback:\n" + traceback.format_exc())
+
+    # After the loop: Handle the last chunk (if any cards remain)
+    if cards_per_chunk and cards_per_chunk > 0:
+        try:
+            if 'chunk_file_count' in locals() and (chunk_file_count % cards_per_chunk != 0 or files_handled_count >= total_files_count):
+                pdf_name_chunk = f"{pdf_name}_chunk_{chunk_idx:04d}.pdf" if pdf_name else f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                logging.info(f"Assembling final PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                logging.info(f"Saved final chunk PDF: {pdf_path_chunk}")
+
+                if delete_cards_after_pdf:
+                    delete_cards_in_directory(chunk_dir)
+        except Exception as e:
+            logging.error(f"Error assembling final chunk PDF: {e}")
+
+    try:
+        n_cards = sum(1 for _ in output_path.glob('*.tiff'))
+    except Exception:
+        n_cards = ''
+    logging.info(f"\nProcessing complete. Generated {n_cards} file cards in {output_path}")
+
+def find_files(root_dir, max_depth=None):
+    """
+    Find all files under root_dir respecting a max_depth. Returns a list of Path objects.
+    This is the same logic previously embedded in build_file_cards_from_directory but
+    exposed as a top-level helper so both directory- and list-based flows can reuse it.
+    """
+    result = []
+    root_depth = str(root_dir).rstrip(os.sep).count(os.sep)
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        current_depth = str(dirpath).rstrip(os.sep).count(os.sep) - root_depth
+        # Prune when we are at or beyond the max_depth to prevent descending
+        if max_depth is not None and current_depth >= max_depth:
+            dirnames[:] = []
+        for filename in filenames:
+            if filename != '.DS_Store':
+                result.append(Path(dirpath) / filename)
+    return result
+
+def build_file_cards_from_list(
+    file_list,
+    output_dir='file_card_tests',
+    cmyk_mode=False,
+    page_size='LARGE_TAROT',
+    exclude_file_path=False,
+    border_color=(250, 250, 250),
+    border_inch_width=0.125,
+    include_video_frames=False,
+    metadata_text=None,
+    cards_per_chunk=0,
+    pdf_name=None,
+    delete_cards_after_pdf: bool = False
+):
+    """
+    Wrapper that prepares output directory and delegates to _process_file_iterable
+    for ordered list processing.
+    """
+    logging.info("Starting processing of provided file list")
+    output_path = Path(output_dir)
+    if output_path.exists():
+        shutil.rmtree(output_path)
+    output_path.mkdir(exist_ok=True, parents=True)
+
+    width, height = parse_page_size(page_size)
+
+    _process_file_iterable(
+        file_list,
+        output_path=output_path,
+        width=width,
+        height=height,
+        cmyk_mode=cmyk_mode,
+        exclude_file_path=exclude_file_path,
+        border_color=border_color,
+        border_inch_width=border_inch_width,
+        include_video_frames=include_video_frames,
+        metadata_text=metadata_text,
+        cards_per_chunk=cards_per_chunk,
+        pdf_name=pdf_name,
+        delete_cards_after_pdf=delete_cards_after_pdf
+    )
+
+
+
 def build_file_cards_from_directory(
     input_dir,
     output_dir='file_card_tests',
@@ -92,7 +313,8 @@ def build_file_cards_from_directory(
     max_depth=0,  # 0 = no recursion; negative => unlimited
     metadata_text=None,
     cards_per_chunk=0,
-    pdf_name=None
+    pdf_name=None,
+    delete_cards_after_pdf: bool = False
 ):
     """
     Test the file card generation by creating cards for all files in a directory.
@@ -130,164 +352,30 @@ def build_file_cards_from_directory(
     if not input_path.is_dir():
         print(f"Error: {input_dir} is not a directory")
         return
-    
-    logging.debug(f"width: {width}, height: {height}, cmyk_mode: {cmyk_mode}")
-    # Helper to find files with depth limit
-    def find_files(root_dir, max_depth=None):
-        result = []
-        root_depth = str(root_dir).rstrip(os.sep).count(os.sep)
-        for dirpath, dirnames, filenames in os.walk(root_dir):
-            current_depth = str(dirpath).rstrip(os.sep).count(os.sep) - root_depth
-            # Prune when we are at or beyond the max_depth to prevent descending
-            if max_depth is not None and current_depth >= max_depth:
-                dirnames[:] = []
-            for filename in filenames:
-                if filename != '.DS_Store':
-                    result.append(Path(dirpath) / filename)
-        return result
 
-    # Use provided max_depth (no sys.argv parsing)
-    file_count = 0
-    chunk_idx = 0
-    files_handled_count = 0  # Count of number of files handled
-    total_files_count = 0
-    chunk_dir = output_path
-    for file_path in find_files(input_path, max_depth=max_depth):
-        if file_path.is_file():
-            total_files_count += 1
+    # Reuse the shared processing implementation by passing the find_files iterable
+    files_iter = find_files(input_path, max_depth=max_depth)
+    _process_file_iterable(
+        files_iter,
+        output_path=output_path,
+        width=width,
+        height=height,
+        cmyk_mode=cmyk_mode,
+        exclude_file_path=exclude_file_path,
+        border_color=border_color,
+        border_inch_width=border_inch_width,
+        include_video_frames=include_video_frames,
+        metadata_text=metadata_text,
+        cards_per_chunk=cards_per_chunk,
+        pdf_name=pdf_name,
+        delete_cards_after_pdf=delete_cards_after_pdf
+    )
 
-    logging.info(f"Total files to process: {total_files_count}")
-    
-    for file_path in find_files(input_path, max_depth=max_depth):
-        if file_path.is_file():
-            try:
-                file_type = determine_file_type(file_path)
-                logging.debug(f"Processing {file_path.name} - Type: {file_type}")
-
-                card = create_file_info_card(
-                    file_path,
-                    width=width,
-                    height=height,
-                    cmyk_mode=cmyk_mode,
-                    exclude_file_path=exclude_file_path,
-                    border_color=border_color,
-                    border_inch_width=border_inch_width,
-                    include_video_frames=include_video_frames,
-                    metadata_text=None
-                )
-
-                if isinstance(card, list):
-                    for idx, card_img in enumerate(card):
-                        card_size = card_img.size
-                        # Chunking logic
-                        if cards_per_chunk and cards_per_chunk > 0:
-                            if file_count % cards_per_chunk == 0:
-                                chunk_idx = file_count // cards_per_chunk
-                                chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
-                                chunk_dir.mkdir(exist_ok=True, parents=True)
-                            output_file = chunk_dir / f"{file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
-                        else:
-                            output_file = output_path / f"{file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
-                        save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
-                        logging.debug(f"Saved card to {output_file} with size: {card_size}")
-                        ## save_card_as_tiff is preferred
-                        # if not cmyk_mode:
-                        #     png_file = output_file.with_suffix('.png')
-                        #     card_img.save(png_file)
-                        #     logging.debug(f"Saved card to {png_file} with size: {card_size}")
-                        file_count += 1
-                        chunk_file_count = sum(
-                            len(list(chunk_dir.glob(pattern)))
-                            for pattern in global_glob_pattern
-                        )
-                        if (chunk_file_count != file_count):
-                            file_count = chunk_file_count
-                        #logging.info(f"Chunk {chunk_idx} contains {chunk_file_count} card files.")
-                        # After saving each card, check if chunk is full
-                        if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
-                            pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
-                            pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
-                            logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
-                            assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
-                            logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
-
-                            ## DO NOT DELETE THIS LINE
-                            ## Optionally delete images in the last chunk
-
-                            if args.delete_cards_after_pdf:
-                                delete_cards_in_directory(chunk_dir)
-                                
-                            ## DO NOT DELETE THIS LINE
-                            chunk_idx += 1
-                else:
-                    card_size = card.size
-                    if cards_per_chunk and cards_per_chunk > 0:
-                        if file_count % cards_per_chunk == 0:
-                            chunk_idx = file_count // cards_per_chunk
-                            chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
-                            chunk_dir.mkdir(exist_ok=True, parents=True)
-                        output_file = chunk_dir / f"{file_count:04d}_{file_path.stem}_card.tiff"
-                    else:
-                        output_file = output_path / f"{file_count:04d}_{file_path.stem}_card.tiff"
-                    save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
-                    logging.debug(f"Saved card to {output_file} with size: {card_size}")
-                    ## save_card_as_tiff is preferred
-                    # if not cmyk_mode:
-                    #     png_file = output_file.with_suffix('.png')
-                    #     card.save(png_file)
-                    #     logging.debug(f"Saved card to {png_file} with size: {card_size}")
-                    file_count += 1
-                    ## double check how many files we are at..in some cases for some reason
-                    ## I have noticed that file_count is not reflective of the numbers of files
-                    ## in the directory, typically less than the number of files, presumably
-                    ## because some files do not get saved for some reason that escapes me (wrong type, e.g.? system file?)
-                    chunk_file_count = sum(
-                        len(list(chunk_dir.glob(pattern)))
-                        for pattern in global_glob_pattern
-                    )
-                    if (chunk_file_count != file_count):
-                        file_count = chunk_file_count
-                    # After saving each card, check if chunk is full
-                    if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
-                        pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
-                        pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
-                        logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
-                        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
-                        logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
-                        
-                        ## DO NOT DELETE THIS LINE
-                        ## Optionally delete images in the last chunk
-
-                        if args.delete_cards_after_pdf:
-                            delete_cards_in_directory(chunk_dir)
-                            
-                        ## DO NOT DELETE THIS LINE
-                                    
-                        chunk_idx += 1
-            except Exception as e:
-                logging.error(f"Error processing {file_path.name}: {e}")
-                logging.error("Traceback:\n" + traceback.format_exc())
-                
-                
-    # After the loop: Handle the last chunk (if any cards remain)
-    if cards_per_chunk and cards_per_chunk > 0 and (chunk_file_count % cards_per_chunk != 0 or files_handled_count >= total_files_count):
-        pdf_name_chunk = f"{pdf_name}_chunk_{chunk_idx:04d}.pdf"
-        pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
-        logging.info(f"Assembling final PDF for chunk {chunk_idx}: {pdf_path_chunk}")
-        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
-        logging.info(f"Saved final chunk PDF: {pdf_path_chunk}")
-        
-        ## DO NOT DELETE THIS LINE
-        ## Optionally delete images in the last chunk
-
-        if args.delete_cards_after_pdf:
-            delete_cards_in_directory(chunk_dir)
-            
-        ## DO NOT DELETE THIS LINE
-        
-        logging.info(f"Processing complete. Generated {file_count} file cards in {output_path}")    
-    
-    logging.info(f"\nProcessing complete. Generated {file_count} file cards in {output_path}")
+    try:
+        n_cards = sum(1 for _ in output_path.glob('*.tiff'))
+    except Exception:
+        n_cards = ''
+    logging.info(f"\nProcessing complete. Generated {n_cards} file cards in {output_path}")
 
 def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
     """
@@ -399,6 +487,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test file card generation and PDF assembly for various file types')
     parser.add_argument('--input-dir', help='Directory containing files to create cards for')
     parser.add_argument('--output-dir', help='Directory to save card images')
+    parser.add_argument('--file-list', help='Path to a CSV file containing comma-separated file paths (items may be quoted). If provided, input-dir is not required and the ordered file list will be processed.')
     parser.add_argument('--cmyk-mode', action='store_true', help='Generate cards in CMYK mode')
     parser.add_argument('--cmyk', dest='cmyk_mode', action='store_true', help='Alias for --cmyk-mode')
     parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
@@ -415,24 +504,106 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
-    # Validate and adjust input_dir
-    input_path = Path(args.input_dir)
-    if not input_path.is_dir():
-        print(f"Error: {args.input_dir} is not a directory.")
-        sys.exit(1)
-    if args.slack:
-        files_subdir = input_path / "files"
-        if files_subdir.is_dir():
-            args.input_dir = str(files_subdir)
-            print(f"Using 'files' subdirectory: {args.input_dir}")
-        else:
-            print(f"Error: No 'files' subdirectory found in {args.input_dir}.")
+
+    # If a file list CSV is provided, parse it and process that list in order.
+    files_from_list = None
+    if args.file_list:
+        if not os.path.isfile(args.file_list):
+            print(f"Error: {args.file_list} is not a file.")
             sys.exit(1)
-    
-    input_dir_name = os.path.basename(os.path.normpath(args.input_dir))
+        files_from_list = []
+        try:
+            # Support JSON or CSV input. If the file extension ends with .json, parse JSON.
+            if args.file_list.lower().endswith('.json'):
+                try:
+                    with open(args.file_list, 'r', encoding='utf-8') as jf:
+                        data = json.load(jf)
+                        # Expecting an array. Each element can be a dict with 'filepath' key
+                        # or a plain string path. Preserve order from the file.
+                        if isinstance(data, list):
+                            for elem in data:
+                                if isinstance(elem, dict):
+                                    fp = elem.get('filepath') or elem.get('path') or elem.get('file')
+                                    if not fp:
+                                        continue
+                                    entry = os.path.expanduser(str(fp).strip())
+                                    entry = os.path.abspath(entry)
+                                    files_from_list.append(entry)
+                                elif isinstance(elem, str):
+                                    entry = os.path.expanduser(elem.strip())
+                                    entry = os.path.abspath(entry)
+                                    files_from_list.append(entry)
+                except Exception as e:
+                    logging.error(f"Error reading JSON file list {args.file_list}: {e}")
+                    sys.exit(1)
+            else:
+                # Fall back to CSV parsing for backward compatibility
+                # Support CSVs with header 'path' or 'filepath' plus other columns (timestamp_raw,timestamp_epoch)
+                with open(args.file_list, newline='', encoding='utf-8') as csvfile:
+                    sample = csvfile.read(2048)
+                    csvfile.seek(0)
+                    try:
+                        has_header = csv.Sniffer().has_header(sample)
+                    except Exception:
+                        has_header = False
+                    if has_header:
+                        reader = csv.DictReader(csvfile)
+                        for row in reader:
+                            # Prefer 'path' or 'filepath' column
+                            fp = None
+                            if isinstance(row, dict):
+                                fp = row.get('path') or row.get('filepath') or row.get('file')
+                            if not fp:
+                                continue
+                            entry = os.path.expanduser(str(fp).strip())
+                            entry = os.path.abspath(entry)
+                            files_from_list.append(entry)
+                    else:
+                        reader = csv.reader(csvfile)
+                        for row in reader:
+                            for item in row:
+                                entry = item.strip()
+                                if not entry:
+                                    continue
+                                entry = os.path.expanduser(entry)
+                                entry = os.path.abspath(entry)
+                                files_from_list.append(entry)
+        except Exception as e:
+            logging.error(f"Error reading file list {args.file_list}: {e}")
+            sys.exit(1)
+
+        if not files_from_list:
+            print(f"Error: {args.file_list} contains no valid file paths.")
+            sys.exit(1)
+
+    # Validate and adjust input_dir when no file-list was provided
+    input_dir_provided = bool(args.input_dir)
+    if files_from_list is None:
+        if not input_dir_provided:
+            print("Error: --input-dir is required unless --file-list is provided.")
+            sys.exit(1)
+        input_path = Path(args.input_dir)
+        if not input_path.is_dir():
+            print(f"Error: {args.input_dir} is not a directory.")
+            sys.exit(1)
+        if args.slack:
+            files_subdir = input_path / "files"
+            if files_subdir.is_dir():
+                args.input_dir = str(files_subdir)
+                print(f"Using 'files' subdirectory: {args.input_dir}")
+            else:
+                print(f"Error: No 'files' subdirectory found in {args.input_dir}.")
+                sys.exit(1)
+
+    # Determine base name used for default output dir / pdf name
+    if files_from_list is not None:
+        input_dir_name = os.path.splitext(os.path.basename(args.file_list))[0]
+    else:
+        input_dir_name = os.path.basename(os.path.normpath(args.input_dir))
+
     # Set default output_dir if not specified
     if not args.output_dir:
-        # Use the base name of the input directory for the default output directory
+        # Use the base name of the input directory or file-list for the default output directory
         args.output_dir = f"{input_dir_name}_{args.page_size}"
         logging.info(f"Using default output directory: {args.output_dir}")
     else:
@@ -465,21 +636,38 @@ if __name__ == "__main__":
     if args.metadata_text:
         args.metadata_text = _decode_metadata_text(args.metadata_text)
 
-    # Generate file cards
-    build_file_cards_from_directory(
-        args.input_dir,
-        args.output_dir,
-        args.cmyk_mode,
-        args.page_size,
-        exclude_file_path=args.exclude_file_path,
-        border_color=t_border_color,
-        border_inch_width=args.border_inch_width,
-        include_video_frames=args.include_video_frames,
-        max_depth=args.max_depth,
-        metadata_text=args.metadata_text,
-        cards_per_chunk=args.cards_per_chunk,  # <--- Pass chunk size
-        pdf_name=pdf_name
-    )
+    # Generate file cards either from the provided list or from a directory
+    if files_from_list is not None:
+        build_file_cards_from_list(
+            files_from_list,
+            args.output_dir,
+            args.cmyk_mode,
+            args.page_size,
+            exclude_file_path=args.exclude_file_path,
+            border_color=t_border_color,
+            border_inch_width=args.border_inch_width,
+            include_video_frames=args.include_video_frames,
+            metadata_text=args.metadata_text,
+            cards_per_chunk=args.cards_per_chunk,
+            pdf_name=pdf_name,
+            delete_cards_after_pdf=args.delete_cards_after_pdf
+        )
+    else:
+        build_file_cards_from_directory(
+            args.input_dir,
+            args.output_dir,
+            args.cmyk_mode,
+            args.page_size,
+            exclude_file_path=args.exclude_file_path,
+            border_color=t_border_color,
+            border_inch_width=args.border_inch_width,
+            include_video_frames=args.include_video_frames,
+            max_depth=args.max_depth,
+            metadata_text=args.metadata_text,
+            cards_per_chunk=args.cards_per_chunk,  # <--- Pass chunk size
+            pdf_name=pdf_name,
+            delete_cards_after_pdf=args.delete_cards_after_pdf
+        )
 
     # Report summary
     output_path = Path(args.output_dir)
@@ -506,11 +694,10 @@ if __name__ == "__main__":
         logging.info(f"Assembling cards into PDF: {pdf_name}")
         width, height = parse_page_size(args.page_size)
         
-
-        assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
+        # For chunked output we assemble chunk PDFs below; skip assembling a top-level PDF here to avoid empty PDFs.
         
-        # Delete individual card files if requested
-        if args.delete_cards_after_pdf:
+        # Delete individual card files if requested (only for non-chunked flow)
+        if args.delete_cards_after_pdf and (getattr(args, "cards_per_chunk", 0) or 0) == 0:
             logging.info("Deleting individual card files after PDF creation...")
             output_dir_path = Path(args.output_dir)
             # Collect both single-card and per-frame card outputs
@@ -533,17 +720,7 @@ if __name__ == "__main__":
         cards_per_chunk = getattr(args, "cards_per_chunk", 0) or 0
         output_dir_path = Path(args.output_dir)
         if cards_per_chunk and cards_per_chunk > 0:
-            chunk_dirs = sorted([d for d in output_dir_path.iterdir() if d.is_dir() and d.name.startswith("chunk_")])
-            for chunk_dir in chunk_dirs:
-                try:
-                    chunk_idx = int(chunk_dir.name.split("_")[1])
-                except Exception:
-                    chunk_idx = 0
-                base_name = output_dir_path.name
-                pdf_name_chunk = f"{base_name}_chunk_{chunk_idx:04d}.pdf"
-                pdf_path_chunk = str(output_dir_path / pdf_name_chunk)
-                logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
-                assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
-                logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+            logging.info("Chunk PDFs were assembled during processing; skipping post-processing assembly.")
         else:
             assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
+
