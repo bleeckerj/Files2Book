@@ -1004,10 +1004,6 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     border_width = max(2, int(1 * scale))  # Using a more reasonable but still very visible border width
     outer_padding = max(80, int(50 * scale))  # Padding between border and outer edges of content
 
-    # Calculate dimensions for the content area
-    #content_width = width - 2 * outer_padding
-    #content_height = height - 2 * outer_padding
-
     # Create the full-sized background image that is the canvas for the preview
     # Use non-alpha modes so downstream PDF assembly doesn't hit alpha issues
     if cmyk_mode:
@@ -1088,6 +1084,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         modified_time = 0
         created_time = 0
 
+    ##
+    ## VERY SLACK SPECIFIC..
+    ##
     # Try to get original timestamp and Slack metadata
     original_dt = get_original_timestamp(file_path)
     slack_channel = None
