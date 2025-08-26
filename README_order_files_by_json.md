@@ -12,6 +12,7 @@ This utility parses a JSON export that contains file entries and timestamps, sor
 - Sorts entries by actual timestamp (numeric epoch). Items with missing or unparsable timestamps are placed at the end of the list.
 - Produces CSV output (path,timestamp_raw,timestamp_epoch) and/or JSON output (array of objects with filepath, raw_ts, actual_ts).
 - Resolves relative paths against a provided target directory; absolute file paths are preserved.
+- Optional deduplication: use the --dedupe flag to remove duplicate entries that have the same resolved filepath AND identical raw timestamp. When enabled the tool keeps one instance of each (filepath, raw_ts) pair.
 
 ## Requirements
 
@@ -95,6 +96,12 @@ Write both CSV and JSON:
 
 ```bash
 python3 order_files_by_json.py --json-file export.json --target-directory /path/to/files --output-csv ordered.csv --output-json ordered.json
+```
+
+Write and dedupe identical entries (keep one per filepath+raw_ts):
+
+```bash
+python3 order_files_by_json.py --json-file export.json --target-directory /path/to/files --output-csv ordered.csv --dedupe
 ```
 
 ## Notes and edge cases

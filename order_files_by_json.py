@@ -4,7 +4,7 @@ from pathlib import Path
 import argparse
 
 
-def generate_ordered_csv_from_json(json_path, directory, output_csv=None):
+def generate_ordered_csv_from_json(json_path, directory, output_csv=None, dedupe=False):
     """
     Parse the JSON file and produce a CSV listing files in timestamp order.
 
@@ -60,7 +60,21 @@ def generate_ordered_csv_from_json(json_path, directory, output_csv=None):
             items.append((resolved_str, str(timestamp_raw) if timestamp_raw is not None else "", parsed_epoch))
 
     # Sort items by parsed_epoch, placing None (missing/unparsable) at the end
-    items_sorted = sorted(items, key=lambda x: (x[2] is None, x[2] if x[2] is not None else 0))
+    items_sorted = sorted(items, key=lambda x: (x[2] is None, x[2] if x[2] is not None else float('inf')))
+
+    # Optional deduplication: keep earliest (first) occurrence per resolved path
+    if dedupe:
+        seen = set()
+        deduped = []
+        for p, raw, epoch in items_sorted:
+            key = (p, raw)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append((p, raw, epoch))
+        removed = len(items_sorted) - len(deduped)
+        items_sorted = deduped
+        print(f"Deduplication enabled: removed {removed} duplicate entries; {len(items_sorted)} remain.")
 
     # Determine output CSV path
     if not output_csv:
@@ -77,7 +91,7 @@ def generate_ordered_csv_from_json(json_path, directory, output_csv=None):
     print(f"Wrote {len(items_sorted)} entries to {output_csv}")
 
 
-def generate_ordered_output_from_json(json_path, directory, output_csv=None, output_json=None):
+def generate_ordered_output_from_json(json_path, directory, output_csv=None, output_json=None, dedupe=False):
     """
     Parse the JSON file and produce an ordered CSV and/or JSON listing files in timestamp order.
 
@@ -215,6 +229,20 @@ def generate_ordered_output_from_json(json_path, directory, output_csv=None, out
     # Sort items by parsed_epoch, placing None (missing/unparsable) at the end
     items_sorted = sorted(items, key=lambda x: (x[2] is None, x[2] if x[2] is not None else float('inf')))
 
+    # Optional deduplication: keep earliest (first) occurrence per resolved path
+    if dedupe:
+        seen = set()
+        deduped = []
+        for p, raw, epoch in items_sorted:
+            key = (p, raw)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append((p, raw, epoch))
+        removed = len(items_sorted) - len(deduped)
+        items_sorted = deduped
+        print(f"Deduplication enabled: removed {removed} duplicate entries; {len(items_sorted)} remain.")
+
     # Default CSV path if none and JSON not requested
     if not output_csv and not output_json:
         output_csv = str(dir_path / "ordered_files.csv")
@@ -252,6 +280,7 @@ if __name__ == "__main__":
     parser.add_argument("--target-directory", type=str, required=True, help="Path to the target directory.")
     parser.add_argument("--output-csv", type=str, required=False, help="Path to write the ordered CSV (default: <target-directory>/ordered_files.csv)")
     parser.add_argument("--output-json", type=str, required=False, help="Path to write the ordered JSON (optional)")
+    parser.add_argument("--dedupe", action='store_true', help="Remove duplicate file paths, keeping the earliest timestamp")
     args = parser.parse_args()
 
-    generate_ordered_output_from_json(args.json_file, args.target_directory, args.output_csv, args.output_json)
+    generate_ordered_output_from_json(args.json_file, args.target_directory, args.output_csv, args.output_json, dedupe=getattr(args, 'dedupe', False))
