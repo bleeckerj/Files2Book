@@ -502,67 +502,93 @@ def get_pdf_preview(file_path, box_w, box_h):
         all_pages = convert_from_path(str(file_path))
         n_total = len(all_pages)
         logging.info(f"PDF {file_path} page count is {n_total} pages")
-        # Dynamically determine number of preview pages
-        if n_total <= 24:
-            n_preview = n_total
-        elif n_total <= 36:
-            n_preview = min(36, n_total)
-        else:
-            n_preview = min(42, n_total)
-        if n_preview == 0:
+
+        if n_total == 0:
             logging.warning(f"No pages found in PDF: {file_path}")
             return None
-        # Select preview page indices: always include first page, then evenly distributed
-        indices = [0]
-        if n_preview > 1:
-            # Evenly distribute remaining pages
-            remaining = np.linspace(1, n_total - 1, n_preview - 1)
-            indices += [int(round(i)) for i in remaining]
-        indices = sorted(set(indices))
-        selected_pages = [all_pages[i] for i in indices]
-        n_pages = len(selected_pages)
-        box_is_landscape = box_w >= box_h
-        if n_pages == 1:
-            # Single page: scale to fill preview box as much as possible
-            page = selected_pages[0].copy()
-            page_is_landscape = page.width >= page.height
-            if box_is_landscape != page_is_landscape:
-                page = page.rotate(90, expand=True)
-            scale_factor = min(box_w / page.width, box_h / page.height)
-            new_w = int(page.width * scale_factor)
-            new_h = int(page.height * scale_factor)
-            page = page.resize((new_w, new_h), Image.LANCZOS)
-            grid_img = Image.new('RGB', (box_w, box_h), (254, 254, 254))
-            x = (box_w - new_w) // 2
-            y = (box_h - new_h) // 2
-            grid_img.paste(page, (x, y))
-            #logging.debug(f"Single page preview: scaled to ({new_w}, {new_h}) at ({x}, {y})")
-            return grid_img
-        # Multi-page: maximize grid coverage
-        best_thumb_w = 0
-        best_thumb_h = 0
-        best_rows = 0
-        best_cols = 0
-        for rows in range(1, n_pages + 1):
-            cols = int(math.ceil(n_pages / rows))
-            thumb_w = box_w // cols
-            thumb_h = box_h // rows
-            thumb_size = min(thumb_w, thumb_h)
-            if thumb_size > min(best_thumb_w, best_thumb_h) or best_thumb_w == 0:
-                best_thumb_w = thumb_w
-                best_thumb_h = thumb_h
-                best_rows = rows
-                best_cols = cols
+
+        # Cap how many pages we consider for previews to avoid extreme CPU and tiny thumbs
+        max_preview_cap = min(n_total, 42)
+
+        best_score = -1
+        best_config = None
+
+        # Try all candidate preview counts (1..max_preview_cap)
+        for total_count in range(1, max_preview_cap + 1):
+            # Choose evenly distributed page indices for this total_count (always include first page)
+            indices = [0]
+            if total_count > 1 and n_total > 1:
+                remaining = np.linspace(1, n_total - 1, total_count - 1)
+                indices += [int(round(i)) for i in remaining]
+            indices = sorted(set(indices))
+            selected_pages = [all_pages[i] for i in indices]
+            n_pages = len(selected_pages)
+
+            # Evaluate every possible rows partition for this selection
+            for rows in range(1, n_pages + 1):
+                cols = int(math.ceil(n_pages / rows))
+                cell_w = box_w // cols
+                cell_h = box_h // rows
+
+                # Ignore impossible cells
+                if cell_w <= 0 or cell_h <= 0:
+                    continue
+
+                total_used_area = 0
+                orientations = []  # True if rotated for best fit, False otherwise
+
+                # For each page, try both orientations and pick the one that uses more area in the cell
+                for page in selected_pages:
+                    w, h = page.width, page.height
+
+                    # No-rotate fit
+                    scale_no = min(cell_w / w, cell_h / h) if w and h else 0
+                    used_w_no = int(max(0, int(w * scale_no)))
+                    used_h_no = int(max(0, int(h * scale_no)))
+                    area_no = used_w_no * used_h_no
+
+                    # Rotated fit (90 degrees)
+                    scale_rot = min(cell_w / h, cell_h / w) if w and h else 0
+                    used_w_rot = int(max(0, int(h * scale_rot)))
+                    used_h_rot = int(max(0, int(w * scale_rot)))
+                    area_rot = used_w_rot * used_h_rot
+
+                    if area_rot > area_no:
+                        total_used_area += area_rot
+                        orientations.append(True)
+                    else:
+                        total_used_area += area_no
+                        orientations.append(False)
+
+                # Keep the configuration with the highest total used thumbnail area
+                if total_used_area > best_score:
+                    best_score = total_used_area
+                    best_config = {
+                        'indices': indices,
+                        'rows': rows,
+                        'cols': cols,
+                        'cell_w': cell_w,
+                        'cell_h': cell_h,
+                        'selected_pages': selected_pages,
+                        'orientations': orientations
+                    }
+
+        if not best_config:
+            logging.warning(f"Could not determine a layout for PDF: {file_path}")
+            return None
+
+        # Build thumbnails using the chosen layout and orientations
+        selected_pages = best_config['selected_pages']
+        best_rows = best_config['rows']
+        best_cols = best_config['cols']
+        best_thumb_w = best_config['cell_w']
+        best_thumb_h = best_config['cell_h']
+        orientations = best_config['orientations']
+
         thumbs = []
-        # Create thumbnails sized to the computed cell (best_thumb_w x best_thumb_h).
-        # Rotate pages first when that better matches the preview box orientation,
-        # then scale to fit the cell while preserving aspect ratio. This maximizes
-        # coverage of each grid cell and avoids unnecessarily small square thumbnails.
-        for page in selected_pages:
+        for page, rotate_choice in zip(selected_pages, orientations):
             page = page.copy()
-            # Determine page orientation and rotate to better match the preview box
-            page_is_landscape = page.width >= page.height
-            if box_is_landscape != page_is_landscape:
+            if rotate_choice:
                 page = page.rotate(90, expand=True)
             # Scale the page to fit the cell while preserving aspect ratio
             try:
@@ -574,12 +600,10 @@ def get_pdf_preview(file_path, box_w, box_h):
             thumbs.append(thumb)
         grid_img = Image.new('RGB', (box_w, box_h), (255, 255, 255))
         for idx, page in enumerate(thumbs):
-            x = (idx % best_cols) * best_thumb_w + (best_thumb_w - page.width)//2
-            y = (idx // best_cols) * best_thumb_h + (best_thumb_h - page.height)//2
+            x = (idx % best_cols) * best_thumb_w + (best_thumb_w - page.width) // 2
+            y = (idx // best_cols) * best_thumb_h + (best_thumb_h - page.height) // 2
             grid_img.paste(page, (x, y))
-            #logging.debug(f'Pasted page {indices[idx]+1} at ({x}, {y}), size ({page.width}, {page.height})')
-        #logging.debug(f"Preview box: width={box_w}, height={box_h}")
-        #logging.debug(f"Grid created at: width={grid_img.width}, height={grid_img.height}")
+
         return grid_img
     except Exception as e:
         logging.error(f"PDF preview error for {file_path}: {e}")
@@ -935,7 +959,11 @@ def downsample_points(points, max_points=100):
     step = max(1, len(points) // max_points)
     return points[::step]
 
-def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height, api_key=MAPBOX_TOKEN, path_points=None):
+def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height, api_key=None, path_points=None):
+    # Ensure the API key is resolved at runtime (avoid referencing MAPBOX_TOKEN at function-definition time)
+    if api_key is None:
+        api_key = os.getenv('MAPBOX_TOKEN', '').strip()
+
     center_lat = (min_lat + max_lat) / 2
     center_lon = (min_lon + max_lon) / 2
     # Calculate zoom level based on bounding box and image size
@@ -1481,7 +1509,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 lons, lats = zip(*points)
                 min_lon, max_lon = min(lons), max(lons)
                 min_lat, max_lat = min(lats), max(lats)
-                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), MAPBOX_TOKEN, path_points=points)
+                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), path_points=points)
                 if mapbox_img:
                     gpx_thumb = mapbox_img
         except Exception:
@@ -1510,7 +1538,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 lons, lats = zip(*points)
                 min_lon, max_lon = min(lons), max(lons)
                 min_lat, max_lat = min(lats), max(lats)
-                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), MAPBOX_TOKEN, path_points=points)
+                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), path_points=points)
                 if mapbox_img:
                     fit_gps_thumb = mapbox_img
         except Exception:
@@ -1552,7 +1580,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 raw_lines = []
-                for i, line in enumerate(f):
+                for i in enumerate(f):
                     if i > 1000:
                         break
                     raw_lines.append(line.rstrip('\n'))
