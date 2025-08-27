@@ -5,7 +5,7 @@ from datetime import datetime
 import hashlib
 import mimetypes
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pillow_heif import register_heif_opener
 import io
 import math
@@ -503,14 +503,12 @@ def get_pdf_preview(file_path, box_w, box_h):
         n_total = len(all_pages)
         logging.info(f"PDF {file_path} page count is {n_total} pages")
         # Dynamically determine number of preview pages
-        if n_total <= 20:
+        if n_total <= 24:
             n_preview = n_total
-        elif n_total <= 40:
-            n_preview = min(24, n_total)
-        elif n_total <= 60:
+        elif n_total <= 36:
             n_preview = min(36, n_total)
         else:
-            n_preview = min(48, n_total)
+            n_preview = min(42, n_total)
         if n_preview == 0:
             logging.warning(f"No pages found in PDF: {file_path}")
             return None
@@ -556,20 +554,30 @@ def get_pdf_preview(file_path, box_w, box_h):
                 best_rows = rows
                 best_cols = cols
         thumbs = []
+        # Create thumbnails sized to the computed cell (best_thumb_w x best_thumb_h).
+        # Rotate pages first when that better matches the preview box orientation,
+        # then scale to fit the cell while preserving aspect ratio. This maximizes
+        # coverage of each grid cell and avoids unnecessarily small square thumbnails.
         for page in selected_pages:
             page = page.copy()
-            page.thumbnail((best_thumb_w, best_thumb_h))
-            thumb_is_landscape = page.width >= page.height
-            if box_is_landscape != thumb_is_landscape:
+            # Determine page orientation and rotate to better match the preview box
+            page_is_landscape = page.width >= page.height
+            if box_is_landscape != page_is_landscape:
                 page = page.rotate(90, expand=True)
-                page.thumbnail((best_thumb_w, best_thumb_h))
-            thumbs.append(page)
+            # Scale the page to fit the cell while preserving aspect ratio
+            try:
+                thumb = ImageOps.contain(page, (best_thumb_w, best_thumb_h), Image.LANCZOS)
+            except Exception:
+                # Fallback to thumbnail if ImageOps is not available for some reason
+                thumb = page.copy()
+                thumb.thumbnail((best_thumb_w, best_thumb_h))
+            thumbs.append(thumb)
         grid_img = Image.new('RGB', (box_w, box_h), (255, 255, 255))
         for idx, page in enumerate(thumbs):
             x = (idx % best_cols) * best_thumb_w + (best_thumb_w - page.width)//2
             y = (idx // best_cols) * best_thumb_h + (best_thumb_h - page.height)//2
             grid_img.paste(page, (x, y))
-            #logging.debug(f"Pasted page {indices[idx]+1} at ({x}, {y}), size ({page.width}, {page.height})")
+            #logging.debug(f'Pasted page {indices[idx]+1} at ({x}, {y}), size ({page.width}, {page.height})')
         #logging.debug(f"Preview box: width={box_w}, height={box_h}")
         #logging.debug(f"Grid created at: width={grid_img.width}, height={grid_img.height}")
         return grid_img
