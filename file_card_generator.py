@@ -600,8 +600,18 @@ def get_pdf_preview(file_path, box_w, box_h):
             thumbs.append(thumb)
         grid_img = Image.new('RGB', (box_w, box_h), (255, 255, 255))
         for idx, page in enumerate(thumbs):
-            x = (idx % best_cols) * best_thumb_w + (best_thumb_w - page.width) // 2
-            y = (idx // best_cols) * best_thumb_h + (best_thumb_h - page.height) // 2
+            # Default row-major placement: left-to-right, top-to-bottom
+            if not orientations[idx]:
+                col = idx % best_cols
+                row = idx // best_cols
+            else:
+                # For rotated pages, fill columns left-to-right, each column bottom-to-top
+                # This preserves the natural reading order when pages are rotated 90 degrees.
+                col = idx // best_rows
+                row_in_col = idx % best_rows
+                row = best_rows - 1 - row_in_col
+            x = col * best_thumb_w + (best_thumb_w - page.width) // 2
+            y = row * best_thumb_h + (best_thumb_h - page.height) // 2
             grid_img.paste(page, (x, y))
 
         return grid_img
