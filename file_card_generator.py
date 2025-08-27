@@ -1,5 +1,7 @@
 import os
 import time
+import re
+import bs4
 import numpy as np
 from datetime import datetime
 import hashlib
@@ -2192,6 +2194,92 @@ def get_excel_preview(file_path, max_rows=10, max_cols=8):
     except Exception as e:
         preview_lines = [f"Excel preview error: {e}"]
     return preview_lines
+
+# ...existing code...
+def is_probably_html(file_path, max_bytes=262144):
+    """
+    Heuristic check whether a file's contents look like HTML.
+    Reads up to `max_bytes` from the file and looks for common HTML markers.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            chunk = f.read(max_bytes)
+        try:
+            text = chunk.decode("utf-8", errors="ignore")
+        except Exception:
+            text = chunk.decode("latin-1", errors="ignore")
+        lower = text.lower()
+        # Strong signals
+        if "<!doctype" in lower or "<html" in lower or "<head" in lower or "<body" in lower:
+            return True
+        # Common tags
+        tags = ["<div", "<span", "<p", "<a ", "<meta", "<script", "<title", "<link", "<!doctype"]
+        tag_count = sum(1 for t in tags if t in lower)
+        if tag_count >= 2:
+            return True
+        # Generic tag density heuristic
+        lt = lower.count("<")
+        gt = lower.count(">")
+        if lt > 5 and gt > 5 and re.search(r"<[a-z][\s>/]", lower):
+            return True
+        return False
+    except Exception:
+        return False
+
+def render_html_to_text(file_path, max_bytes=262144, max_chars=10000, prefer_markdown=True):
+    """
+    Convert HTML file contents to readable text (or Markdown when html2text is available).
+    - Reads up to max_bytes from the file.
+    - Strips scripts/styles before conversion.
+    - Returns a truncated string no longer than max_chars.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            raw = f.read(max_bytes)
+        try:
+            html = raw.decode("utf-8", errors="ignore")
+        except Exception:
+            html = raw.decode("latin-1", errors="ignore")
+
+        # Remove script/style blocks first
+        html = re.sub(r"(?is)<script.*?>.*?</script>", "", html)
+        html = re.sub(r"(?is)<style.*?>.*?</style>", "", html)
+
+        # Prefer html2text -> Markdown if available and requested
+        try:
+            if prefer_markdown:
+                import html2text  # optional dependency
+                h = html2text.HTML2Text()
+                h.ignore_images = True
+                h.ignore_links = False
+                h.body_width = 0
+                md = h.handle(html)
+                result = md.strip()
+            else:
+                raise ImportError
+        except Exception:
+            # Fallback: BeautifulSoup to plain text if available
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(html, "html.parser")
+                # remove any remaining script/style tags defensively
+                for s in soup(["script", "style"]):
+                    s.decompose()
+                text = soup.get_text(separator="\n")
+                # Collapse multiple blank lines
+                result = re.sub(r"\n{3,}", "\n\n", text).strip()
+            except Exception:
+                # Very conservative fallback: strip tags with regex
+                text = re.sub(r"(?is)<[^>]+>", "", html)
+                result = re.sub(r"\s{2,}", " ", text).strip()
+
+        # Truncate to max_chars and return
+        if len(result) > max_chars:
+            return result[:max_chars].rstrip() + "\n\n[truncated]"
+        return result
+    except Exception:
+        return ""
+
 
 def rgb_to_cmyk(r, g, b):
     if r == 0 and g == 0 and b == 0:

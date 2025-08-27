@@ -1,13 +1,17 @@
+beautifulsoup4==4.13.5
 certifi==2025.7.14
 cffi==1.17.1
 charset-normalizer==3.4.2
+coin==0.23
 Deprecated==1.2.18
 dotenv==0.9.9
 et_xmlfile==2.0.0
 fitfile==1.1.10
 fitparse==1.2.0
+fonttools==4.59.0
 fpdf==1.7.2
 gpxpy==1.6.2
+html2text==2025.4.15
 idna==3.10
 img2pdf==0.6.1
 lxml==6.0.0
@@ -28,6 +32,7 @@ python-pptx==1.0.2
 qrcode==8.2
 rarfile==4.2
 requests==2.32.4
+soupsieve==2.8
 typing_extensions==4.14.1
 urllib3==2.5.0
 wrapt==1.17.2
