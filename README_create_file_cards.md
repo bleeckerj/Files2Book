@@ -41,6 +41,12 @@ python create_file_cards.py --input-dir /path/to/files --output-dir ./output --p
   - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
   - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
 - `--slack-data-root`: Path to a Slack export root (directory containing channel folders with `files/` and `messages.json`). When provided, the script will treat inputs as Slack-exported data: relative filepaths in JSON/CSV file-lists will be resolved against this Slack root when appropriate, and Slack metadata (original timestamps, users, avatars) will be read from the export and displayed on cards.
+- `--file-list`: Path to a CSV or JSON file containing an ordered list of file paths to process. If provided, `--input-dir` is not required. CSVs with a header should include a `path` or `filepath` column; headerless CSVs are supported. JSON should be an array of strings or objects with a `filepath` (and optional timestamp fields).
+- `--cards-per-chunk`: Integer >0 to split output into chunk directories with this many cards per chunk. When used the script creates per-chunk PDFs (one PDF inside each chunk folder) and suppresses the top-level combined PDF.
+- `--border-color`: Border color for the cards in RGB format (e.g. `"161 216 26"` or `"161,216,26"`).
+- `--border-inch-width`: Border width in inches (float) for the card border (default: 0.125).
+- `--metadata-text`: Custom metadata text to include on each card (escape sequences like `\n` are supported and decoded).
+- `--delete-cards-after-pdf`: After assembling the PDF(s) delete the generated card image files. Note: when chunking is enabled, per-chunk deletion may be performed immediately after each chunk's PDF is created; top-level deletion of all card files only runs for the non-chunked flow.
 
 **Supported Page Sizes and Their Dimensions (in inches):**
 

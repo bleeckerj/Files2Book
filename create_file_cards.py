@@ -721,8 +721,16 @@ if __name__ == "__main__":
 
     # Report summary
     output_path = Path(args.output_dir)
-    # Include chunk subdirectories when counting card files
-    card_files = sorted(output_path.rglob("*_card.*"))
+    # Include chunk subdirectories when counting card files using the canonical glob patterns
+    matched = set()
+    for pattern in global_glob_pattern:
+        for p in output_path.rglob(pattern):
+            if p.is_file():
+                try:
+                    matched.add(p.resolve())
+                except Exception:
+                    matched.add(p)
+    card_files = sorted(matched)
     logging.info(f"Summary +++++++++++++++++++++++++++++")
     logging.info(f"Output directory: {os.path.abspath(args.output_dir)}")
     logging.info(f"Number of card files generated: {len(card_files)}")
