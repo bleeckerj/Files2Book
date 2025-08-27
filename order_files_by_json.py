@@ -2,6 +2,16 @@ import os
 import json
 from pathlib import Path
 import argparse
+import logging
+import sys
+
+# ensure logging is configured once, before any logging calls
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(levelname)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True,  # Python 3.8+ ensures reconfiguration
+)
 
 
 def generate_ordered_csv_from_json(json_path, directory, output_csv=None, dedupe=False):

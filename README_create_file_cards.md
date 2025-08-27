@@ -40,6 +40,7 @@ python create_file_cards.py --input-dir /path/to/files --output-dir ./output --p
   - Predefined sizes: A0-A5, LETTER, LEGAL, TABLOID, DIGEST
   - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
   - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
+- `--slack-data-root`: Path to a Slack export root (directory containing channel folders with `files/` and `messages.json`). When provided, the script will treat inputs as Slack-exported data: relative filepaths in JSON/CSV file-lists will be resolved against this Slack root when appropriate, and Slack metadata (original timestamps, users, avatars) will be read from the export and displayed on cards.
 
 **Supported Page Sizes and Their Dimensions (in inches):**
 
@@ -178,6 +179,16 @@ If files come from a Slack export (with accompanying metadata files), the cards 
 - Original sharing date
 - Message ID
 - User avatar (if available)
+
+How the Slack root is used
+
+- Provide `--slack-data-root /path/to/slack/export` to point the script at the Slack export root. The root should contain channel subdirectories (or channel-level folders) with `files/` subfolders and `messages.json` files.
+- When `--slack-data-root` is provided the script will:
+  - Resolve relative file paths in JSON/CSV lists against the Slack root (instead of the current working directory or `--input-dir`), where appropriate for Slack-style exports.
+  - Propagate the Slack export root into the file card generator so it can locate `messages.json`, `users.json`, and avatars for enriched metadata lookup.
+  - Prefer the channel-level `files/` subdirectory layout (e.g. `<slack_root>/<channel>/files/...`) but will fall back gracefully to attempted heuristics when the structure differs.
+
+Note: `--slack-data-root` is a run-time CLI parameter (not an environment variable) so you can run the script per-channel with a different Slack root each time.
 
 ## Output Format
 

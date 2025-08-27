@@ -54,6 +54,15 @@ logging.basicConfig(
     format='%(asctime)s:%(levelname)s - %(name)s %(filename)s@%(lineno)d - %(message)s'
 )
 
+# Allow optional global Slack export root (can be set by create_file_cards.py or via env SLACK_DATA_DIR)
+slack_data_root = None
+# _env_slack = os.getenv("SLACK_DATA_DIR") or os.getenv("SLACK_ROOT")
+# if _env_slack:
+#     try:
+#         SLACK_DATA_ROOT = Path(_env_slack).expanduser().resolve()
+#     except Exception:
+#         SLACK_DATA_ROOT = None
+
 logging.getLogger("pdf2image").setLevel(logging.WARNING)
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
@@ -255,7 +264,7 @@ def preview_text_content(file_path, max_lines=5, max_line_length=40):
 def get_original_timestamp(file_path):
     """Try to find the original timestamp for a file from messages.json in the parent directory."""
     parent = file_path.parent
-    messages_json = parent.parent / "messages.json"
+    messages_json = slack_data_root / "messages.json"
     if not messages_json.exists():
         return None
     try:
@@ -499,9 +508,9 @@ def get_pdf_preview(file_path, box_w, box_h):
         elif n_total <= 40:
             n_preview = min(24, n_total)
         elif n_total <= 60:
-            n_preview = min(30, n_total)
-        else:
             n_preview = min(36, n_total)
+        else:
+            n_preview = min(48, n_total)
         if n_preview == 0:
             logging.warning(f"No pages found in PDF: {file_path}")
             return None
@@ -1095,11 +1104,35 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     slack_user_name = None
     slack_avatar = None
     slack_shared_date = None
-    parent = file_path.parent
-    channel_dir = parent.parent
-    messages_json = channel_dir / "messages.json"
-    users_json = channel_dir.parent / "users.json"
-    avatars_dir = channel_dir.parent / "avatars_40x40"
+    parent = slack_data_root.parent if slack_data_root else file_path.parent.parent
+
+    # Determine channel_dir/messages.json:
+    # - If SLACK_DATA_ROOT is set and the file_path is inside it, resolve the channel
+    #   directory relative to the slack root (expected layout: <slack_root>/<channel>/files/...)
+    # - Otherwise, fall back to the previous heuristic (parent.parent)
+    try:
+        if slack_data_root:
+            p_resolved = Path(file_path).resolve()
+            slack_root_resolved = slack_data_root
+            if str(p_resolved).startswith(str(slack_root_resolved)):
+                rel = p_resolved.relative_to(slack_root_resolved)
+                # Expect at least: <channel>/files/...
+                if len(rel.parts) >= 2 and rel.parts[1] == "files":
+                    channel_dir = slack_root_resolved / rel.parts[0]
+                else:
+                    # Not the expected layout — fall back to parent.parent
+                    channel_dir = parent
+            else:
+                # File not inside configured slack root — fall back
+                channel_dir = slack_data_root
+        else:
+            channel_dir = slack_data_root
+    except Exception:
+        channel_dir = slack_data_root
+
+    messages_json = slack_data_root / "messages.json"
+    users_json = parent / "users.json"
+    avatars_dir = slack_data_root.parent / "avatars_40x40"
     #user_profile = None
     if messages_json.exists():
         try:
@@ -1120,7 +1153,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                                 except Exception:
                                     slack_shared_date = str(ts)
                             # Resolve avatar from local 'avatars' directory
-                            avatars_dir = channel_dir.parent / "avatars"
+                            avatars_dir = slack_data_root.parent / "avatars_40x40"
                             #logging.debug(f"Looking for avatars in: {avatars_dir}")
                             if slack_user_id and avatars_dir.exists():
                                 avatar_path = avatars_dir / f"{slack_user_id}.jpg"

@@ -34,6 +34,7 @@ def is_valid_card_file(p: Path) -> bool:
     return p.is_file() and p.suffix.lower() in IMAGE_EXTS
 
 from file_card_generator import create_file_info_card, determine_file_type, save_card_as_tiff
+import file_card_generator
 
 global_glob_pattern = ["*_card.*", "*_card_*.*", "* card.*", "* card_*.*"]
 
@@ -282,7 +283,9 @@ def build_file_cards_from_list(
     Wrapper that prepares output directory and delegates to _process_file_iterable
     for ordered list processing.
     """
-    logging.info("Starting processing of provided file list")
+    #logging.info(f"Starting processing of provided file list: {file_list}")
+    logging.info(f"Output directory: {output_dir}")
+    
     output_path = Path(output_dir)
     if output_path.exists():
         shutil.rmtree(output_path)
@@ -500,7 +503,7 @@ if __name__ == "__main__":
     parser.add_argument('--cmyk', dest='cmyk_mode', action='store_true', help='Alias for --cmyk-mode')
     parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
-    parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
+    # parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
     parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
     parser.add_argument('--exclude-file-path', default=False, action='store_true', help='Exclude the vertical file path from the card (default: shown)')
     parser.add_argument('--delete-cards-after-pdf', action='store_true', help='Delete individual card files after PDF is created')
@@ -509,6 +512,7 @@ if __name__ == "__main__":
     parser.add_argument('--include-video-frames', default=False, action='store_true', help='Also output individual video frames as cards (default: overview only)')
     parser.add_argument('--metadata-text', default=None, help='Custom metadata text to include on the card')
     parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
+    parser.add_argument('--slack-data-root', help='Path to Slack export root (directory containing messages.json and files/). If provided, the script will treat input as Slack data and resolve relative filepaths accordingly.')
 
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
@@ -530,52 +534,63 @@ if __name__ == "__main__":
                         # or a plain string path. Preserve order from the file.
                         if isinstance(data, list):
                             for elem in data:
+                                fp = None
                                 if isinstance(elem, dict):
                                     fp = elem.get('filepath') or elem.get('path') or elem.get('file')
-                                    if not fp:
-                                        continue
-                                    entry = os.path.expanduser(str(fp).strip())
-                                    entry = os.path.abspath(entry)
-                                    files_from_list.append(entry)
                                 elif isinstance(elem, str):
-                                    entry = os.path.expanduser(elem.strip())
-                                    entry = os.path.abspath(entry)
-                                    files_from_list.append(entry)
-                except Exception as e:
-                    logging.error(f"Error reading JSON file list {args.file_list}: {e}")
-                    sys.exit(1)
-            else:
-                # Fall back to CSV parsing for backward compatibility
-                # Support CSVs with header 'path' or 'filepath' plus other columns (timestamp_raw,timestamp_epoch)
-                with open(args.file_list, newline='', encoding='utf-8') as csvfile:
-                    sample = csvfile.read(2048)
-                    csvfile.seek(0)
-                    try:
-                        has_header = csv.Sniffer().has_header(sample)
-                    except Exception:
-                        has_header = False
-                    if has_header:
-                        reader = csv.DictReader(csvfile)
-                        for row in reader:
-                            # Prefer 'path' or 'filepath' column
-                            fp = None
-                            if isinstance(row, dict):
-                                fp = row.get('path') or row.get('filepath') or row.get('file')
-                            if not fp:
-                                continue
-                            entry = os.path.expanduser(str(fp).strip())
-                            entry = os.path.abspath(entry)
-                            files_from_list.append(entry)
-                    else:
-                        reader = csv.reader(csvfile)
-                        for row in reader:
-                            for item in row:
-                                entry = item.strip()
-                                if not entry:
+                                    fp = elem
+                                if not fp:
                                     continue
-                                entry = os.path.expanduser(entry)
-                                entry = os.path.abspath(entry)
+                                # Normalize: expand user, strip whitespace
+                                fp_str = os.path.expanduser(str(fp).strip())
+                                # If the filepath is relative, resolve it against --input-dir if provided,
+                                # otherwise against the current working directory.
+                                if not os.path.isabs(fp_str):
+                                    base_dir = args.input_dir if getattr(args, 'input_dir', None) else os.getcwd()
+                                    fp_str = os.path.join(base_dir, fp_str)
+                                entry = os.path.abspath(fp_str)
                                 files_from_list.append(entry)
+                except Exception as e:
+                     logging.error(f"Error reading JSON file list {args.file_list}: {e}")
+                     sys.exit(1)
+            else:
+                 # Fall back to CSV parsing for backward compatibility
+                 # Support CSVs with header 'path' or 'filepath' plus other columns (timestamp_raw,timestamp_epoch)
+                 with open(args.file_list, newline='', encoding='utf-8') as csvfile:
+                     sample = csvfile.read(2048)
+                     csvfile.seek(0)
+                     try:
+                         has_header = csv.Sniffer().has_header(sample)
+                     except Exception:
+                         has_header = False
+                     if has_header:
+                         reader = csv.DictReader(csvfile)
+                         for row in reader:
+                             # Prefer 'path' or 'filepath' column
+                             fp = None
+                             if isinstance(row, dict):
+                                 fp = row.get('path') or row.get('filepath') or row.get('file')
+                             if not fp:
+                                 continue
+                             fp_str = os.path.expanduser(str(fp).strip())
+                             if not os.path.isabs(fp_str):
+                                 base_dir = args.input_dir if getattr(args, 'input_dir', None) else os.getcwd()
+                                 fp_str = os.path.join(base_dir, fp_str)
+                             entry = os.path.abspath(fp_str)
+                             files_from_list.append(entry)
+                     else:
+                         reader = csv.reader(csvfile)
+                         for row in reader:
+                             for item in row:
+                                 entry = item.strip()
+                                 if not entry:
+                                     continue
+                                 entry = os.path.expanduser(entry)
+                                 if not os.path.isabs(entry):
+                                     base_dir = args.input_dir if getattr(args, 'input_dir', None) else os.getcwd()
+                                     entry = os.path.join(base_dir, entry)
+                                 entry = os.path.abspath(entry)
+                                 files_from_list.append(entry)
         except Exception as e:
             logging.error(f"Error reading file list {args.file_list}: {e}")
             sys.exit(1)
@@ -591,9 +606,6 @@ if __name__ == "__main__":
             print("Error: --input-dir is required unless --file-list is provided.")
             sys.exit(1)
         input_path = Path(args.input_dir)
-        if not input_path.is_dir():
-            print(f"Error: {args.input_dir} is not a directory.")
-            sys.exit(1)
         if args.slack:
             files_subdir = input_path / "files"
             if files_subdir.is_dir():
@@ -602,6 +614,29 @@ if __name__ == "__main__":
             else:
                 print(f"Error: No 'files' subdirectory found in {args.input_dir}.")
                 sys.exit(1)
+        else:
+            input_path = Path(args.input_dir)
+    if getattr(args, "slack_data_root", None):
+        slack_data_root = Path(args.slack_data_root)
+        if not slack_data_root.exists() or not slack_data_root.is_dir():
+            print(f"Error: Slack data directory {args.slack_data_root} not found or not a directory.")
+            sys.exit(1)
+        # Prefer the standard 'files' subdirectory if present
+        files_subdir = slack_data_root / "files"
+        if files_subdir.is_dir():
+            args.input_dir = str(files_subdir)
+            print(f"Using Slack 'files' subdirectory: {args.input_dir}")
+        else:
+            # Fall back to the provided slack root itself (useful if user points at a channel dir)
+            args.input_dir = str(slack_data_root)
+            print(f"Using Slack data directory: {args.input_dir}")
+
+        # Propagate into file_card_generator so file_card_generator.get_original_timestamp()
+        # can resolve messages.json / users.json relative to the same slack export root.
+        try:
+            file_card_generator.slack_data_root = Path(args.slack_data_root).expanduser().resolve()
+        except Exception:
+            logging.warning("Failed to set file_card_generator.slack_data_root; continuing without it.")
 
     # Determine base name used for default output dir / pdf name
     if files_from_list is not None:
