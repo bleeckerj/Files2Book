@@ -1725,9 +1725,23 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             preview_lines = [f"AI error: {e}"]
     elif file_type_info['group'] == 'unknown':
         logging.info(f"Unknown file type for {file_path.name}. Attempting to read as text or hex.")
-        if is_mostly_text_or_html(file_path):
-            logging.info(f"File is mostly text or HTML {file_path.name} - Reading as text.")
-            preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length)
+        # First try a lightweight HTML heuristic; if it looks like HTML, render to text/Markdown
+        if is_probably_html(file_path):
+            logging.info(f"File looks like HTML {file_path.name} - Rendering HTML to text for preview.")
+            rendered = render_html_to_text(file_path)
+            if rendered:
+                # Split into lines and wrap to the card's width
+                lines = []
+                for raw_line in rendered.splitlines():
+                    wrapped = textwrap.wrap(raw_line, width=max_line_length)
+                    if not wrapped:
+                        lines.append('')
+                    else:
+                        lines.extend(wrapped)
+                preview_lines = lines[:max_preview_lines]
+            else:
+                # Fallback to plain text preview if rendering returned nothing
+                preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length) or []
         else:
             preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
 
@@ -2195,7 +2209,6 @@ def get_excel_preview(file_path, max_rows=10, max_cols=8):
         preview_lines = [f"Excel preview error: {e}"]
     return preview_lines
 
-# ...existing code...
 def is_probably_html(file_path, max_bytes=262144):
     """
     Heuristic check whether a file's contents look like HTML.
