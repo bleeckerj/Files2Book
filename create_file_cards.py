@@ -654,7 +654,7 @@ if __name__ == "__main__":
             print("Error: --input-dir is required unless --file-list is provided.")
             sys.exit(1)
         input_path = Path(args.input_dir)
-        if args.slack:
+        if args.slack_data_root:
             files_subdir = input_path / "files"
             if files_subdir.is_dir():
                 args.input_dir = str(files_subdir)
@@ -708,7 +708,11 @@ if __name__ == "__main__":
         logging.info("cards_per_chunk specified; skipping creation of a top-level combined PDF (chunk-level PDFs will be created).")
     else:
         if not args.pdf_output_name:
-            pdf_name = f"{input_dir_name}_combined_{args.page_size}"
+            # if no PDF output name is provided, use a default name
+            # the default name is based on the input directory name and page size
+            # but we want to make sure pdf_name has the extension ".pdf"
+            # and we want input_dir_name as used here to have whitespace replaced by _
+            pdf_name = f"{input_dir_name.replace(' ', '_')}_combined_{args.page_size}.pdf"
             logging.info(f"No PDF output name provided, using default: {pdf_name}")
         elif args.pdf_output_name.endswith('.pdf'):
             tmp_name = args.pdf_output_name.rsplit('.', 1)[0]

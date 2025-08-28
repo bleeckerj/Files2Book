@@ -1073,7 +1073,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None, title=None):
     #logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
     #logging.debug(f"File path: {file_path}, exclude_file_path={exclude_file_path}, border_color={border_color}, border_inch_width={border_inch_width}, include_video_frames={include_video_frames}, metadata_text={metadata_text}")
-    
+    original_dt = None
     file_info = {}
     file_path = Path(file_path)
     # ignore "._*" ".DS_Store" files
@@ -1172,90 +1172,92 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     ##
     ## VERY SLACK SPECIFIC..
     ##
-    # Try to get original timestamp and Slack metadata
-    original_dt = get_original_timestamp(file_path)
     slack_channel = None
     slack_message_id = None
     slack_user_id = None
     slack_user_name = None
     slack_avatar = None
     slack_shared_date = None
-    parent = slack_data_root.parent if slack_data_root else file_path.parent.parent
+    if slack_data_root:
+        # Try to get original timestamp and Slack metadata
+        original_dt = get_original_timestamp(file_path)
 
-    # Determine channel_dir/messages.json:
-    # - If SLACK_DATA_ROOT is set and the file_path is inside it, resolve the channel
-    #   directory relative to the slack root (expected layout: <slack_root>/<channel>/files/...)
-    # - Otherwise, fall back to the previous heuristic (parent.parent)
-    try:
-        if slack_data_root:
-            p_resolved = Path(file_path).resolve()
-            slack_root_resolved = slack_data_root
-            if str(p_resolved).startswith(str(slack_root_resolved)):
-                rel = p_resolved.relative_to(slack_root_resolved)
-                # Expect at least: <channel>/files/...
-                if len(rel.parts) >= 2 and rel.parts[1] == "files":
-                    channel_dir = slack_root_resolved / rel.parts[0]
-                else:
-                    # Not the expected layout — fall back to parent.parent
-                    channel_dir = parent
-            else:
-                # File not inside configured slack root — fall back
-                channel_dir = slack_data_root
-        else:
-            channel_dir = slack_data_root
-    except Exception:
-        channel_dir = slack_data_root
+        parent = slack_data_root.parent if slack_data_root else file_path.parent.parent
 
-    messages_json = slack_data_root / "messages.json"
-    users_json = parent / "users.json"
-    avatars_dir = slack_data_root.parent / "avatars_40x40"
-    #user_profile = None
-    if messages_json.exists():
+        # Determine channel_dir/messages.json:
+        # - If SLACK_DATA_ROOT is set and the file_path is inside it, resolve the channel
+        #   directory relative to the slack root (expected layout: <slack_root>/<channel>/files/...)
+        # - Otherwise, fall back to the previous heuristic (parent.parent)
         try:
-            with open(messages_json, 'r', encoding='utf-8', errors='ignore') as f:
-                messages = json.load(f)
-            for msg in messages:
-                if 'files' in msg:
-                    for fobj in msg['files']:
-                        if fobj.get('name') == file_path.name:
-                            slack_channel = channel_dir.name
-                            slack_message_id = msg.get('client_msg_id') or msg.get('ts')
-                            slack_user_id = msg.get('user') or msg.get('username') or fobj.get('user')
-                            slack_shared_date = None
-                            ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts')
-                            if ts:
-                                try:
-                                    slack_shared_date = datetime.fromtimestamp(float(ts)).strftime('%Y-%m-%d %H:%M:%S')
-                                except Exception:
-                                    slack_shared_date = str(ts)
-                            # Resolve avatar from local 'avatars' directory
-                            avatars_dir = slack_data_root.parent / "avatars"
-                            #logging.debug(f"Looking for avatars in: {avatars_dir}")
-                            if slack_user_id and avatars_dir.exists():
-                                avatar_path = avatars_dir / f"{slack_user_id}.jpg"
-                                #logging.debug(f"Checking avatar path: {avatar_path}")
-                                if avatar_path.exists():
-                                    slack_avatar = str(avatar_path)
-                            #logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
-                            # Resolve user name from users.json
-                            if users_json.exists() and slack_user_id:
-                                try:
-                                    with open(users_json, 'r', encoding='utf-8', errors='ignore') as uf:
-                                        users = json.load(uf)
-                                    for user in users:
-                                        if user.get('id') == slack_user_id or user.get('name') == slack_user_id:
-                                            slack_user_name = user.get('real_name') or user.get('profile', {}).get('real_name') or user.get('name')
-                                            break
-                                except Exception as e:
-                                    logging.error(f"Error reading users.json: {e}")
-                            break
-                if slack_channel:
-                    break
+            if slack_data_root:
+                p_resolved = Path(file_path).resolve()
+                slack_root_resolved = slack_data_root
+                if str(p_resolved).startswith(str(slack_root_resolved)):
+                    rel = p_resolved.relative_to(slack_root_resolved)
+                    # Expect at least: <channel>/files/...
+                    if len(rel.parts) >= 2 and rel.parts[1] == "files":
+                        channel_dir = slack_root_resolved / rel.parts[0]
+                    else:
+                        # Not the expected layout — fall back to parent.parent
+                        channel_dir = parent
+                else:
+                    # File not inside configured slack root — fall back
+                    channel_dir = slack_data_root
+            else:
+                channel_dir = slack_data_root
         except Exception:
-            pass
-        
-        
-        
+            channel_dir = slack_data_root
+
+        messages_json = slack_data_root / "messages.json"
+        users_json = parent / "users.json"
+        avatars_dir = slack_data_root.parent / "avatars_40x40"
+        #user_profile = None
+        if messages_json.exists():
+            try:
+                with open(messages_json, 'r', encoding='utf-8', errors='ignore') as f:
+                    messages = json.load(f)
+                for msg in messages:
+                    if 'files' in msg:
+                        for fobj in msg['files']:
+                            if fobj.get('name') == file_path.name:
+                                slack_channel = channel_dir.name
+                                slack_message_id = msg.get('client_msg_id') or msg.get('ts')
+                                slack_user_id = msg.get('user') or msg.get('username') or fobj.get('user')
+                                slack_shared_date = None
+                                ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts')
+                                if ts:
+                                    try:
+                                        slack_shared_date = datetime.fromtimestamp(float(ts)).strftime('%Y-%m-%d %H:%M:%S')
+                                    except Exception:
+                                        slack_shared_date = str(ts)
+                                # Resolve avatar from local 'avatars' directory
+                                avatars_dir = slack_data_root.parent / "avatars"
+                                #logging.debug(f"Looking for avatars in: {avatars_dir}")
+                                if slack_user_id and avatars_dir.exists():
+                                    avatar_path = avatars_dir / f"{slack_user_id}.jpg"
+                                    #logging.debug(f"Checking avatar path: {avatar_path}")
+                                    if avatar_path.exists():
+                                        slack_avatar = str(avatar_path)
+                                #logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
+                                # Resolve user name from users.json
+                                if users_json.exists() and slack_user_id:
+                                    try:
+                                        with open(users_json, 'r', encoding='utf-8', errors='ignore') as uf:
+                                            users = json.load(uf)
+                                        for user in users:
+                                            if user.get('id') == slack_user_id or user.get('name') == slack_user_id:
+                                                slack_user_name = user.get('real_name') or user.get('profile', {}).get('real_name') or user.get('name')
+                                                break
+                                    except Exception as e:
+                                        logging.error(f"Error reading users.json: {e}")
+                                break
+                    if slack_channel:
+                        break
+            except Exception:
+                pass
+            
+            
+            
     # Step 2: If EXIF-capable, try to read EXIF data
     exif_data = None
     exif_candidate = False
@@ -1294,7 +1296,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     if 'DateTimeOriginal' in file_info and file_info['DateTimeOriginal']:
         logging.debug(f"DateTimeOriginal found: {file_info['DateTimeOriginal']}")
         pass
-    elif original_dt:
+    elif original_dt is not None:
         file_info['Original Date'] = original_dt.strftime('%Y-%m-%d %H:%M:%S')
     else:
         file_info['Modified'] = datetime.fromtimestamp(modified_time).strftime('%Y-%m-%d %H:%M:%S')
