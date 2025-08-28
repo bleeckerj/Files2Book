@@ -42,6 +42,9 @@ python create_file_cards.py --input-dir /path/to/files --output-dir ./output --p
   - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
 - `--slack-data-root`: Path to a Slack export root (directory containing channel folders with `files/` and `messages.json`). When provided, the script will treat inputs as Slack-exported data: relative filepaths in JSON/CSV file-lists will be resolved against this Slack root when appropriate, and Slack metadata (original timestamps, users, avatars) will be read from the export and displayed on cards.
 - `--file-list`: Path to a CSV or JSON file containing an ordered list of file paths to process. If provided, `--input-dir` is not required. CSVs with a header should include a `path` or `filepath` column; headerless CSVs are supported. JSON should be an array of strings or objects with a `filepath` (and optional timestamp fields).
+- `--compact`: Generate cards in a compact layout with smaller font sizes, minimal vertical spacing, and maximized preview/image area. Useful for print layouts or when preview is prioritized over metadata.
+- `--card-background-color`: Set the background color for the card (default: 'white'). Accepts any valid Pillow color string or RGB tuple, e.g. `--card-background-color "(251,238,104)"`.
+- `--max-depth`: Maximum folder recursion depth (default: 0, no recursion; set higher for deeper traversal; negative for unlimited).
 - `--file-data-root`: Path to a root directory to resolve relative file paths in the provided file list.
 - `--cards-per-chunk`: Integer >0 to split output into chunk directories with this many cards per chunk. When used the script creates per-chunk PDFs (one PDF inside each chunk folder) and suppresses the top-level combined PDF.
 - `--border-color`: Border color for the cards in RGB format (e.g. `"161 216 26"` or `"161,216,26"`).
@@ -90,7 +93,34 @@ python generate_flipbook_pages.py --input-dir /path/to/files --output-dir ./outp
 
 ### Command Line Arguments
 
-- `--input-dir`: Directory containing files to process (required)
+- `--input-dir`: Directory containing files to process (required). When processing Slack directories this should be the root of the entire Slack data download hierarchy, generally one directory above the folders containing `downloaded_files.json`. This is because it will serve as the path that will be prepended to the file paths specified in downloaded_files.json, which generally are relative paths. Effectively --input-dir becomes the root for the paths to the files.
+
+```
+├── ambassador
+│   ├── downloaded_files.json
+│   ├── files (this is where the actual files' hierarchy begins)
+│   ├── manifest.json
+│   └── messages.json
+├── avatars
+│   ├── U010VN0Q0FP.jpg
+│   ├── U010XL0MEPQ.jpg
+├── channels.json
+├── export_config.json
+├── exported_channels.json
+├── general
+│   ├── downloaded_files.json
+│   ├── files (this is where the actual files' hierarchy begins)
+│   ├── manifest.json
+│   ├── messages.json
+├── id-explorations
+│   ├── downloaded_files.json
+│   ├── files (this is where the actual files' hierarchy begins)
+│   ├── manifest.json
+│   └── messages.json
+└── users.json
+```
+
+
 - `--output-dir`: Directory to save the generated card images (default: parent directory of input-dir + `_cards_output`)
 - `--cmyk-mode`: Generate cards in CMYK color mode for professional printing (default: RGB mode)
 - `--cmyk`: Alias for `--cmyk-mode`
@@ -99,9 +129,10 @@ python generate_flipbook_pages.py --input-dir /path/to/files --output-dir ./outp
   - Card sizes: POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE
   - Custom sizes: Specify as WxH in inches (e.g., "3.5X5.0")
 - `--pdf-output-name`: Name for the combined PDF (default: parent directory of input-dir + `_combined_pdf.pdf`, saved in output-dir)
-- `--compact`: Enable compact mode for reduced text size, minimal spacing, and maximized preview area
 - `--include-video-frames`: Generate per-frame video cards alongside the overview card
 - `--delete-cards-after-pdf`: Delete generated card images after the PDF is created
+- `--exclude-file-path`: Exclude showing file path from the card (default: shown)
+- `--max-depth`: Maximum folder recursion depth (default: 0, no recursion; set higher for deeper traversal; negative for unlimited).
 
 ### Defaults
 
@@ -126,6 +157,20 @@ python create_file_cards.py --input-dir ./my_files/files --cmyk-mode --compact
 `--cmyk-mode`: Generate cards in CMYK color mode for professional printing (default: RGB mode)
 `--page-size`: Card size (default: LARGE_TAROT)
 
+```bash
+    python3 ./create_file_cards.py 
+    --page-size "5.75x8.75" 
+    --slack-data-root "/Volumes/OMATA/SlackExporterForOmata/omata-brand/" 
+    --file-list "/Volumes/OMATA/SlackExporterForOmata/omata-brand/downloaded_files.json" 
+    --output-dir "/Volumes/OMATA/SlackExporterForOmata/slack-channels-file-cards/omata-brand_file_cards_output"
+    --cmyk-mode
+    --max-depth 3 
+    --border-color "161 216 26" 
+    --border-inch-width 0.2 
+    --delete-cards-after-pdf --cards-per-chunk 500 
+    --input-dir "/Volumes/OMATA/SlackExporterForOmata/" 
+  ```
+
 **Supported page sizes:**
 - A5, A4, A3, A2, A1, A0
 - LETTER, LEGAL, TABLOID
@@ -146,14 +191,6 @@ python create_file_cards.py \
   --delete-cards-after-pdf
 ```
 
-### Compact Mode
-
-When `--compact` is specified, cards are generated with:
-- Smaller font sizes
-- Minimal vertical spacing
-- No file type icon text below the header
-- Maximized preview/image area
-This is ideal for print layouts or when you want the preview to take priority over metadata.
 
 ### File Type Detection
 
