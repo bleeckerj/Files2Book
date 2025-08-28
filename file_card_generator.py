@@ -1204,14 +1204,14 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                                 except Exception:
                                     slack_shared_date = str(ts)
                             # Resolve avatar from local 'avatars' directory
-                            avatars_dir = slack_data_root.parent / "avatars_40x40"
+                            avatars_dir = slack_data_root.parent / "avatars"
                             #logging.debug(f"Looking for avatars in: {avatars_dir}")
                             if slack_user_id and avatars_dir.exists():
                                 avatar_path = avatars_dir / f"{slack_user_id}.jpg"
                                 #logging.debug(f"Checking avatar path: {avatar_path}")
                                 if avatar_path.exists():
                                     slack_avatar = str(avatar_path)
-                                    #logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
+                            #logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
                             # Resolve user name from users.json
                             if users_json.exists() and slack_user_id:
                                 try:
@@ -1775,8 +1775,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     # icon_color = file_type_info['color'] if rgb_mode else color
     # draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
     # y = icon_y + 60
-    avatar_size = int(100 * scale)
+    avatar_size = int(120 * scale)
     avatar_img = None
+
     if slack_avatar:
         try:
             #logging.debug(f"Loading avatar from: {slack_avatar}")
@@ -1791,7 +1792,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             avatar_img = None
     
     avatar_y_coordinate = int(outer_padding + header_height + 5 * scale)
-    avatar_x_coordinate = int(outer_padding + 60 * scale)  # 15px from left border, scaled
+    avatar_x_coordinate = int(outer_padding + 20 * scale)  # 20px from left border, scaled
     if avatar_img is not None:
         try:
             # Position avatar relative to the left border (outer_padding)
