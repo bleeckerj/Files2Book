@@ -276,11 +276,11 @@ def build_file_cards_from_list(
 ):
     """
     Wrapper that prepares output directory and delegates to _process_file_iterable
-    for ordered list processing.
+    for ordered list processing. Supports file_list as a flat list of paths or a list of dicts
+    with 'filepath' and optional 'metadata' keys.
     """
-    #logging.info(f"Starting processing of provided file list: {file_list}")
     logging.info(f"Output directory: {output_dir}")
-    
+
     output_path = Path(output_dir)
     if output_path.exists():
         shutil.rmtree(output_path)
@@ -288,10 +288,55 @@ def build_file_cards_from_list(
 
     width, height = parse_page_size(page_size)
 
-    expanded_files, temp_dirs = expand_zip_files(file_list)
+    # Normalize file_list to a list of file paths and optional metadata
+    normalized_files = []
+    if file_list and isinstance(file_list[0], dict):
+        logging.info("Detected list of dicts with 'filepath' and optional 'metadata' and optional 'timestamp'")
+        # List of dicts: extract 'filepath' and 'metadata'
+        for entry in file_list:
+            fp = entry.get('filepath') or entry.get('path') or entry.get('file')
+            meta = entry.get('metadata', metadata_text)
+            ts = entry.get('timestamp')
+            if fp:
+                normalized_files.append({'filepath': fp, 'metadata': meta})
+    else:
+        # Flat list: just file paths
+        for fp in file_list:
+            normalized_files.append({'filepath': fp, 'metadata': metadata_text})
+
+    # Expand zip files, preserving metadata if present
+    expanded_files = []
+    temp_dirs = []
+    for entry in normalized_files:
+        fp = entry['filepath']
+        meta = entry['metadata']
+        ts = entry.get('timestamp')
+        if str(fp).lower().endswith('.zip'):
+            temp_dir = tempfile.TemporaryDirectory()
+            temp_dirs.append(temp_dir)
+            zip_base = Path(fp).stem
+            with zipfile.ZipFile(fp, 'r') as z:
+                for name in z.namelist():
+                    if name.startswith("._") or name.startswith("__MACOSX") or name.startswith(".DS"):
+                        continue
+                    new_name = f"{zip_base}__{Path(name).name}"
+                    target_path = Path(temp_dir.name) / new_name
+                    with z.open(name) as src, open(target_path, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    expanded_files.append({'filepath': target_path, 'metadata': meta})
+            expanded_files.append({'filepath': fp, 'metadata': meta})
+        else:
+            expanded_files.append({'filepath': fp, 'metadata': meta, 'timestamp': ts})
+
+    # Prepare iterable of file paths for _process_file_iterable
+    file_paths = [entry['filepath'] for entry in expanded_files]
+    
+    
+    # If any entry has custom metadata, pass it to _process_file_iterable (only one value supported)
+    # If you want per-file metadata, _process_file_iterable must be updated to support it.
 
     _process_file_iterable(
-        expanded_files,
+        file_paths,
         output_path=output_path,
         width=width,
         height=height,
@@ -574,6 +619,9 @@ if __name__ == "__main__":
         files_from_list = []
         try:
             # Support JSON or CSV input. If the file extension ends with .json, parse JSON.
+            # The JSON structure is expected to be an array of objects, each with a 'filepath' key.
+            # It can also contain a 'timestamp' key for each file and a 'metadata' key that will be used
+            # For the metatext for the corresponding card
             if args.file_list.lower().endswith('.json'):
                 try:
                     with open(args.file_list, 'r', encoding='utf-8') as jf:
