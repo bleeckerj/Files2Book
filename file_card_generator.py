@@ -13,6 +13,9 @@ import textwrap
 import zipfile
 import bz2
 import gzip
+import textwrap
+from bs4 import BeautifulSoup
+
 try:
     from fitparse import FitFile
     FITPARSE_AVAILABLE = True
@@ -243,6 +246,26 @@ def get_file_hash(file_path, algorithm='md5', block_size=65536):
         for block in iter(lambda: f.read(block_size), b''):
             hash_obj.update(block)
     return hash_obj.hexdigest()[:10]  # First 10 chars for brevity
+
+
+def preview_html_content(file_path, max_lines=5, max_line_length=40):
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            html = f.read()
+        soup = BeautifulSoup(html, "html.parser")
+        text = soup.get_text(separator="\n")
+        lines = []
+        for i, line in enumerate(text.splitlines()):
+            if i >= max_lines:
+                break
+            wrapped = textwrap.wrap(line.strip(), width=max_line_length)
+            if not wrapped:
+                lines.append('')
+            else:
+                lines.extend(wrapped)
+        return lines
+    except Exception:
+        return None
 
 def preview_text_content(file_path, max_lines=5, max_line_length=40):
     """Get a preview of text content if the file is text-based, wrapping long lines."""
@@ -1730,7 +1753,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         logging.info(f"Unknown file type for {file_path.name}. Attempting to read as text or hex.")
         if is_mostly_text_or_html(file_path):
             logging.info(f"File is mostly text or HTML {file_path.name} - Reading as text.")
-            preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length)
+            preview_lines = preview_html_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length)
         else:
             preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
 

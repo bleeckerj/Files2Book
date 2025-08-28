@@ -110,6 +110,7 @@ def _process_file_iterable(
     """
     current_chunk_file_count = 0
     chunk_idx = 0
+    global total_files_handled_count
     total_files_handled_count = 0
     total_files_to_process_count = 0
     # Initialize chunk_dir correctly
@@ -769,14 +770,14 @@ if __name__ == "__main__":
     # Report summary
     output_path = Path(args.output_dir)
     # Include chunk subdirectories when counting card files using the canonical glob patterns
-    matched = set()
-    for pattern in global_glob_pattern:
-        for p in output_path.rglob(pattern):
-            if p.is_file():
-                try:
-                    matched.add(p.resolve())
-                except Exception:
-                    matched.add(p)
+    # matched = set()
+    # for pattern in global_glob_pattern:
+    #     for p in output_path.rglob(pattern):
+    #         if p.is_file():
+    #             try:
+    #                 matched.add(p.resolve())
+    #             except Exception:
+    #                 matched.add(p)
     #card_files = get_non_dot_card_files(output_path)
     logging.info(f"Summary +++++++++++++++++++++++++++++")
     logging.info(f"Output directory: {os.path.abspath(args.output_dir)}")
