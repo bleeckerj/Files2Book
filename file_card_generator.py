@@ -1051,7 +1051,10 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     
     file_info = {}
     file_path = Path(file_path)
-
+    # ignore "._*" ".DS_Store" files
+    if file_path.name.startswith("._") or file_path.name == ".DS_Store":
+        logging.info(f"Ignoring file: {file_path.name}")
+        return None
     # Proportional scaling
     base_width = 800
     base_height = 1000

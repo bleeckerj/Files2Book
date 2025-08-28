@@ -14,6 +14,9 @@ import img2pdf
 import re
 import csv
 import json
+import tempfile
+import zipfile
+
 
 os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "120000" # that's 2 minutes!
 
@@ -23,7 +26,7 @@ logging.basicConfig(
 )
 # Import the file card generator
 IMAGE_EXTS = frozenset({'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'})
-
+total_files_handled_count = 0
 def is_valid_card_file(p: Path) -> bool:
     """
     Return True if p is a regular file (not a dotfile) and has a supported image extension.
@@ -146,6 +149,10 @@ def _process_file_iterable(
                 include_video_frames=include_video_frames,
                 metadata_text=metadata_text
             )
+            
+            if card is None:
+                logging.warning(f"No card generated for {file_path}. Skipping.")
+                continue
 
             if isinstance(card, list):
                 for idx, card_img in enumerate(card):
@@ -280,8 +287,10 @@ def build_file_cards_from_list(
 
     width, height = parse_page_size(page_size)
 
+    expanded_files, temp_dirs = expand_zip_files(file_list)
+
     _process_file_iterable(
-        file_list,
+        expanded_files,
         output_path=output_path,
         width=width,
         height=height,
@@ -352,8 +361,9 @@ def build_file_cards_from_directory(
 
     # Reuse the shared processing implementation by passing the find_files iterable
     files_iter = find_files(input_path, max_depth=max_depth)
+    expanded_files, temp_dirs = expand_zip_files(files_iter)
     _process_file_iterable(
-        files_iter,
+        expanded_files,
         output_path=output_path,
         width=width,
         height=height,
@@ -505,6 +515,30 @@ def get_count_of_non_dot_card_files(directory: Path):
 
    return len(get_non_dot_card_files(directory))
 
+
+def expand_zip_files(file_list):
+    expanded_files = []
+    temp_dirs = []
+    for file_path in file_list:
+        if str(file_path).lower().endswith('.zip'):
+            temp_dir = tempfile.TemporaryDirectory()
+            temp_dirs.append(temp_dir)  # Keep reference to avoid premature cleanup
+            zip_base = Path(file_path).stem
+            with zipfile.ZipFile(file_path, 'r') as z:
+                for name in z.namelist():
+                    # Ignore macOS "._*" files and metadata
+                    if name.startswith("._") or name.startswith("__MACOSX") or name.startswith(".DS"):
+                        continue
+                    # Add zip file name as prefix to extracted file
+                    new_name = f"{zip_base}__{Path(name).name}"
+                    target_path = Path(temp_dir.name) / new_name
+                    with z.open(name) as src, open(target_path, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    expanded_files.append(target_path)
+            expanded_files.append(file_path)
+        else:
+            expanded_files.append(file_path)
+    return expanded_files, temp_dirs
 
 
 if __name__ == "__main__":
@@ -743,23 +777,23 @@ if __name__ == "__main__":
                     matched.add(p.resolve())
                 except Exception:
                     matched.add(p)
-    card_files = get_non_dot_card_files(output_path)
+    #card_files = get_non_dot_card_files(output_path)
     logging.info(f"Summary +++++++++++++++++++++++++++++")
     logging.info(f"Output directory: {os.path.abspath(args.output_dir)}")
-    logging.info(f"Number of card files generated: {len(card_files)}")
-    if card_files:
-        #logging.info(f"Generated {len(card_files)} card files")
-        # Print in 3 columns
-        col_count = 3
-        names = [f.name for f in card_files]
-        max_len = max((len(name) for name in names), default=0)
-        term_width = shutil.get_terminal_size((120, 20)).columns
-        col_width = max_len + 2
-        cols = min(col_count, max(1, term_width // col_width))
-        rows = (len(names) + cols - 1) // cols
-        for row in range(rows):
-            line = "".join(names[row + rows * col].ljust(col_width) for col in range(cols) if row + rows * col < len(names))
-            #logging.info(line)
+    logging.info(f"Number of card files generated: {total_files_handled_count}")
+    # if card_files:
+    #     #logging.info(f"Generated {len(card_files)} card files")
+    #     # Print in 3 columns
+    #     col_count = 3
+    #     names = [f.name for f in card_files]
+    #     max_len = max((len(name) for name in names), default=0)
+    #     term_width = shutil.get_terminal_size((120, 20)).columns
+    #     col_width = max_len + 2
+    #     cols = min(col_count, max(1, term_width // col_width))
+    #     rows = (len(names) + cols - 1) // cols
+    #     for row in range(rows):
+    #         line = "".join(names[row + rows * col].ljust(col_width) for col in range(cols) if row + rows * col < len(names))
+    #         #logging.info(line)
 
     # Assemble cards into a PDF if requested
     if pdf_name:
