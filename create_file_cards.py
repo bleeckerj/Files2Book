@@ -14,14 +14,19 @@ import img2pdf
 import re
 import csv
 import json
-    
+import tempfile
+import zipfile
+
+
+os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "120000" # that's 2 minutes!
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
 )
 # Import the file card generator
 IMAGE_EXTS = frozenset({'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'})
-
+total_files_handled_count = 0
 def is_valid_card_file(p: Path) -> bool:
     """
     Return True if p is a regular file (not a dotfile) and has a supported image extension.
@@ -103,19 +108,25 @@ def _process_file_iterable(
     saving, chunking, PDF assembly per-chunk, and optional deletion of chunk
     images after PDF creation.
     """
-    file_count = 0
+    current_chunk_file_count = 0
     chunk_idx = 0
-    files_handled_count = 0
-    total_files_count = 0
-    chunk_dir = output_path
-
+    global total_files_handled_count
+    total_files_handled_count = 0
+    total_files_to_process_count = 0
+    # Initialize chunk_dir correctly
+    if cards_per_chunk and cards_per_chunk > 0:
+        chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+        chunk_dir.mkdir(exist_ok=True, parents=True)
+    else:
+        chunk_dir = output_path
+    
     # Pre-count valid files
     for p in file_iterable:
         pth = Path(p)
         if pth.is_file():
-            total_files_count += 1
+            total_files_to_process_count += 1
 
-    logging.info(f"Total files to process: {total_files_count}")
+    logging.info(f"Total files to process: {total_files_to_process_count}")
 
     # Iterate again for actual processing
     for file_path in file_iterable:
@@ -124,7 +135,7 @@ def _process_file_iterable(
             logging.debug(f"Skipping non-file entry: {file_path}")
             continue
         try:
-            files_handled_count += 1
+            
             file_type = determine_file_type(file_path)
             logging.debug(f"Processing {file_path.name} - Type: {file_type}")
 
@@ -139,38 +150,29 @@ def _process_file_iterable(
                 include_video_frames=include_video_frames,
                 metadata_text=metadata_text
             )
+            
+            if card is None:
+                logging.warning(f"No card generated for {file_path}. Skipping.")
+                continue
 
             if isinstance(card, list):
                 for idx, card_img in enumerate(card):
                     card_size = card_img.size
                     if cards_per_chunk and cards_per_chunk > 0:
-                        if file_count % cards_per_chunk == 0:
-                            chunk_idx = file_count // cards_per_chunk
+                        if total_files_handled_count % cards_per_chunk == 0:
+                            chunk_idx = total_files_handled_count // cards_per_chunk
                             chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
                             chunk_dir.mkdir(exist_ok=True, parents=True)
-                        output_file = chunk_dir / f"{file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
+                        output_file = chunk_dir / f"{current_chunk_file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
                     else:
-                        output_file = output_path / f"{file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
+                        output_file = output_path / f"{total_files_handled_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
                     save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
-                    logging.debug(f"Saved card to {output_file} with size: {card_size}")
-                    file_count += 1
+                    total_files_handled_count += 1
+                    logging.info(f"Saved card to {output_file}")
+                    current_chunk_file_count = get_count_of_non_dot_card_files(chunk_dir)
                     # Count unique files in the chunk directory to avoid double-counting overlapping glob patterns
-                    matched_files = set()
-                    for pattern in global_glob_pattern:
-                        for f in chunk_dir.glob(pattern):
-                            if f.is_file():
-                                try:
-                                    matched_files.add(f.resolve())
-                                except Exception:
-                                    matched_files.add(f)
-                    chunk_file_count = len(matched_files)
-                    # Do NOT overwrite the global file_count with the per-chunk count.
-                    # file_count is the absolute index across all cards; chunk_file_count
-                    # is only used to decide when a chunk is complete.
-                    if chunk_file_count != file_count:
-                        logging.debug(f"Chunk file count ({chunk_file_count}) differs from absolute file_count ({file_count}); keeping absolute count.")
 
-                    if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
+                    if cards_per_chunk and cards_per_chunk > 0 and current_chunk_file_count % cards_per_chunk == 0:
                         pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
                         pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                         logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
@@ -180,37 +182,29 @@ def _process_file_iterable(
                         if delete_cards_after_pdf:
                             delete_cards_in_directory(chunk_dir)
 
-                        chunk_idx += 1
+                        # chunk_idx += 1
+                        # chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
             else:
                 card_size = card.size
                 if cards_per_chunk and cards_per_chunk > 0:
-                    if file_count % cards_per_chunk == 0:
-                        chunk_idx = file_count // cards_per_chunk
+                    if total_files_handled_count % cards_per_chunk == 0:
+                        chunk_idx = total_files_handled_count // cards_per_chunk
                         chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
                         chunk_dir.mkdir(exist_ok=True, parents=True)
-                    output_file = chunk_dir / f"{file_count:04d}_{file_path.stem}_card.tiff"
+                    output_file = chunk_dir / f"{current_chunk_file_count:04d}_{file_path.stem}_card.tiff"
                 else:
-                    output_file = output_path / f"{file_count:04d}_{file_path.stem}_card.tiff"
+                    output_file = output_path / f"{current_chunk_file_count:04d}_{file_path.stem}_card.tiff"
                 save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
                 logging.debug(f"Saved card to {output_file} with size: {card_size}")
-                file_count += 1
+                total_files_handled_count += 1
+                current_chunk_file_count = get_count_of_non_dot_card_files(chunk_dir)
                 # Count unique files in the chunk directory to avoid double-counting overlapping glob patterns
-                matched_files = set()
-                for pattern in global_glob_pattern:
-                    for f in chunk_dir.glob(pattern):
-                        if f.is_file():
-                            try:
-                                matched_files.add(f.resolve())
-                            except Exception:
-                                matched_files.add(f)
-                chunk_file_count = len(matched_files)
+
                 # Do NOT overwrite the global file_count with the per-chunk count.
                 # file_count is the absolute index across all cards; chunk_file_count
                 # is only used to decide when a chunk is complete.
-                if chunk_file_count != file_count:
-                    logging.debug(f"Chunk file count ({chunk_file_count}) differs from absolute file_count ({file_count}); keeping absolute count.")
 
-                if cards_per_chunk and cards_per_chunk > 0 and chunk_file_count % cards_per_chunk == 0:
+                if cards_per_chunk and cards_per_chunk > 0 and current_chunk_file_count % cards_per_chunk == 0:
                     pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
                     pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                     logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
@@ -220,7 +214,8 @@ def _process_file_iterable(
                     if delete_cards_after_pdf:
                         delete_cards_in_directory(chunk_dir)
 
-                    chunk_idx += 1
+                    # chunk_idx += 1
+                    # chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
         except Exception as e:
             logging.error(f"Error processing {file_path.name}: {e}")
             logging.error("Traceback:\n" + traceback.format_exc())
@@ -228,7 +223,7 @@ def _process_file_iterable(
     # After the loop: Handle the last chunk (if any cards remain)
     if cards_per_chunk and cards_per_chunk > 0:
         try:
-            if 'chunk_file_count' in locals() and (chunk_file_count % cards_per_chunk != 0 or files_handled_count >= total_files_count):
+            if 'current_chunk_file_count' in locals() and (current_chunk_file_count % cards_per_chunk != 0 or total_files_handled_count >= total_files_to_process_count):
                 pdf_name_chunk = f"{pdf_name}_chunk_{chunk_idx:04d}.pdf" if pdf_name else f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
                 pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                 logging.info(f"Assembling final PDF for chunk {chunk_idx}: {pdf_path_chunk}")
@@ -293,8 +288,10 @@ def build_file_cards_from_list(
 
     width, height = parse_page_size(page_size)
 
+    expanded_files, temp_dirs = expand_zip_files(file_list)
+
     _process_file_iterable(
-        file_list,
+        expanded_files,
         output_path=output_path,
         width=width,
         height=height,
@@ -365,8 +362,9 @@ def build_file_cards_from_directory(
 
     # Reuse the shared processing implementation by passing the find_files iterable
     files_iter = find_files(input_path, max_depth=max_depth)
+    expanded_files, temp_dirs = expand_zip_files(files_iter)
     _process_file_iterable(
-        files_iter,
+        expanded_files,
         output_path=output_path,
         width=width,
         height=height,
@@ -411,15 +409,16 @@ def assemble_cards_to_pdf(output_dir, pdf_file, page_size):
     try:
         # Only include files whose name does not start with "." or "._"
         # and whose extension is a supported image type
-        valid_exts = ['.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp']
+        # valid_exts = ['.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp']
         card_files = []
-        for pattern in global_glob_pattern:
-            card_files.extend(
-            f for f in output_path.glob(pattern)
-            if f.is_file()
-            and f.suffix.lower() in valid_exts
-            and not (f.name.startswith(".") or f.name.startswith("._"))
-            )
+        # for pattern in global_glob_pattern:
+        #     card_files.extend(
+        #     f for f in output_path.glob(pattern)
+        #     if f.is_file()
+        #     and f.suffix.lower() in valid_exts
+        #     and not (f.name.startswith(".") or f.name.startswith("._"))
+        #     )
+        card_files = get_non_dot_card_files(output_path)
         card_files = sorted(card_files)
     except Exception as e:
         logging.error(f"Error while processing card files: {e}")
@@ -494,6 +493,55 @@ def delete_cards_in_directory(chunk_dir: Path):
     logging.info(f"Deleted images in {chunk_dir}")
 
 
+
+
+
+def get_non_dot_card_files(directory: Path):
+    """
+    Return a set of card files recursively starting in 'directory' matching any of the glob_patterns,
+    excluding files whose name starts with '.' or '._'.
+    """
+    matched_files = set()
+    for pattern in global_glob_pattern:
+        for f in directory.rglob(pattern):
+            if f.is_file() and not (f.name.startswith(".") or f.name.startswith("._")):
+                try:
+                    matched_files.add(f.resolve())
+                except Exception:
+                    matched_files.add(f)
+    return matched_files
+
+
+def get_count_of_non_dot_card_files(directory: Path):
+
+   return len(get_non_dot_card_files(directory))
+
+
+def expand_zip_files(file_list):
+    expanded_files = []
+    temp_dirs = []
+    for file_path in file_list:
+        if str(file_path).lower().endswith('.zip'):
+            temp_dir = tempfile.TemporaryDirectory()
+            temp_dirs.append(temp_dir)  # Keep reference to avoid premature cleanup
+            zip_base = Path(file_path).stem
+            with zipfile.ZipFile(file_path, 'r') as z:
+                for name in z.namelist():
+                    # Ignore macOS "._*" files and metadata
+                    if name.startswith("._") or name.startswith("__MACOSX") or name.startswith(".DS"):
+                        continue
+                    # Add zip file name as prefix to extracted file
+                    new_name = f"{zip_base}__{Path(name).name}"
+                    target_path = Path(temp_dir.name) / new_name
+                    with z.open(name) as src, open(target_path, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    expanded_files.append(target_path)
+            expanded_files.append(file_path)
+        else:
+            expanded_files.append(file_path)
+    return expanded_files, temp_dirs
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test file card generation and PDF assembly for various file types')
     parser.add_argument('--input-dir', help='Directory containing files to create cards for')
@@ -521,7 +569,7 @@ if __name__ == "__main__":
     files_from_list = None
     if args.file_list:
         if not os.path.isfile(args.file_list):
-            print(f"Error: {args.file_list} is not a file.")
+            logging.error(f"Error: {args.file_list} is not a file.")
             sys.exit(1)
         files_from_list = []
         try:
@@ -722,31 +770,31 @@ if __name__ == "__main__":
     # Report summary
     output_path = Path(args.output_dir)
     # Include chunk subdirectories when counting card files using the canonical glob patterns
-    matched = set()
-    for pattern in global_glob_pattern:
-        for p in output_path.rglob(pattern):
-            if p.is_file():
-                try:
-                    matched.add(p.resolve())
-                except Exception:
-                    matched.add(p)
-    card_files = sorted(matched)
+    # matched = set()
+    # for pattern in global_glob_pattern:
+    #     for p in output_path.rglob(pattern):
+    #         if p.is_file():
+    #             try:
+    #                 matched.add(p.resolve())
+    #             except Exception:
+    #                 matched.add(p)
+    #card_files = get_non_dot_card_files(output_path)
     logging.info(f"Summary +++++++++++++++++++++++++++++")
     logging.info(f"Output directory: {os.path.abspath(args.output_dir)}")
-    logging.info(f"Number of card files generated: {len(card_files)}")
-    if card_files:
-        #logging.info(f"Generated {len(card_files)} card files")
-        # Print in 3 columns
-        col_count = 3
-        names = [f.name for f in card_files]
-        max_len = max((len(name) for name in names), default=0)
-        term_width = shutil.get_terminal_size((120, 20)).columns
-        col_width = max_len + 2
-        cols = min(col_count, max(1, term_width // col_width))
-        rows = (len(names) + cols - 1) // cols
-        for row in range(rows):
-            line = "".join(names[row + rows * col].ljust(col_width) for col in range(cols) if row + rows * col < len(names))
-            #logging.info(line)
+    logging.info(f"Number of card files generated: {total_files_handled_count}")
+    # if card_files:
+    #     #logging.info(f"Generated {len(card_files)} card files")
+    #     # Print in 3 columns
+    #     col_count = 3
+    #     names = [f.name for f in card_files]
+    #     max_len = max((len(name) for name in names), default=0)
+    #     term_width = shutil.get_terminal_size((120, 20)).columns
+    #     col_width = max_len + 2
+    #     cols = min(col_count, max(1, term_width // col_width))
+    #     rows = (len(names) + cols - 1) // cols
+    #     for row in range(rows):
+    #         line = "".join(names[row + rows * col].ljust(col_width) for col in range(cols) if row + rows * col < len(names))
+    #         #logging.info(line)
 
     # Assemble cards into a PDF if requested
     if pdf_name:

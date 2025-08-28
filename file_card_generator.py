@@ -15,6 +15,9 @@ import textwrap
 import zipfile
 import bz2
 import gzip
+import textwrap
+from bs4 import BeautifulSoup
+
 try:
     from fitparse import FitFile
     FITPARSE_AVAILABLE = True
@@ -245,6 +248,26 @@ def get_file_hash(file_path, algorithm='md5', block_size=65536):
         for block in iter(lambda: f.read(block_size), b''):
             hash_obj.update(block)
     return hash_obj.hexdigest()[:10]  # First 10 chars for brevity
+
+
+def preview_html_content(file_path, max_lines=5, max_line_length=40):
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            html = f.read()
+        soup = BeautifulSoup(html, "html.parser")
+        text = soup.get_text(separator="\n")
+        lines = []
+        for i, line in enumerate(text.splitlines()):
+            if i >= max_lines:
+                break
+            wrapped = textwrap.wrap(line.strip(), width=max_line_length)
+            if not wrapped:
+                lines.append('')
+            else:
+                lines.extend(wrapped)
+        return lines
+    except Exception:
+        return None
 
 def preview_text_content(file_path, max_lines=5, max_line_length=40):
     """Get a preview of text content if the file is text-based, wrapping long lines."""
@@ -563,8 +586,10 @@ def get_pdf_preview(file_path, box_w, box_h):
                         orientations.append(False)
 
                 # Keep the configuration with the highest total used thumbnail area
-                if total_used_area > best_score:
-                    best_score = total_used_area
+                score = total_used_area + n_pages * 10000  # Bonus: 10,000 per page shown
+
+                if score > best_score:
+                    best_score = score
                     best_config = {
                         'indices': indices,
                         'rows': rows,
@@ -1051,7 +1076,10 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     
     file_info = {}
     file_path = Path(file_path)
-
+    # ignore "._*" ".DS_Store" files
+    if file_path.name.startswith("._") or file_path.name == ".DS_Store":
+        logging.info(f"Ignoring file: {file_path.name}")
+        return None
     # Proportional scaling
     base_width = 800
     base_height = 1000
@@ -1201,14 +1229,14 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                                 except Exception:
                                     slack_shared_date = str(ts)
                             # Resolve avatar from local 'avatars' directory
-                            avatars_dir = slack_data_root.parent / "avatars_40x40"
+                            avatars_dir = slack_data_root.parent / "avatars"
                             #logging.debug(f"Looking for avatars in: {avatars_dir}")
                             if slack_user_id and avatars_dir.exists():
                                 avatar_path = avatars_dir / f"{slack_user_id}.jpg"
                                 #logging.debug(f"Checking avatar path: {avatar_path}")
                                 if avatar_path.exists():
                                     slack_avatar = str(avatar_path)
-                                    #logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
+                            #logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
                             # Resolve user name from users.json
                             if users_json.exists() and slack_user_id:
                                 try:
@@ -1786,8 +1814,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     # icon_color = file_type_info['color'] if rgb_mode else color
     # draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
     # y = icon_y + 60
-    avatar_size = int(100 * scale)
+    avatar_size = int(120 * scale)
     avatar_img = None
+
     if slack_avatar:
         try:
             #logging.debug(f"Loading avatar from: {slack_avatar}")
@@ -1802,7 +1831,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             avatar_img = None
     
     avatar_y_coordinate = int(outer_padding + header_height + 5 * scale)
-    avatar_x_coordinate = int(outer_padding + 60 * scale)  # 15px from left border, scaled
+    avatar_x_coordinate = int(outer_padding + 20 * scale)  # 20px from left border, scaled
     if avatar_img is not None:
         try:
             # Position avatar relative to the left border (outer_padding)
