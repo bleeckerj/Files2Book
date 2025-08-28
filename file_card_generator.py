@@ -561,8 +561,10 @@ def get_pdf_preview(file_path, box_w, box_h):
                         orientations.append(False)
 
                 # Keep the configuration with the highest total used thumbnail area
-                if total_used_area > best_score:
-                    best_score = total_used_area
+                score = total_used_area + n_pages * 10000  # Bonus: 10,000 per page shown
+
+                if score > best_score:
+                    best_score = score
                     best_config = {
                         'indices': indices,
                         'rows': rows,

@@ -159,7 +159,7 @@ def _process_file_iterable(
                     else:
                         output_file = output_path / f"{total_files_handled_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
                     save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
-                    total_files_handled_count = get_count_of_non_dot_card_files(chunk_dir.parent) if cards_per_chunk and cards_per_chunk > 0 else total_files_handled_count + 1
+                    total_files_handled_count += 1
                     logging.info(f"Saved card to {output_file}")
                     current_chunk_file_count = get_count_of_non_dot_card_files(chunk_dir)
                     # Count unique files in the chunk directory to avoid double-counting overlapping glob patterns
@@ -188,7 +188,7 @@ def _process_file_iterable(
                     output_file = output_path / f"{current_chunk_file_count:04d}_{file_path.stem}_card.tiff"
                 save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
                 logging.debug(f"Saved card to {output_file} with size: {card_size}")
-                total_files_handled_count = get_count_of_non_dot_card_files(chunk_dir.parent) if cards_per_chunk and cards_per_chunk > 0 else total_files_handled_count + 1
+                total_files_handled_count += 1
                 current_chunk_file_count = get_count_of_non_dot_card_files(chunk_dir)
                 # Count unique files in the chunk directory to avoid double-counting overlapping glob patterns
 
