@@ -81,6 +81,25 @@ except ImportError:
     FONTTOOLS_AVAILABLE = False
     logging.warning("fontTools not available. Font metadata will be limited.")
 
+
+def wrap_text_by_pixel(draw, text, font, max_width):
+    words = text.split()
+    lines = []
+    current_line = ""
+    for word in words:
+        test_line = current_line + (" " if current_line else "") + word
+        bbox = draw.textbbox((0, 0), test_line, font=font)
+        line_width = bbox[2] - bbox[0]
+        if line_width <= max_width:
+            current_line = test_line
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+    return lines
+
 def round_image_corners(img, radius):
     # Ensure img is RGBA
     img = img.convert("RGBA")
@@ -1177,6 +1196,12 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         modified_time = 0
         created_time = 0
 
+    ##
+    ##
+    ## START OF SLACK METADATA EXTRACTION
+    ## FOR THE CASE WHERE metadata IS NONE
+    ##
+    ##
     # if metadata is not None, then skip all of this slack stuff..
     # Eventually, it's going to get torn out..
     if metadata is None:
@@ -1948,14 +1973,17 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         y = outer_padding + header_height + metadata_top_margin + metadata_height + y_offset
     else:
         for key, value in file_info.items():
-            if key == 'Name' or key == 'Filepath':
-                logging.debug(f"Drawing metadata line: {key}: {value}")
-                logging.debug(f"File is {file_path.name}")
+            if key == 'Name' or key == 'Filepath' or key == 'filepath' or key == 'created':
+                #logging.info(f"Drawing metadata line: {key}: {value}")
+                #logging.info(f"File is {file_path.name}")
                 line = f"{value}"
             else:
                 line = f"{key}: {value}"
-            draw.text((width//2, y), line, fill=text_black, font=info_font, anchor="mm")
-            y += metadata_line_height
+            # Wrap the line to fit within the content area width
+            wrapped_lines = wrap_text_by_pixel(draw, line, info_font, content_area_width_for_wrap)
+            for wrapped_line in wrapped_lines:
+                draw.text((outer_padding, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
+                y += metadata_line_height
 
     # Make sure the preview area starts below the last metadata line
     preview_box_top = max(preview_box_top, int(y + spacing_between_metadata_and_content_preview))
