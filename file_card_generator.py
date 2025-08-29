@@ -96,7 +96,29 @@ def wrap_text_by_pixel(draw, text, font, max_width):
         else:
             if current_line:
                 lines.append(current_line)
-            current_line = word
+            # If the word itself is too long, break it up
+            while True:
+                word_bbox = draw.textbbox((0, 0), word, font=font)
+                word_width = word_bbox[2] - word_bbox[0]
+                if word_width <= max_width:
+                    current_line = word
+                    break
+                # Find the largest substring of word that fits
+                for i in range(len(word), 0, -1):
+                    part = word[:i]
+                    part_bbox = draw.textbbox((0, 0), part, font=font)
+                    part_width = part_bbox[2] - part_bbox[0]
+                    if part_width <= max_width:
+                        lines.append(part)
+                        word = word[i:]
+                        break
+                else:
+                    # If no part fits (very small max_width), forcibly break one character
+                    lines.append(word[0])
+                    word = word[1:]
+                if not word:
+                    current_line = ""
+                    break
     if current_line:
         lines.append(current_line)
     return lines
@@ -2114,13 +2136,20 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 cards.append(frame_img)
             return cards
     elif image_thumb is not None:
-        img_w, img_h = image_thumb.size
+        ###
+        ### HERE WE PASTE THE IMAGE THUMBNAIL
+        ###
+        
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
+        
+        image_thumb = ImageOps.contain(image_thumb, (box_w, box_h), Image.LANCZOS)
+        img_w, img_h = image_thumb.size
+        
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
         logging.debug(f"Pasting image thumbnail at: x={x0}, y={y0}, size={img_w}x{img_h}")
-        image_thumb = ImageOps.contain(image_thumb, (box_w, box_h), Image.LANCZOS)
+        
         img.paste(image_thumb, (int(x0), int(y0)))
     elif fit_gps_thumb is not None:
         img_w, img_h = fit_gps_thumb.size
