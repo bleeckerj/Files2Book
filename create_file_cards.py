@@ -119,26 +119,29 @@ def _process_file_iterable(
         chunk_dir.mkdir(exist_ok=True, parents=True)
     else:
         chunk_dir = output_path
-    
+
+    files_to_process = []
     # Pre-count valid files
     for p in file_iterable:
-        pth = Path(p)
+        # its either filepath, or file in the thing or we end up skipping
+        pth = Path(p['filepath'] if isinstance(p, dict) and 'filepath' in p else p['file'] if isinstance(p, dict) and 'file' in p else p)
         if pth.is_file():
             total_files_to_process_count += 1
+            files_to_process.append(p)
+        else:
+            logging.debug(f"Skipping non-file entry: {pth}")
 
     logging.info(f"Total files to process: {total_files_to_process_count}")
 
     # Iterate again for actual processing
-    for file_path in file_iterable:
-        file_path = Path(file_path)
-        if not file_path.is_file():
-            logging.debug(f"Skipping non-file entry: {file_path}")
-            continue
+    for p in files_to_process:
+        file_path = Path(p['filepath'] if isinstance(p, dict) and 'filepath' in p else p['file'] if isinstance(p, dict) and 'file' in p else p)
         try:
-            
             file_type = determine_file_type(file_path)
             logging.debug(f"Processing {file_path.name} - Type: {file_type}")
 
+            metadata = p.get('metadata') if isinstance(p, dict) and 'metadata' in p else None
+            title = metadata['title'] if metadata and 'title' in metadata else file_path.stem
             card = create_file_info_card(
                 file_path,
                 width=width,
@@ -148,7 +151,9 @@ def _process_file_iterable(
                 border_color=border_color,
                 border_inch_width=border_inch_width,
                 include_video_frames=include_video_frames,
-                metadata_text=metadata_text
+                metadata_text=metadata_text,
+                metadata=metadata,
+                title=title
             )
             
             if card is None:
@@ -288,29 +293,28 @@ def build_file_cards_from_list(
 
     width, height = parse_page_size(page_size)
 
+    ########
+    # This seems to already have been done by the time we get here
+    ########
     # Normalize file_list to a list of file paths and optional metadata
-    normalized_files = []
-    if file_list and isinstance(file_list[0], dict):
-        logging.info("Detected list of dicts with 'filepath' and optional 'metadata' and optional 'timestamp'")
-        # List of dicts: extract 'filepath' and 'metadata'
-        for entry in file_list:
-            fp = entry.get('filepath') or entry.get('path') or entry.get('file')
-            meta = entry.get('metadata', metadata_text)
-            ts = entry.get('timestamp')
-            if fp:
-                normalized_files.append({'filepath': fp, 'metadata': meta})
-    else:
-        # Flat list: just file paths
-        for fp in file_list:
-            normalized_files.append({'filepath': fp, 'metadata': metadata_text})
+    # normalized_filepaths_and_metadata = []
+    # if file_list and isinstance(file_list[0], dict):
+    #     logging.info("Detected list of dicts with 'filepath' and optional 'metadata' and optional 'timestamp'")
+    #     # List of dicts: extract 'filepath'
+    #     for entry in file_list:
+    #         fp = entry.get('filepath') or entry.get('path') or entry.get('file')
+    #         if fp:
+    #             normalized_filepaths_and_metadata.append({'filepath': fp, 'metadata': entry.get('metadata') if 'metadata' in entry else None})
+    # else:
+    #     # Flat list: just file paths
+    #     for fp in file_list:
+    #         normalized_filepaths_and_metadata.append({'filepath': fp})
 
-    # Expand zip files, preserving metadata if present
-    expanded_files = []
+    # Expand zip files
+    zip_expanded_files_list = []
     temp_dirs = []
-    for entry in normalized_files:
+    for entry in file_list:
         fp = entry['filepath']
-        meta = entry['metadata']
-        ts = entry.get('timestamp')
         if str(fp).lower().endswith('.zip'):
             temp_dir = tempfile.TemporaryDirectory()
             temp_dirs.append(temp_dir)
@@ -323,20 +327,17 @@ def build_file_cards_from_list(
                     target_path = Path(temp_dir.name) / new_name
                     with z.open(name) as src, open(target_path, "wb") as dst:
                         shutil.copyfileobj(src, dst)
-                    expanded_files.append({'filepath': target_path, 'metadata': meta})
-            expanded_files.append({'filepath': fp, 'metadata': meta})
+                    zip_expanded_files_list.append({'filepath': target_path, 'metadata': {'Zip File':zip_base}})
+            zip_expanded_files_list.append({'filepath': fp})
         else:
-            expanded_files.append({'filepath': fp, 'metadata': meta, 'timestamp': ts})
+            zip_expanded_files_list.append(entry)
 
     # Prepare iterable of file paths for _process_file_iterable
-    file_paths = [entry['filepath'] for entry in expanded_files]
+    final_file_list = [entry for entry in zip_expanded_files_list]
     
     
-    # If any entry has custom metadata, pass it to _process_file_iterable (only one value supported)
-    # If you want per-file metadata, _process_file_iterable must be updated to support it.
-
     _process_file_iterable(
-        file_paths,
+        final_file_list,
         output_path=output_path,
         width=width,
         height=height,
@@ -631,8 +632,10 @@ if __name__ == "__main__":
                         if isinstance(data, list):
                             for elem in data:
                                 fp = None
+                                metadata = None
                                 if isinstance(elem, dict):
                                     fp = elem.get('filepath') or elem.get('path') or elem.get('file')
+                                    metadata = elem.get('metadata')
                                 elif isinstance(elem, str):
                                     fp = elem
                                 if not fp:
@@ -644,7 +647,7 @@ if __name__ == "__main__":
                                 if not os.path.isabs(fp_str):
                                     base_dir = args.input_dir if getattr(args, 'input_dir', None) else os.getcwd()
                                     fp_str = os.path.join(base_dir, fp_str)
-                                entry = os.path.abspath(fp_str)
+                                entry = {"filepath": fp_str, "metadata": metadata}
                                 files_from_list.append(entry)
                 except Exception as e:
                      logging.error(f"Error reading JSON file list {args.file_list}: {e}")
@@ -764,9 +767,9 @@ if __name__ == "__main__":
             logging.info(f"No PDF output name provided, using default: {pdf_name}")
         elif args.pdf_output_name.endswith('.pdf'):
             tmp_name = args.pdf_output_name.rsplit('.', 1)[0]
-            pdf_name = f"{tmp_name}_combined_{args.page_size}"
+            pdf_name = f"{tmp_name}_combined_{args.page_size}.pdf"
         else:
-            pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}"
+            pdf_name = f"{args.pdf_output_name}_combined_{args.page_size}.pdf"
 
     if pdf_name:
         pdf_path = str(output_path_obj / pdf_name)

@@ -1070,11 +1070,19 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None, title=None):
+def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None, title=None, metadata=None):
     #logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
     #logging.debug(f"File path: {file_path}, exclude_file_path={exclude_file_path}, border_color={border_color}, border_inch_width={border_inch_width}, include_video_frames={include_video_frames}, metadata_text={metadata_text}")
     original_dt = None
+    
     file_info = {}
+    ###
+    ### Metadata extraction
+    ### Push metadata to file_info to get it to render out for the card
+    ###
+    if metadata is not None and isinstance(metadata, dict):
+        file_info.update(metadata)
+        
     file_path = Path(file_path)
     # ignore "._*" ".DS_Store" files
     if file_path.name.startswith("._") or file_path.name == ".DS_Store":
