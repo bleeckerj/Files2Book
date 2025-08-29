@@ -17,6 +17,7 @@ import bz2
 import gzip
 import textwrap
 from bs4 import BeautifulSoup
+from qr_code_generator import create_qr_code
 
 try:
     from fitparse import FitFile
@@ -1160,11 +1161,11 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     preview_font_size = int(12 * scale)
     fit_font_size = int(15 * scale)
     # Proportional paddings (keeping the original border_width value)
-    icon_space = int((100 + 40) * scale)
+    icon_space = int((30) * scale)
     metadata_line_height = int(info_font_size * 1.02)  # Tighter line spacing for metadata
-    spacing_between_metadata_and_content_preview = int(20 * scale)
+    spacing_between_metadata_and_content_preview = int(icon_space * scale)
     preview_box_padding = int(2 * scale)
-    header_height = int(20 * scale)
+    header_height = int(15 * scale)
 
     # Add a margin between the header/title and the metadata box
     metadata_top_margin = int(12 * scale)
@@ -1358,7 +1359,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     ##
     ##
-    ## END IF NO METADATA
+    ## END OF NO METADATA
     ##
     ##
     
@@ -1453,20 +1454,6 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     video_frames = []
     video_frame_thumbs = []
 
-    # --- Preview logic by file type ---
-    preview_lines = []
-    fit_meta = {}
-    image_thumb = None
-    pdf_grid_thumb = None
-    gpx_thumb = None
-    video_thumb = None
-    fit_gps_thumb = None
-    zip_file_list = None
-    zip_file_preview_img = None
-    zip_file_preview_lines = None
-    video_frames = []
-    video_frame_thumbs = []
-
     if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp'}:
         image = get_image_thumbnail(
             file_path,
@@ -1485,15 +1472,17 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
 
             # Scale to fit preview area
-            scale_factor = min(
-                (max_line_width_pixels) / img_w,
-                (preview_box_height) / img_h
-            ) * 0.95
-            logging.debug(f"Scaling image by factor {scale_factor:.3f} for {file_path.name}")
-            new_w = int(img_w * scale_factor)
-            new_h = int(img_h * scale_factor)
-            image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
-            logging.debug(f"Final image_thumb size: {new_w}x{new_h} for {file_path.name}")
+            # scale_factor = min(
+            #     (max_line_width_pixels) / img_w,
+            #     (preview_box_height) / img_h
+            # ) * 0.95
+            # logging.debug(f"Scaling image by factor {scale_factor:.3f} for {file_path.name}")
+            # new_w = int(img_w * scale_factor)
+            # new_h = int(img_h * scale_factor)
+            
+            image_thumb = ImageOps.contain(image, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
+            
+            #logging.debug(f"Final image_thumb size: {new_w}x{new_h} for {file_path.name}")
     elif ext in {'.heic', '.heif'}:
         image = get_heif_image(file_path)
         if image is not None:
@@ -1501,13 +1490,14 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             if width < height and img_w > img_h:
                 image = image.rotate(90, expand=True)
                 img_w, img_h = image.size
-            scale_factor = min(
-                (max_line_width_pixels) / img_w,
-                (preview_box_height) / img_h
-            ) * 0.95
-            new_w = int(img_w * scale_factor)
-            new_h = int(img_h * scale_factor)
-            image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
+            # scale_factor = min(
+            #     (max_line_width_pixels) / img_w,
+            #     (preview_box_height) / img_h
+            # ) * 0.95
+            # new_w = int(img_w * scale_factor)
+            # new_h = int(img_h * scale_factor)
+            # image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
+            image_thumb = ImageOps.contain(image, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
     elif ext == '.numbers':
         try:
             with zipfile.ZipFile(file_path, 'r') as z:
@@ -1859,7 +1849,15 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     avatar_size = int(120 * scale)
     avatar_img = None
 
-    if 'slack_avatar' in locals() and slack_avatar:
+    qr_avatar_data = metadata.get('qr_data') if metadata else None
+    if qr_avatar_data:
+        try:
+            avatar_img = create_qr_code(qr_avatar_data, box_size=5, border=4)
+            avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+
+        except Exception as e:
+            logging.error(f"Error processing QR avatar image: {e}")
+    elif 'slack_avatar' in locals() and slack_avatar:
         try:
             #logging.debug(f"Loading avatar from: {slack_avatar}")
             avatar_img = Image.open(slack_avatar).convert('RGB')
@@ -1883,8 +1881,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             avatar_img = None
 
     avatar_y_coordinate = int(outer_padding + header_height + 5 * scale)
-    avatar_x_coordinate = int(outer_padding + 20 * scale)  # 20px from left border, scaled
-    
+    avatar_x_coordinate = int(outer_padding + 0 * scale)  # 1px from left border, scaled
+
     if avatar_img is not None:
         try:
             # Position avatar relative to the left border (outer_padding)
@@ -1972,17 +1970,22 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         )
         y = outer_padding + header_height + metadata_top_margin + metadata_height + y_offset
     else:
+        ################################
+        ##                            ##
+        ## HERE WE DRAW METADATA TEXT ##
+        ##                            ##
+        ################################
         for key, value in file_info.items():
-            if key == 'Name' or key == 'Filepath' or key == 'filepath' or key == 'created':
-                #logging.info(f"Drawing metadata line: {key}: {value}")
-                #logging.info(f"File is {file_path.name}")
+            if key.lower() == 'qr_data':
+                continue  # Skip QR data in metadata display
+            if key.lower() == 'name' or key.lower() == 'filename' or key.lower() == 'filepath' or key.lower() == 'created':
                 line = f"{value}"
             else:
                 line = f"{key}: {value}"
             # Wrap the line to fit within the content area width
-            wrapped_lines = wrap_text_by_pixel(draw, line, info_font, content_area_width_for_wrap)
+            wrapped_lines = wrap_text_by_pixel(draw, line, info_font, content_area_width_for_wrap - avatar_size)
             for wrapped_line in wrapped_lines:
-                draw.text((outer_padding, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
+                draw.text((avatar_x_coordinate +avatar_size + meta_pad, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
                 y += metadata_line_height
 
     # Make sure the preview area starts below the last metadata line
@@ -2117,6 +2120,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
         logging.debug(f"Pasting image thumbnail at: x={x0}, y={y0}, size={img_w}x{img_h}")
+        image_thumb = ImageOps.contain(image_thumb, (box_w, box_h), Image.LANCZOS)
         img.paste(image_thumb, (int(x0), int(y0)))
     elif fit_gps_thumb is not None:
         img_w, img_h = fit_gps_thumb.size
