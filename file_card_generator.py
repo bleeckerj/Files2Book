@@ -15,7 +15,6 @@ import textwrap
 import zipfile
 import bz2
 import gzip
-import textwrap
 from bs4 import BeautifulSoup
 from qr_code_generator import create_qr_code
 
@@ -84,6 +83,8 @@ except ImportError:
 
 
 def wrap_text_by_pixel(draw, text, font, max_width):
+    if text == "":
+        return [""]
     words = text.split()
     lines = []
     current_line = ""
@@ -219,7 +220,7 @@ FILE_TYPE_GROUPS = {
     'image': {
         'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp'},
         'icon': "IMAGE",
-        'color': (0, 244, 240)  # HEX: 00f4f0
+        'color': (0, 136, 255)  # HEX: 0088FF
     },
     'cad': {
         'extensions': {'.stp', '.step', '.igs', '.iges', '.stl', '.dxf', '.obj'},
@@ -227,6 +228,8 @@ FILE_TYPE_GROUPS = {
         'color': (45, 150, 230)  # HEX: 2D96E6
     }
 }
+
+SPECIAL_METADATA_DIRECT_VALUE_KEYS = {"name", "filename", "filepath", "created"}
 
 def scale_image_by_percent(image, percent):
     """Scale a PIL image by a given percentage (e.g., percent=0.95 for 95%)."""
@@ -752,6 +755,7 @@ def get_font_preview(file_path, box_w, box_h):
         numbers = "0123456789"
         special_chars = "!@#$%^&*()_+-=[]{}|;:'\",.<>/?"
         
+        # Font sizes to display
         # Font sizes to display
         sizes = [36, 48, 64, 72]
         
@@ -1857,17 +1861,27 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=file_type_info['color'])
         text_color = 'white'
     else:
-        draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=color)
+        draw.rounded_rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height+10], 5, fill=color)
         text_color = (0, 0, 0, 0)
     # Position the file name vertically centered in the header area, accounting for outer padding
-    header_text = title.upper() if title is not None else file_path.name.upper()
-    draw.text((width//2, outer_padding + header_height//2), header_text, fill=text_color, font=title_font, anchor="mm")
-    # draw.text((width//2, outer_padding + header_height//2), file_path.name.upper(), fill=text_color, font=title_font, anchor="mm")
-    # Position the icon below the header, accounting for outer padding
-    # icon_y = outer_padding + header_height + int(20 * scale)
-    # icon_color = file_type_info['color'] if rgb_mode else color
-    # draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
-    # y = icon_y + 60
+    header_text = (
+        file_info.get("_title", None) if file_info.get("_title") is not None
+        else title if title is not None
+        else file_path.name.upper()
+    )
+    rect_top = outer_padding
+    rect_bottom = outer_padding + header_height  # or outer_padding + header_height + 10 if you added 10
+    rect_height = rect_bottom - rect_top
+
+    # Get text size
+    text_bbox = draw.textbbox((0, 0), header_text, font=title_font)
+    text_height = text_bbox[3] - text_bbox[1]
+
+    # Calculate vertical center
+    center_y = rect_top + (rect_height - text_height) // 2
+
+    
+    draw.text((width // 2, center_y + 20), header_text, fill=text_color, font=title_font, anchor="mm")    # 
     avatar_size = int(120 * scale)
     avatar_img = None
 
@@ -2000,15 +2014,26 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         for key, value in file_info.items():
             if key.lower() == 'qr_data':
                 continue  # Skip QR data in metadata display
+            if key.lower() == '_title':
+                continue # Skip _title as it's shown in header
             if key.lower() == 'name' or key.lower() == 'filename' or key.lower() == 'filepath' or key.lower() == 'created':
                 line = f"{value}"
+            elif key.lower() == '_blank':
+                line = ""
+            elif key.startswith('_'):
+                line = f"{value}"
+
             else:
                 line = f"{key}: {value}"
             # Wrap the line to fit within the content area width
             wrapped_lines = wrap_text_by_pixel(draw, line, info_font, content_area_width_for_wrap - avatar_size)
             for wrapped_line in wrapped_lines:
-                draw.text((avatar_x_coordinate +avatar_size + meta_pad, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
-                y += metadata_line_height
+                if avatar_img is not None and y < (avatar_y_coordinate + avatar_size):
+                    draw.text((avatar_x_coordinate + avatar_size + meta_pad, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
+                    y += metadata_line_height
+                else:
+                    draw.text((outer_padding, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
+                    y += metadata_line_height
 
     # Make sure the preview area starts below the last metadata line
     preview_box_top = max(preview_box_top, int(y + spacing_between_metadata_and_content_preview))

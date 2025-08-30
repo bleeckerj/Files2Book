@@ -25,9 +25,10 @@ def process_json_file(json_path):
     return {
         "filepath": data.get("image_path"),
         "metadata": {
-            "prompt": extract_prompt(data.get("content", "")),
-            "created": created_fmt,
-            "filename": data.get("downloaded_filename"),
+            "_prompt": extract_prompt(data.get("content", "")),
+            "_created": created_fmt,
+            "_title": created_fmt,
+            "_filename": data.get("downloaded_filename"),
             "qr_data": data.get("full_path")
         }
     }
