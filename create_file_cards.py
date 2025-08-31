@@ -99,6 +99,7 @@ def _process_file_iterable(
     border_color=(250, 250, 250),
     border_inch_width: float = 0.125,
     include_video_frames: bool = False,
+    min_video_frames: int = 30,
     metadata_text=None,
     cards_per_chunk: int = 0,
     pdf_name=None,
@@ -152,6 +153,7 @@ def _process_file_iterable(
                 border_color=border_color,
                 border_inch_width=border_inch_width,
                 include_video_frames=include_video_frames,
+                min_video_frames=args.min_video_frames,
                 metadata_text=metadata_text,
                 metadata=metadata,
                 title=title
@@ -262,7 +264,7 @@ def find_files(root_dir, max_depth=None):
         if max_depth is not None and current_depth >= max_depth:
             dirnames[:] = []
         for filename in filenames:
-            if filename != '.DS_Store':
+            if not filename.startswith('.'):
                 result.append(Path(dirpath) / filename)
     return result
 
@@ -275,6 +277,7 @@ def build_file_cards_from_list(
     border_color=(250, 250, 250),
     border_inch_width=0.125,
     include_video_frames=False,
+    min_video_frames=30,
     metadata_text=None,
     cards_per_chunk=0,
     pdf_name=None,
@@ -326,8 +329,11 @@ def build_file_cards_from_list(
                         continue
                     new_name = f"{zip_base}__{Path(name).name}"
                     target_path = Path(temp_dir.name) / new_name
-                    with z.open(name) as src, open(target_path, "wb") as dst:
-                        shutil.copyfileobj(src, dst)
+                    try:
+                        with z.open(name) as src, open(target_path, "wb") as dst:
+                            shutil.copyfileobj(src, dst)
+                    except Exception as e:
+                        logging.error(f"Error extracting {name} from zip {fp}: {e}")
                     zip_expanded_files_list.append({'filepath': target_path, 'metadata': {'Zip File':zip_base}})
             zip_expanded_files_list.append({'filepath': fp})
         else:
@@ -347,6 +353,7 @@ def build_file_cards_from_list(
         border_color=border_color,
         border_inch_width=border_inch_width,
         include_video_frames=include_video_frames,
+        min_video_frames=min_video_frames,
         metadata_text=metadata_text,
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
@@ -364,6 +371,7 @@ def build_file_cards_from_directory(
     border_color=(250, 250, 250),
     border_inch_width=0.125,
     include_video_frames=False,
+    min_video_frames=30,
     max_depth=0,  # 0 = no recursion; negative => unlimited
     metadata_text=None,
     cards_per_chunk=0,
@@ -420,6 +428,7 @@ def build_file_cards_from_directory(
         border_color=border_color,
         border_inch_width=border_inch_width,
         include_video_frames=include_video_frames,
+        min_video_frames=args.min_video_frames,
         metadata_text=metadata_text,
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
@@ -605,10 +614,11 @@ if __name__ == "__main__":
     parser.add_argument('--border-color', default='250,250,250', help='Border color for the cards in RGB format (default: 250,250,250)')
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
     parser.add_argument('--include-video-frames', default=False, action='store_true', help='Also output individual video frames as cards (default: overview only)')
+    parser.add_argument('--min-video-frames', type=int, default=30, help='Minimum number of video frames to include')
+
     parser.add_argument('--metadata-text', default=None, help='Custom metadata text to include on the card')
     parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
     parser.add_argument('--slack-data-root', help='Path to Slack export root (directory containing messages.json and files/). If provided, the script will treat input as Slack data and resolve relative filepaths accordingly.')
-
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
 

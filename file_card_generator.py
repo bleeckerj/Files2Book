@@ -1121,7 +1121,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None, title=None, metadata=None):
+def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, min_video_frames=30, metadata_text=None, title=None, metadata=None):
 
     original_dt = None
     
@@ -1135,8 +1135,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         
     file_path = Path(file_path)
     # ignore "._*" ".DS_Store" files
-    if file_path.name.startswith("._") or file_path.name == ".DS_Store":
-        logging.info(f"Ignoring file: {file_path.name}")
+    if file_path.name.startswith("._") or file_path.name.startswith(".") or file_path.name == ".DS_Store":
+        logging.info(f"Ignoring weird dot file: {file_path.name}")
         return None
     # Proportional scaling
     base_width = 800
@@ -1194,7 +1194,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     icon_space = int((30) * scale)
     metadata_line_height = int(info_font_size * 1.05)  # Tighter line spacing for metadata
     spacing_between_metadata_and_content_preview = int(icon_space * scale)
-    preview_box_padding = int(2 * scale)
+    preview_box_padding = int(10 * scale)
     header_height = int(25 * scale)
 
     # Add a margin between the header/title and the metadata box
@@ -1386,6 +1386,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         # Move Name to the end
         if not exclude_file_path:
             file_info['Filepath'] = "/".join(Path(file_path).parts[-3:])
+            #file_info['Filepath'] = str(file_path)
 
     ##
     ##
@@ -1476,7 +1477,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     image_thumb = None
     pdf_grid_thumb = None
     gpx_thumb = None
-    video_thumb = None
+    #video_thumb = None
+    video_thumb_grid = None
     fit_gps_thumb = None
     zip_file_list = None
     zip_file_preview_img = None
@@ -1612,41 +1614,74 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             preview_lines = [f"PDF error: {e}"]
     elif ext in {'.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm'}:
         # Dynamically determine grid size based on video length
-        def get_video_grid_size(file_path):
-            try:
-                import cv2
-                cap = cv2.VideoCapture(str(file_path))
-                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                cap.release()
-                # Use a matrix/function to scale grid size with video length
-                # Short videos: 3x3, Medium: 4x3, Long: 4x4, Very long: 5x4, etc.
-                if frame_count < 30:
-                    return 3, 3
-                elif frame_count < 900:
-                    return 4, 4
-                elif frame_count < 1800:
-                    return 4, 5
-                elif frame_count < 3600:
-                    return 4, 5
-                else:
-                    # For very long videos, cap at 4x6
-                    return 4, 5
-            except Exception:
-                return 3, 3
-        grid_cols, grid_rows = get_video_grid_size(file_path)
-        video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height, grid_cols=grid_cols, grid_rows=grid_rows)
-        video_frames = get_video_frames(file_path, max_frames=grid_cols * grid_rows)
-        video_frame_thumbs = []
-        for frame in video_frames:
-            scale_factor = min(
-                (max_line_width_pixels) / frame.width,
-                (preview_box_height) / frame.height
-            ) * 0.98
-            new_w = int(frame.width * scale_factor)
-            new_h = int(frame.height * scale_factor)
-            thumb = frame.resize((new_w, new_h), Image.LANCZOS)
-            video_frame_thumbs.append(thumb)
+        try:
+            import cv2
+            cap = cv2.VideoCapture(str(file_path))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            cap.release()
+            frames = get_video_frames(file_path, max_frames=min(min_video_frames, frame_count))
+            n_total = len(frames)
+            best_score = -1
+            best_grid = None
+            best_indices = None
 
+            min_thumb_area = int(0.005 * max_line_width_pixels * preview_box_height)  # 10% of preview area
+
+            for rows in range(1, n_total + 1):
+                cols = int(math.ceil(n_total / rows))
+                num_cells = rows * cols
+                thumb_w = max_line_width_pixels // cols
+                thumb_h = preview_box_height // rows
+                # Constraint: skip if thumbnail area is too small
+                # if thumb_w * thumb_h > min_thumb_area:
+                #     continue
+                indices = [int(i) for i in np.linspace(0, n_total - 1, num_cells)]
+                total_used_area = 0
+                for idx in indices:
+                    w, h = frames[idx].size
+                    scale = min(thumb_w / w, thumb_h / h)
+                    used_w = int(w * scale)
+                    used_h = int(h * scale)
+                    total_used_area += used_w * used_h
+                score = total_used_area
+                if score > best_score:
+                    best_score = score
+                    best_grid = (rows, cols, thumb_w, thumb_h)
+                    best_indices = indices
+            if best_grid is None:
+                logging.warning("No valid grid configuration found for frames. Skipping preview grid.")
+                return img  # or return None, or fallback to another preview
+
+
+            grid_rows, grid_cols, thumb_w, thumb_h = best_grid
+            selected_frames = [frames[idx] for idx in best_indices]
+            video_frame_thumbs = []
+            for frame in selected_frames:
+                thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
+                video_frame_thumbs.append(thumb)
+
+            grid_img = Image.new('RGBA', (max_line_width_pixels, preview_box_height), (255, 255, 255, 255))
+            for idx, thumb in enumerate(video_frame_thumbs):
+                x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                
+                if thumb.mode == "RGBA":
+                    grid_img.paste(thumb, (x, y), mask=thumb)
+                else:
+                    grid_img.paste(thumb, (x, y))
+
+            video_thumb_grid = grid_img.convert("RGB")
+            # Save the video grid image for debugging
+            try:
+                debug_out_dir = Path("./debug_video_cards_out")
+                debug_out_dir.mkdir(parents=True, exist_ok=True)
+                debug_out_path = debug_out_dir / f"{file_path.stem}_video_grid_debug.png"
+                video_thumb_grid.save(debug_out_path)
+                logging.info(f"Saved video grid debug image to {debug_out_path}")
+            except Exception as e:
+                logging.error(f"Error saving video grid debug image: {e}")
+        except Exception as e:
+            preview_lines = [f"Video error: {e}"]
     # Defer drawing to later section after header/metadata are drawn.
     elif ext == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
@@ -2005,7 +2040,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
-    y = avatar_y_coordinate + 5*scale # avatar and metadata can be horizontally aligned
+    y = avatar_y_coordinate + 12*scale # avatar and metadata can be horizontally aligned
     
     ########################################
     # DO NOT REMOVE THIS COMMENT EVER
@@ -2120,6 +2155,11 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     max_preview_lines = max(1, preview_box_height // line_height)
 
     y = preview_box_top
+    ###
+    ###
+    ### Here we draw the preview box
+    ###
+    ###
     draw.rectangle(
         [preview_box_left, preview_box_top, preview_box_right, preview_box_bottom],
         fill=preview_background_color,
@@ -2192,14 +2232,14 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
         img.paste(gpx_thumb, (int(x0), int(y0)))
-    elif video_thumb is not None:
+    elif video_thumb_grid is not None:
         # Paste the overview thumbnail into the preview area on the base card (which already has header+metadata)
-        img_w, img_h = video_thumb.size
+        img_w, img_h = video_thumb_grid.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        img.paste(video_thumb, (int(x0), int(y0)))
+        img.paste(video_thumb_grid, (int(x0), int(y0)))
 
         if video_frame_thumbs:
             dpi = 300
@@ -2540,6 +2580,7 @@ if __name__ == "__main__":
     parser.add_argument("--height", type=int, default=1000, help="Card height in pixels")
     parser.add_argument("--cmyk", action="store_true", help="Save cards in CMYK mode")
     parser.add_argument("--include-video-frames", action="store_true", help="If a video, include per-frame cards")
+    parser.add_argument("--min-video-frames", type=int, default=30, help="Minimum number of video frames to include should it come to that")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -2547,7 +2588,7 @@ if __name__ == "__main__":
 
     for fp in args.files:
         try:
-            cards = create_file_info_card(fp, width=args.width, height=args.height, cmyk_mode=args.cmyk, include_video_frames=args.include_video_frames)
+            cards = create_file_info_card(fp, width=args.width, height=args.height, cmyk_mode=args.cmyk, include_video_frames=args.include_video_frames, min_video_frames=args.min_video_frames)
             if isinstance(cards, list):
                 for idx, card in enumerate(cards):
                     out_path = out_dir / f"{Path(fp).stem}_{idx}.tiff"
