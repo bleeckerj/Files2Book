@@ -24,19 +24,20 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
 )
-# Import the file card generator
-IMAGE_EXTS = frozenset({'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'})
+
 total_files_handled_count = 0
-def is_valid_card_file(p: Path) -> bool:
-    """
-    Return True if p is a regular file (not a dotfile) and has a supported image extension.
-    """
-    if not isinstance(p, Path):
-        return False
-    name = p.name
-    if name.startswith(".") or name.startswith("._"):
-        return False
-    return p.is_file() and p.suffix.lower() in IMAGE_EXTS
+
+#IMAGE_EXTS = frozenset({'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'})
+# def is_valid_card_file(p: Path) -> bool:
+#     """
+#     Return True if p is a regular file (not a dotfile) and has a supported image extension.
+#     """
+#     if not isinstance(p, Path):
+#         return False
+#     name = p.name
+#     if name.startswith(".") or name.startswith("._"):
+#         return False
+#     return p.is_file() and p.suffix.lower() in IMAGE_EXTS
 
 from file_card_generator import create_file_info_card, determine_file_type, save_card_as_tiff
 import file_card_generator

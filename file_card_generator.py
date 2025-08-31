@@ -2,6 +2,7 @@ import os
 import time
 import re
 import bs4
+import pillow_heif
 import numpy as np
 from datetime import datetime
 import hashlib
@@ -218,9 +219,14 @@ FILE_TYPE_GROUPS = {
         'color': (42, 219, 61)  # HEX: 2adb3d
     },
     'image': {
-        'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp'},
+        'extensions': {'.jpg', '.jpeg', '.png','.bmp', '.tif', '.tiff', '.webp'},
         'icon': "IMAGE",
         'color': (0, 136, 255)  # HEX: 0088FF
+    },
+    'animated': {
+        'extensions': {'.gif'},
+        'icon': "ANIMATED",
+        'color': (227, 156, 224)  # HEX: e39ce0
     },
     'cad': {
         'extensions': {'.stp', '.step', '.igs', '.iges', '.stl', '.dxf', '.obj'},
@@ -419,7 +425,7 @@ def get_gz_preview(file_path, max_bytes=1024, preview_box=None):
         orig_name = Path(file_path).stem
         ext = Path(orig_name).suffix.lower()
         # Try image preview
-        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.heic', '.heif','.webp'} and preview_box:
+        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.heic', '.heif','.webp'} and preview_box:
             try:
                 img = Image.open(io.BytesIO(data))
                 img.thumbnail(preview_box)
@@ -567,7 +573,7 @@ def get_pdf_preview(file_path, box_w, box_h):
     try:
         # First, get the total number of pages
         from pdf2image import convert_from_path
-        import numpy as np
+        #import numpy as np
         #logging.debug(f"Attempting to extract PDF preview: {file_path}")
         all_pages = convert_from_path(str(file_path))
         n_total = len(all_pages)
@@ -901,7 +907,7 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=3, rotate_
             cap.release()
             return None
         # Select frames using a normal distribution (bell curve) centered in the video
-        import numpy as np
+        #import numpy as np
         num_frames = grid_cols * grid_rows
         mean = frame_count / 2
         stddev = frame_count / 4
@@ -976,7 +982,6 @@ def get_video_frames(file_path, max_frames=9, rotate_frames_if_portrait=True):
 
 # Check for pillow-heif availability
 try:
-    import pillow_heif
     PILLOW_HEIF_AVAILABLE = True
 except ImportError:
     PILLOW_HEIF_AVAILABLE = False
@@ -1117,8 +1122,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
 
 
 def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None, title=None, metadata=None):
-    #logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
-    #logging.debug(f"File path: {file_path}, exclude_file_path={exclude_file_path}, border_color={border_color}, border_inch_width={border_inch_width}, include_video_frames={include_video_frames}, metadata_text={metadata_text}")
+
     original_dt = None
     
     file_info = {}
@@ -1163,8 +1167,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         # For RGB mode, use standard black border
         draw.rectangle(
             [outer_padding, outer_padding, width - outer_padding - 1, height - outer_padding - 1],
-            outline=(0, 0, 0), 
-            width=border_width
+            outline=(255, 0, 0), 
+            width=0
         )
     else:
         # For CMYK mode, use solid black (K channel only at 100%) for maximum visibility
@@ -1188,10 +1192,10 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     fit_font_size = int(15 * scale)
     # Proportional paddings (keeping the original border_width value)
     icon_space = int((30) * scale)
-    metadata_line_height = int(info_font_size * 1.02)  # Tighter line spacing for metadata
+    metadata_line_height = int(info_font_size * 1.05)  # Tighter line spacing for metadata
     spacing_between_metadata_and_content_preview = int(icon_space * scale)
     preview_box_padding = int(2 * scale)
-    header_height = int(15 * scale)
+    header_height = int(25 * scale)
 
     # Add a margin between the header/title and the metadata box
     metadata_top_margin = int(12 * scale)
@@ -1210,7 +1214,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     file_type_info = get_file_type_info(file_path)
     logging.info(f"Processing {file_path.name} - Type: {file_type_info['group']}")
-    icon = file_type_info['icon']
+    #icon = file_type_info['icon']
     ext = file_path.suffix.lower()
 
 
@@ -1480,7 +1484,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     video_frames = []
     video_frame_thumbs = []
 
-    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp'}:
+    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}:
         image = get_image_thumbnail(
             file_path,
             box_size=(max_line_width_pixels, preview_box_height),
@@ -1496,19 +1500,71 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 image = image.rotate(90, expand=True)
                 img_w, img_h = image.size
                 logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
-
-            # Scale to fit preview area
-            # scale_factor = min(
-            #     (max_line_width_pixels) / img_w,
-            #     (preview_box_height) / img_h
-            # ) * 0.95
-            # logging.debug(f"Scaling image by factor {scale_factor:.3f} for {file_path.name}")
-            # new_w = int(img_w * scale_factor)
-            # new_h = int(img_h * scale_factor)
             
             image_thumb = ImageOps.contain(image, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
             
-            #logging.debug(f"Final image_thumb size: {new_w}x{new_h} for {file_path.name}")
+    elif ext in {'.gif'}:
+        try:
+            img = Image.open(file_path)
+            frames = []
+            # Extract all frames from the GIF
+            for frame_idx in range(img.n_frames):
+                img.seek(frame_idx)
+                frame = img.convert("RGBA")
+                frames.append(frame.copy())
+            # Determine grid size based on number of frames
+            n_total = len(frames)
+            best_score = -1
+            best_grid = None
+            best_indices = None
+
+            for rows in range(1, n_total + 1):
+                cols = int(math.ceil(n_total / rows))
+                num_cells = rows * cols
+                thumb_w = max_line_width_pixels // cols
+                thumb_h = preview_box_height // rows
+                # Select evenly spaced frames to fill the grid
+                indices = [int(i) for i in np.linspace(0, n_total - 1, num_cells)]
+                total_used_area = 0
+                for idx in indices:
+                    w, h = frames[idx].size
+                    scale = min(thumb_w / w, thumb_h / h)
+                    used_w = int(w * scale)
+                    used_h = int(h * scale)
+                    total_used_area += used_w * used_h
+                score = total_used_area
+                if score > best_score:
+                    best_score = score
+                    best_grid = (rows, cols, thumb_w, thumb_h)
+                    best_indices = indices
+
+            grid_rows, grid_cols, thumb_w, thumb_h = best_grid
+            selected_frames = [frames[idx] for idx in best_indices]
+            gif_frame_thumbs = []
+            for frame in selected_frames:
+                thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
+                gif_frame_thumbs.append(thumb)
+
+            grid_img = Image.new('RGBA', (max_line_width_pixels, preview_box_height), (245, 245, 245, 255))
+            for idx, thumb in enumerate(gif_frame_thumbs):
+                x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                grid_img.paste(thumb, (x, y), mask=thumb)
+
+            gif_thumb_grid = grid_img.convert("RGB")
+            # Save the GIF grid image for debugging
+            try:
+                debug_out_dir = Path("./debugif_cards_out")
+                debug_out_dir.mkdir(parents=True, exist_ok=True)
+                debug_out_path = debug_out_dir / f"{file_path.stem}_gif_grid_debug.png"
+                gif_thumb_grid.save(debug_out_path)
+                logging.info(f"Saved GIF grid debug image to {debug_out_path}")
+            except Exception as e:
+                logging.error(f"Error saving GIF grid debug image: {e}")
+            #image_thumb = img
+        except Exception as e:
+            preview_lines = [f"GIF error: {e}"]
+    
     elif ext in {'.heic', '.heif'}:
         image = get_heif_image(file_path)
         if image is not None:
@@ -1770,7 +1826,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 # Select images at evenly distributed intervals
                 indices = [0]
                 if n_preview > 1 and n_total > 1:
-                    import numpy as np
+                    #import numpy as np
                     remaining = np.linspace(1, n_total - 1, n_preview - 1)
                     indices += [int(round(i)) for i in remaining]
                 indices = sorted(set(indices))
@@ -1857,14 +1913,21 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         color = file_type_info['color']
     # We already set border_width earlier based on scale
     # Header within the content area
+    # This is where we draw the title
+        
+    ###
+    ###
+    ### HERE IS WHERE WE DRAW THE HEADER and HEADER TEXT
+    ###
+    ###
     if rgb_mode:
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=file_type_info['color'])
         text_color = 'white'
     else:
-        draw.rounded_rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height+10], 5, fill=color)
+        draw.rounded_rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], 5, fill=color)
         text_color = (0, 0, 0, 0)
     # Position the file name vertically centered in the header area, accounting for outer padding
-    header_text = (
+    title_text = (
         file_info.get("_title", None) if file_info.get("_title") is not None
         else title if title is not None
         else file_path.name.upper()
@@ -1874,14 +1937,30 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     rect_height = rect_bottom - rect_top
 
     # Get text size
-    text_bbox = draw.textbbox((0, 0), header_text, font=title_font)
+    text_bbox = draw.textbbox((0, 0), title_text, font=title_font)
     text_height = text_bbox[3] - text_bbox[1]
 
     # Calculate vertical center
-    center_y = rect_top + (rect_height - text_height) // 2
+    center_y = rect_top + (rect_height // 2)
+    
 
     
-    draw.text((width // 2, center_y + 20), header_text, fill=text_color, font=title_font, anchor="mm")    # 
+    # The coordinates passed to draw.text are interpreted according to the anchor parameter:
+    # - If anchor is not specified (or "lt"), (x, y) is the upper left corner of the text.
+    # - If anchor="mm", (x, y) is the center of the text.
+    # - Other anchor values change the reference point (e.g., "rm" is right-middle).
+    # By default, draw.text((x, y), ...) places the text with its upper left at (x, y).
+    draw.text((width // 2, center_y), title_text, fill=text_color, font=title_font, anchor="mm") 
+    ## was drawing a line to try and figure out why the text was not centering on the y axis.
+    # draw.line([(outer_padding, center_y), (width - outer_padding, center_y)], fill="red", width=2)
+    
+    
+    
+    ###
+    ###
+    ### HERE IS WHERE WE DRAW THE AVATAR THING
+    ###
+    ###
     avatar_size = int(120 * scale)
     avatar_img = None
 
@@ -2452,6 +2531,7 @@ def rgb_to_cmyk(r, g, b):
 if __name__ == "__main__":
     import argparse
     from pathlib import Path
+
 
     parser = argparse.ArgumentParser(description="Generate debug file cards for given files")
     parser.add_argument("files", nargs="+", help="One or more input files to generate cards for")
