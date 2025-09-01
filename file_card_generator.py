@@ -992,9 +992,9 @@ def get_video_frames_weighted(file_path, total_frames=24, rotate_frames_if_portr
             return []
 
         # Calculate how many frames for each segment
-        first_pct = 0.15
-        middle_pct = 0.70
-        last_pct = 0.15
+        first_pct = 0.05
+        middle_pct = 0.80
+        last_pct = 0.35
 
         first_n = max(1, int(total_frames * first_pct))
         middle_n = max(1, int(total_frames * middle_pct))
@@ -1682,12 +1682,25 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         # Dynamically determine grid size based on video length
         try:
             import cv2
+            # if the video frame sizes are the same aspect ratio
+            # as the page then set max_video_frames to 12
+            cap = cv2.VideoCapture(str(file_path))
+            ret, frame = cap.read()
+            cap.release()
+            if ret and frame is not None:
+                frame_h, frame_w = frame.shape[:2]
+                page_orientation = "portrait" if height > width else "landscape"
+                frame_orientation = "portrait" if frame_h > frame_w else "landscape"
+                if page_orientation == frame_orientation:
+                    local_max_video_frames = 12
+                else:
+                    local_max_video_frames = max_video_frames
             cap = cv2.VideoCapture(str(file_path))
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             cap.release()
             #video_frames = get_video_frames(file_path, total_frames=min(max_video_frames, frame_count))
-            video_frames = get_video_frames_weighted(file_path, total_frames=min(max_video_frames, frame_count))
-            total_frames=min(max_video_frames, frame_count)
+            video_frames = get_video_frames_weighted(file_path, total_frames=min(local_max_video_frames+2, frame_count))
+            total_frames=min(local_max_video_frames, frame_count)
             n_total = total_frames
             # initialize video_frames
             best_score = -1
@@ -1705,7 +1718,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 # Constraint: skip if thumbnail area is too small
                 # if thumb_w * thumb_h > min_thumb_area:
                 #     continue
-                indices = [int(i) for i in np.linspace(0, n_total - 1, num_cells)]
+                indices = [int(i) for i in np.linspace(0, n_total - 1, min(len(video_frames), num_cells))]
                 total_used_area = 0
                 for idx in indices:
                     w, h = video_frames[idx].size
@@ -1724,7 +1737,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
 
             grid_rows, grid_cols, thumb_w, thumb_h = best_grid
-            video_frames = get_video_frames(file_path, total_frames=num_cells)
+            video_frames = get_video_frames_weighted(file_path, total_frames=num_cells+1)
             selected_frames = [video_frames[idx] for idx in best_indices]
             video_frame_thumbs = []
             for frame in selected_frames:
