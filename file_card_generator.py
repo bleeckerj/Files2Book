@@ -226,7 +226,7 @@ FILE_TYPE_GROUPS = {
     'animated': {
         'extensions': {'.gif'},
         'icon': "ANIMATED",
-        'color': (227, 156, 224)  # HEX: e39ce0
+        'color': (255, 126, 54)  # HEX: ff7e36
     },
     'cad': {
         'extensions': {'.stp', '.step', '.igs', '.iges', '.stl', '.dxf', '.obj'},
@@ -949,9 +949,9 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=3, rotate_
     except Exception:
         return None
 
-def get_video_frames(file_path, max_frames=9, rotate_frames_if_portrait=True):
+def get_video_frames(file_path, total_frames=9, rotate_frames_if_portrait=True):
     """
-    Extracts up to max_frames from the video file and returns them as PIL Images.
+    Extracts up to total_frames from the video file and returns them as PIL Images.
     """
     try:
         cap = cv2.VideoCapture(str(file_path))
@@ -960,9 +960,9 @@ def get_video_frames(file_path, max_frames=9, rotate_frames_if_portrait=True):
             cap.release()
             return []
         # Evenly spaced frame indices
-        indices = [int(i) for i in np.linspace(0, frame_count - 1, max_frames)]
+        indices = [int(i) for i in np.linspace(0, frame_count - 1, total_frames)]
         frames = []
-        portrait_mode = False
+        #portrait_mode = False
         for idx in indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
@@ -978,6 +978,59 @@ def get_video_frames(file_path, max_frames=9, rotate_frames_if_portrait=True):
         return frames
     except Exception:
         logging.warning("Error extracting video frames", exc_info=True)
+        return []
+
+def get_video_frames_weighted(file_path, total_frames=24, rotate_frames_if_portrait=True):
+    """
+    Extracts frames from the video file with more frames from the middle 80%.
+    """
+    try:
+        cap = cv2.VideoCapture(str(file_path))
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_count == 0:
+            cap.release()
+            return []
+
+        # Calculate how many frames for each segment
+        first_pct = 0.15
+        middle_pct = 0.70
+        last_pct = 0.15
+
+        first_n = max(1, int(total_frames * first_pct))
+        middle_n = max(1, int(total_frames * middle_pct))
+        last_n = total_frames - first_n - middle_n
+
+        # Frame ranges
+        first_range = (0, int(frame_count * first_pct))
+        middle_range = (int(frame_count * first_pct), int(frame_count * (first_pct + middle_pct)))
+        last_range = (int(frame_count * (first_pct + middle_pct)), frame_count - 1)
+
+        indices = []
+        # First 10%
+        indices += [int(i) for i in np.linspace(first_range[0], first_range[1], first_n, endpoint=False)]
+        # Middle 80%
+        indices += [int(i) for i in np.linspace(middle_range[0], middle_range[1], middle_n, endpoint=False)]
+        # Last 10%
+        indices += [int(i) for i in np.linspace(last_range[0], last_range[1], last_n, endpoint=True)]
+
+        # Remove duplicates and sort
+        indices = sorted(set(indices))
+
+        frames = []
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(frame)
+            if rotate_frames_if_portrait and pil_img.width > pil_img.height:
+                pil_img = pil_img.rotate(90, expand=True)
+            frames.append(pil_img)
+        cap.release()
+        return frames
+    except Exception:
+        logging.warning("Error extracting weighted video frames", exc_info=True)
         return []
 
 # Check for pillow-heif availability
@@ -1121,7 +1174,7 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, min_video_frames=30, metadata_text=None, title=None, metadata=None):
+def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, max_video_frames=30, metadata_text=None, title=None, metadata=None):
 
     original_dt = None
     
@@ -1149,12 +1202,15 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     # Create the full-sized background image that is the canvas for the preview
     # Use non-alpha modes so downstream PDF assembly doesn't hit alpha issues
-    if cmyk_mode:
-        # Light background in CMYK
-        img = Image.new('CMYK', (width, height), rgb_to_cmyk(250, 250, 250))
-    else:
-        # Light background in RGB
-        img = Image.new('RGB', (width, height), (250, 250, 250))
+    try:
+        if cmyk_mode:
+            # Light background in CMYK
+            img = Image.new('CMYK', (width, height), rgb_to_cmyk(250, 250, 250))
+        else:
+            # Light background in RGB
+            img = Image.new('RGB', (width, height), (250, 250, 250))
+    except Exception as e:
+        logging.error(f"Error creating background image: {e}")
     draw = ImageDraw.Draw(img)
 
     # Draw the border around the content area
@@ -1276,9 +1332,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             except Exception:
                 channel_dir = slack_data_root
 
-            messages_json = slack_data_root / "messages.json"
-            users_json = parent / "users.json"
-            avatars_dir = slack_data_root.parent / "avatars_40x40"
+            messages_json = channel_dir / "messages.json"
+            users_json = slack_data_root / "users.json"
+            avatars_dir = slack_data_root / "avatars"
             #user_profile = None
             if messages_json.exists():
                 try:
@@ -1299,20 +1355,37 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                                         except Exception:
                                             slack_shared_date = str(ts)
                                     # Resolve avatar from local 'avatars' directory
-                                    avatars_dir = slack_data_root.parent / "avatars"
+                                    #avatars_dir = slack_data_root.parent / "avatars"
+                                    # if its not in the parent of the slack_data_root, checkin in
+                                    # slack_data_root / "avatars"
+                                    #if not avatars_dir.exists():
+                                    #    avatars_dir = slack_data_root / "avatars"
                                     #logging.debug(f"Looking for avatars in: {avatars_dir}")
                                     if slack_user_id and avatars_dir.exists():
-                                        avatar_path = avatars_dir / f"{slack_user_id}.jpg"
-                                        #logging.debug(f"Checking avatar path: {avatar_path}")
-                                        if avatar_path.exists():
-                                            slack_avatar = str(avatar_path)
+                                        if slack_user_id == 'U08B6KZJ4':
+                                            # special case for the OMATA bot, use the omata avatar
+                                            # pick a random one either 'U62S2LGFK' or 'U08B6KZJ4'
+                                            slack_avatar = str((avatars_dir / random.choice(["U62S2LGFK", "U08B6KZJ4"])).with_suffix(".jpg"))
+                                        else:
+                                            avatar_path = avatars_dir / f"{slack_user_id}.jpg"
+                                            #logging.debug(f"Checking avatar path: {avatar_path}")
+                                            if avatar_path.exists():
+                                                slack_avatar = str(avatar_path)
                                     #logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
                                     # Resolve user name from users.json
-                                    if users_json.exists() and slack_user_id:
+                                    if slack_user_id == 'U08B6KZJ4':
+                                        # here's a list of names, pick one
+                                        villain_names = ["Astaroth", "Nyx", "Zebulon", "Thorne", "Snidely", "Cruella", "Mojo", "Ratso", "Cruntolimeu", "Hexadreadcimal", "Viperina", "Jinque", "Zorton", "Malbeced", "Draco", "Scarabella", "Venomina", "Clawdia", "Grumbleton", "Slinko", "Druenna", "Morgul", "Tricksy", "Cankle", "Cackles", "Drusilda", "Dank Druid", "Fizzlewick", "Gloomsworth", "Malarkus", "Nefaria", "Zombina", "Snivelston", "Velsneer"]
+                                        # pick a random villain name
+                                        slack_user_name = random.choice(villain_names)
+                                        
+                                    elif users_json.exists() and slack_user_id:
                                         try:
+
                                             with open(users_json, 'r', encoding='utf-8', errors='ignore') as uf:
                                                 users = json.load(uf)
                                             for user in users:
+
                                                 if user.get('id') == slack_user_id or user.get('name') == slack_user_id:
                                                     slack_user_name = user.get('real_name') or user.get('profile', {}).get('real_name') or user.get('name')
                                                     break
@@ -1322,6 +1395,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                         if slack_channel:
                             break
                 except Exception:
+                    logging.error(f"Error reading messages.json in {channel_dir}", exc_info=True)
+                    logging.error(traceback.format_exc())
                     pass
                 
                 
@@ -1530,9 +1605,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 total_used_area = 0
                 for idx in indices:
                     w, h = frames[idx].size
-                    scale = min(thumb_w / w, thumb_h / h)
-                    used_w = int(w * scale)
-                    used_h = int(h * scale)
+                    frame_scale = min(thumb_w / w, thumb_h / h)
+                    used_w = int(w * frame_scale)
+                    used_h = int(h * frame_scale)
                     total_used_area += used_w * used_h
                 score = total_used_area
                 if score > best_score:
@@ -1553,17 +1628,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
                 grid_img.paste(thumb, (x, y), mask=thumb)
 
-            gif_thumb_grid = grid_img.convert("RGB")
-            # Save the GIF grid image for debugging
-            try:
-                debug_out_dir = Path("./debugif_cards_out")
-                debug_out_dir.mkdir(parents=True, exist_ok=True)
-                debug_out_path = debug_out_dir / f"{file_path.stem}_gif_grid_debug.png"
-                gif_thumb_grid.save(debug_out_path)
-                logging.info(f"Saved GIF grid debug image to {debug_out_path}")
-            except Exception as e:
-                logging.error(f"Error saving GIF grid debug image: {e}")
-            #image_thumb = img
+            gif_thumb_grid = grid_img.convert("RGBA")
+            image_thumb = gif_thumb_grid
         except Exception as e:
             preview_lines = [f"GIF error: {e}"]
     
@@ -1602,7 +1668,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                             pass
         except Exception as e:
             preview_lines = [f"NUMBERS error: {e}"]
-    elif ext == '.pdf':
+    elif ext.lower() == '.pdf':
         try:
             #pages = convert_from_path(str(file_path), first_page=1, last_page=1)
             #if pages:
@@ -1612,20 +1678,24 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             #    preview_lines = ["PDF preview not available."]
         except Exception as e:
             preview_lines = [f"PDF error: {e}"]
-    elif ext in {'.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm'}:
+    elif ext.lower() in {'.mp4', '.mov', '.avi', '.mkv'}:
         # Dynamically determine grid size based on video length
         try:
             import cv2
             cap = cv2.VideoCapture(str(file_path))
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             cap.release()
-            frames = get_video_frames(file_path, max_frames=min(min_video_frames, frame_count))
-            n_total = len(frames)
+            #video_frames = get_video_frames(file_path, total_frames=min(max_video_frames, frame_count))
+            video_frames = get_video_frames_weighted(file_path, total_frames=min(max_video_frames, frame_count))
+            total_frames=min(max_video_frames, frame_count)
+            n_total = total_frames
+            # initialize video_frames
             best_score = -1
             best_grid = None
             best_indices = None
-
-            min_thumb_area = int(0.005 * max_line_width_pixels * preview_box_height)  # 10% of preview area
+            frame_scale = 0
+            
+            # min_thumb_area = int(0.005 * max_line_width_pixels * preview_box_height)  # 10% of preview area
 
             for rows in range(1, n_total + 1):
                 cols = int(math.ceil(n_total / rows))
@@ -1638,10 +1708,10 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 indices = [int(i) for i in np.linspace(0, n_total - 1, num_cells)]
                 total_used_area = 0
                 for idx in indices:
-                    w, h = frames[idx].size
-                    scale = min(thumb_w / w, thumb_h / h)
-                    used_w = int(w * scale)
-                    used_h = int(h * scale)
+                    w, h = video_frames[idx].size
+                    frame_scale = min(thumb_w / w, thumb_h / h)
+                    used_w = int(w * frame_scale)
+                    used_h = int(h * frame_scale)
                     total_used_area += used_w * used_h
                 score = total_used_area
                 if score > best_score:
@@ -1654,7 +1724,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
 
             grid_rows, grid_cols, thumb_w, thumb_h = best_grid
-            selected_frames = [frames[idx] for idx in best_indices]
+            video_frames = get_video_frames(file_path, total_frames=num_cells)
+            selected_frames = [video_frames[idx] for idx in best_indices]
             video_frame_thumbs = []
             for frame in selected_frames:
                 thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
@@ -1670,20 +1741,20 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 else:
                     grid_img.paste(thumb, (x, y))
 
-            video_thumb_grid = grid_img.convert("RGB")
+            video_thumb_grid = grid_img.convert("RGBA")
             # Save the video grid image for debugging
-            try:
-                debug_out_dir = Path("./debug_video_cards_out")
-                debug_out_dir.mkdir(parents=True, exist_ok=True)
-                debug_out_path = debug_out_dir / f"{file_path.stem}_video_grid_debug.png"
-                video_thumb_grid.save(debug_out_path)
-                logging.info(f"Saved video grid debug image to {debug_out_path}")
-            except Exception as e:
-                logging.error(f"Error saving video grid debug image: {e}")
+            # try:
+            #     debug_out_dir = Path("./debug_video_cards_out")
+            #     debug_out_dir.mkdir(parents=True, exist_ok=True)
+            #     debug_out_path = debug_out_dir / f"{file_path.stem}_video_grid_debug.png"
+            #     video_thumb_grid.save(debug_out_path)
+            #     logging.info(f"Saved video grid debug image to {debug_out_path}")
+            # except Exception as e:
+            #     logging.error(f"Error saving video grid debug image: {e}")
         except Exception as e:
             preview_lines = [f"Video error: {e}"]
     # Defer drawing to later section after header/metadata are drawn.
-    elif ext == '.gpx':
+    elif ext.lower() == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
         # Mapbox integration for GPX with polyline
         try:
@@ -1703,10 +1774,10 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     gpx_thumb = mapbox_img
         except Exception:
             pass
-    elif ext in {'.xlsx', '.xls'}:
+    elif ext.lower() in {'.xlsx', '.xls'}:
         preview_lines = get_excel_preview(file_path, max_rows=max_preview_lines, max_cols=8)
 
-    elif ext in {'.fit', '.tcx'}:
+    elif ext.lower() in {'.fit', '.tcx'}:
         preview_lines, fit_meta = get_fit_summary_preview(file_path)
         fit_gps_thumb = get_fit_gps_preview(file_path, max_line_width_pixels, preview_box_height)
         # Mapbox integration for FIT/TCX with polyline
@@ -1732,7 +1803,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     fit_gps_thumb = mapbox_img
         except Exception:
             pass
-    elif ext == '.docx':
+    elif ext.lower() == '.docx':
         try:
             from docx import Document
             doc = Document(file_path)
@@ -1784,11 +1855,11 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         preview_lines = preview_lines[:max_preview_lines]
     elif file_type_info['group'] == 'text':
         preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length) or []
-    elif ext == '.zip':
+    elif ext.lower() == '.zip':
         zip_file_list = get_zip_preview(file_path, max_files=max_preview_lines)
         zip_file_preview_img = None
         zip_file_preview_lines = None
-    elif ext == '.rar':
+    elif ext.lower() == '.rar':
         try:
             logging.info(f"Processing RAR file: {file_path}")
             import rarfile
@@ -1799,13 +1870,13 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 logging.info(f"Found {len(names)} items in RAR file: {file_path}")
         except Exception as e:
             preview_lines = [f"RAR error: {e}"]
-    elif ext == '.gz':
+    elif ext.lower() == '.gz':
         preview_lines, image_thumb, _ = get_gz_preview(
             file_path, max_bytes=max_preview_lines * 16, preview_box=(max_line_width_pixels, preview_box_height))
         image_thumb = image_thumb  # If image_thumb is None, preview_lines will be used
-    elif ext == '.bz2':
+    elif ext.lower() == '.bz2':
         preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
-    elif ext == '.key':
+    elif ext.lower() == '.key':
         logging.info(f"****** Processing Keynote file: {file_path}")
         try:
             logging.info(f"Processing Keynote file: {file_path}")
@@ -1839,7 +1910,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"KEY error: {e}"]
-    elif ext == '.pptx' or ext == '.ppt':
+    elif ext.lower() == '.pptx' or ext.lower() == '.ppt':
         try:
             logging.info(f"Processing PPT(X) file: {file_path}")
             # Extract all images from ppt/media
@@ -1891,7 +1962,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"PPTX error: {e}"]
-    elif ext == '.ai':
+    elif ext.lower() == '.ai':
         try:
             pages = convert_from_path(str(file_path), first_page=1, last_page=1)
             if pages:
@@ -1954,7 +2025,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     ###
     ### HERE IS WHERE WE DRAW THE HEADER and HEADER TEXT
     ###
-    ###
+    1###
     if rgb_mode:
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=file_type_info['color'])
         text_color = 'white'
@@ -2010,7 +2081,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     elif 'slack_avatar' in locals() and slack_avatar:
         try:
             #logging.debug(f"Loading avatar from: {slack_avatar}")
-            avatar_img = Image.open(slack_avatar).convert('RGB')
+            avatar_img = Image.open(slack_avatar).convert('RGBA')
             #logging.debug(f"Avatar loaded: size={avatar_img.size}, mode={avatar_img.mode}")
             avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
             #logging.debug(f"Avatar resized: size={avatar_img.size}")
@@ -2022,7 +2093,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             
     if metadata is not None and metadata.get('avatar_path'):
         try:
-            avatar_img = Image.open(metadata['avatar_path']).convert('RGB')
+            avatar_img = Image.open(metadata['avatar_path']).convert('RGBA')
             avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
             avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
         except Exception as e:
@@ -2037,7 +2108,11 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         try:
             # Position avatar relative to the left border (outer_padding)
             #logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
+            #avatar_img.save(f"debug_video_cards_out/debug_avatar_pre_paste_{slack_message_id}.png")
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
+            # debug save the image at this point so we can figure out why the avatar isn't being
+            # presented in cards that are movies !??
+            #img.save(f"debug_video_cards_out/debug_avatar_{slack_message_id}.jpg")
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
     y = avatar_y_coordinate + 12*scale # avatar and metadata can be horizontally aligned
@@ -2412,7 +2487,8 @@ def save_card_as_tiff(img, output_path, cmyk_mode=False):
                 compression='none',  # No compression for maximum quality
                 dpi=(300, 300)       # Set DPI to 300
             )
-            logging.debug(f"Saved CMYK TIFF with reinforced border: {output_path}")
+            logging.info(f"Saved CMYK TIFF with reinforced border: {output_path}")
+            logging.info(f"{output_path}")
         else:
             # For RGB mode, add a clear border too
             draw = ImageDraw.Draw(img)
@@ -2421,7 +2497,9 @@ def save_card_as_tiff(img, output_path, cmyk_mode=False):
             
             # Standard save
             img.save(output_path, format='TIFF', compression='tiff_deflate')
-            logging.debug(f"Saved RGB TIFF with reinforced border: {output_path}")
+            logging.info(f"Saved RGB TIFF with reinforced border: {output_path}")
+            logging.info(f"{output_path}")
+
     except Exception as e:
         logging.error(f"Error saving TIFF image: {e}")
         # Fall back to basic save method
@@ -2580,7 +2658,7 @@ if __name__ == "__main__":
     parser.add_argument("--height", type=int, default=1000, help="Card height in pixels")
     parser.add_argument("--cmyk", action="store_true", help="Save cards in CMYK mode")
     parser.add_argument("--include-video-frames", action="store_true", help="If a video, include per-frame cards")
-    parser.add_argument("--min-video-frames", type=int, default=30, help="Minimum number of video frames to include should it come to that")
+    parser.add_argument("--max-video-frames", type=int, default=30, help="Minimum number of video frames to include should it come to that")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -2588,7 +2666,7 @@ if __name__ == "__main__":
 
     for fp in args.files:
         try:
-            cards = create_file_info_card(fp, width=args.width, height=args.height, cmyk_mode=args.cmyk, include_video_frames=args.include_video_frames, min_video_frames=args.min_video_frames)
+            cards = create_file_info_card(fp, width=args.width, height=args.height, cmyk_mode=args.cmyk, include_video_frames=args.include_video_frames, max_video_frames=args.max_video_frames)
             if isinstance(cards, list):
                 for idx, card in enumerate(cards):
                     out_path = out_dir / f"{Path(fp).stem}_{idx}.tiff"

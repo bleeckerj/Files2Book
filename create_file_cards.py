@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from PIL import Image
 import argparse
-from fpdf import FPDF
+#from fpdf import FPDF
 import logging
 import time
 import shutil
@@ -22,7 +22,9 @@ os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "120000" # that's 2 minutes!
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
+    # format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
+    format='%(levelname)s - %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
+
 )
 
 total_files_handled_count = 0
@@ -99,7 +101,7 @@ def _process_file_iterable(
     border_color=(250, 250, 250),
     border_inch_width: float = 0.125,
     include_video_frames: bool = False,
-    min_video_frames: int = 30,
+    max_video_frames: int = 30,
     metadata_text=None,
     cards_per_chunk: int = 0,
     pdf_name=None,
@@ -153,7 +155,7 @@ def _process_file_iterable(
                 border_color=border_color,
                 border_inch_width=border_inch_width,
                 include_video_frames=include_video_frames,
-                min_video_frames=args.min_video_frames,
+                max_video_frames=max_video_frames,
                 metadata_text=metadata_text,
                 metadata=metadata,
                 title=title
@@ -277,7 +279,7 @@ def build_file_cards_from_list(
     border_color=(250, 250, 250),
     border_inch_width=0.125,
     include_video_frames=False,
-    min_video_frames=30,
+    max_video_frames=30,
     metadata_text=None,
     cards_per_chunk=0,
     pdf_name=None,
@@ -353,7 +355,7 @@ def build_file_cards_from_list(
         border_color=border_color,
         border_inch_width=border_inch_width,
         include_video_frames=include_video_frames,
-        min_video_frames=min_video_frames,
+        max_video_frames=max_video_frames,
         metadata_text=metadata_text,
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
@@ -371,7 +373,7 @@ def build_file_cards_from_directory(
     border_color=(250, 250, 250),
     border_inch_width=0.125,
     include_video_frames=False,
-    min_video_frames=30,
+    max_video_frames=30,
     max_depth=0,  # 0 = no recursion; negative => unlimited
     metadata_text=None,
     cards_per_chunk=0,
@@ -412,7 +414,7 @@ def build_file_cards_from_directory(
     logging.debug(f"Parsed page size: {page_size} -> {width}x{height} pixels")
 
     if not input_path.is_dir():
-        print(f"Error: {input_dir} is not a directory")
+        logging.error(f"Error: {input_dir} is not a directory")
         return
 
     # Reuse the shared processing implementation by passing the find_files iterable
@@ -428,7 +430,7 @@ def build_file_cards_from_directory(
         border_color=border_color,
         border_inch_width=border_inch_width,
         include_video_frames=include_video_frames,
-        min_video_frames=args.min_video_frames,
+        max_video_frames=args.max_video_frames,
         metadata_text=metadata_text,
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
@@ -614,7 +616,7 @@ if __name__ == "__main__":
     parser.add_argument('--border-color', default='250,250,250', help='Border color for the cards in RGB format (default: 250,250,250)')
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
     parser.add_argument('--include-video-frames', default=False, action='store_true', help='Also output individual video frames as cards (default: overview only)')
-    parser.add_argument('--min-video-frames', type=int, default=30, help='Minimum number of video frames to include')
+    parser.add_argument('--max-video-frames', type=int, default=30, help='Minimum number of video frames to include')
 
     parser.add_argument('--metadata-text', default=None, help='Custom metadata text to include on the card')
     parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
@@ -706,40 +708,40 @@ if __name__ == "__main__":
             sys.exit(1)
 
         if not files_from_list:
-            print(f"Error: {args.file_list} contains no valid file paths.")
+            logging.error(f"Error: {args.file_list} contains no valid file paths.")
             sys.exit(1)
 
     # Validate and adjust input_dir when no file-list was provided
     input_dir_provided = bool(args.input_dir)
     if files_from_list is None:
         if not input_dir_provided:
-            print("Error: --input-dir is required unless --file-list is provided.")
+            logging.error("Error: --input-dir is required unless --file-list is provided.")
             sys.exit(1)
         input_path = Path(args.input_dir)
         if args.slack_data_root:
             files_subdir = input_path / "files"
             if files_subdir.is_dir():
                 args.input_dir = str(files_subdir)
-                print(f"Using 'files' subdirectory: {args.input_dir}")
+                logging.info(f"Using 'files' subdirectory: {args.input_dir}")
             else:
-                print(f"Error: No 'files' subdirectory found in {args.input_dir}.")
+                logging.error(f"Error: No 'files' subdirectory found in {args.input_dir}.")
                 sys.exit(1)
         else:
             input_path = Path(args.input_dir)
     if getattr(args, "slack_data_root", None):
         slack_data_root = Path(args.slack_data_root)
         if not slack_data_root.exists() or not slack_data_root.is_dir():
-            print(f"Error: Slack data directory {args.slack_data_root} not found or not a directory.")
+            logging.error(f"Error: Slack data directory {args.slack_data_root} not found or not a directory.")
             sys.exit(1)
         # Prefer the standard 'files' subdirectory if present
         files_subdir = slack_data_root / "files"
         if files_subdir.is_dir():
             args.input_dir = str(files_subdir)
-            print(f"Using Slack 'files' subdirectory: {args.input_dir}")
+            logging.info(f"Using Slack 'files' subdirectory: {args.input_dir}")
         else:
             # Fall back to the provided slack root itself (useful if user points at a channel dir)
             args.input_dir = str(slack_data_root)
-            print(f"Using Slack data directory: {args.input_dir}")
+            logging.info(f"Using Slack data directory: {args.input_dir}")
 
         # Propagate into file_card_generator so file_card_generator.get_original_timestamp()
         # can resolve messages.json / users.json relative to the same slack export root.
@@ -764,6 +766,7 @@ if __name__ == "__main__":
 
     output_path_obj = Path(args.output_dir)
     output_dir_name = output_path_obj.name
+    logging.info(f"Output directory will be: {output_dir_name}")
     # Compute pdf_name consistently
     if getattr(args, "cards_per_chunk", 0) and args.cards_per_chunk > 0:
         pdf_name = None

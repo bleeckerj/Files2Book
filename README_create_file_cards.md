@@ -51,6 +51,7 @@ python create_file_cards.py --input-dir /path/to/files --output-dir ./output --p
 - `--border-inch-width`: Border width in inches (float) for the card border (default: 0.125).
 - `--metadata-text`: Custom metadata text to include on each card (escape sequences like `\n` are supported and decoded).
 - `--delete-cards-after-pdf`: After assembling the PDF(s) delete the generated card image files. Note: when chunking is enabled, per-chunk deletion may be performed immediately after each chunk's PDF is created; top-level deletion of all card files only runs for the non-chunked flow.
+- `--max-video-frames`: The maximum number of video thumbnails to show in a grid for a video file.
 
 **Supported Page Sizes and Their Dimensions (in inches):**
 
