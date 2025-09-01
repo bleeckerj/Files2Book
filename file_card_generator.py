@@ -2658,7 +2658,7 @@ if __name__ == "__main__":
     parser.add_argument("--height", type=int, default=1000, help="Card height in pixels")
     parser.add_argument("--cmyk", action="store_true", help="Save cards in CMYK mode")
     parser.add_argument("--include-video-frames", action="store_true", help="If a video, include per-frame cards")
-    parser.add_argument("--max-video-frames", type=int, default=30, help="Minimum number of video frames to include should it come to that")
+    parser.add_argument("--max-video-frames", type=int, default=9, help="Minimum number of video frames to include should it come to that")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)

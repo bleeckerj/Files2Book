@@ -155,7 +155,7 @@ def _process_file_iterable(
                 border_color=border_color,
                 border_inch_width=border_inch_width,
                 include_video_frames=include_video_frames,
-                max_video_frames=max_video_frames,
+                max_video_frames=args.max_video_frames,
                 metadata_text=metadata_text,
                 metadata=metadata,
                 title=title
