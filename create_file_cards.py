@@ -28,7 +28,7 @@ logging.basicConfig(
 )
 
 total_files_handled_count = 0
-
+exclude_exts = None
 #IMAGE_EXTS = frozenset({'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'})
 # def is_valid_card_file(p: Path) -> bool:
 #     """
@@ -98,6 +98,7 @@ def _process_file_iterable(
     height: int,
     cmyk_mode: bool = False,
     exclude_file_path: bool = False,
+    exclude_exts: list = None,
     border_color=(250, 250, 250),
     border_inch_width: float = 0.125,
     include_video_frames: bool = False,
@@ -124,11 +125,18 @@ def _process_file_iterable(
     else:
         chunk_dir = output_path
 
+    if exclude_exts is None:
+        exclude_exts = []
+        
     files_to_process = []
     # Pre-count valid files
     for p in file_iterable:
         # its either filepath, or file in the thing or we end up skipping
         pth = Path(p['filepath'] if isinstance(p, dict) and 'filepath' in p else p['file'] if isinstance(p, dict) and 'file' in p else p)
+        if pth.suffix.lower() in exclude_exts:
+            logging.info(f"Excluded by extension: {pth.name}")
+            continue
+
         if pth.is_file():
             total_files_to_process_count += 1
             files_to_process.append(p)
@@ -266,8 +274,9 @@ def find_files(root_dir, max_depth=None):
         if max_depth is not None and current_depth >= max_depth:
             dirnames[:] = []
         for filename in filenames:
-            if not filename.startswith('.'):
-                result.append(Path(dirpath) / filename)
+            pth = Path(dirpath) / filename
+            if not filename.startswith('.') and pth.suffix.lower() not in exclude_exts:
+                result.append(pth)
     return result
 
 def build_file_cards_from_list(
@@ -275,7 +284,8 @@ def build_file_cards_from_list(
     output_dir='file_card_tests',
     cmyk_mode=False,
     page_size='LARGE_TAROT',
-    exclude_file_path=False,
+    exclude_extensions=None,
+    exclude_file_path=None,
     border_color=(250, 250, 250),
     border_inch_width=0.125,
     include_video_frames=False,
@@ -352,6 +362,7 @@ def build_file_cards_from_list(
         height=height,
         cmyk_mode=cmyk_mode,
         exclude_file_path=exclude_file_path,
+        exclude_exts=exclude_exts,
         border_color=border_color,
         border_inch_width=border_inch_width,
         include_video_frames=include_video_frames,
@@ -373,6 +384,7 @@ def build_file_cards_from_directory(
     border_color=(250, 250, 250),
     border_inch_width=0.125,
     include_video_frames=False,
+    exclude_exts=None,
     max_video_frames=30,
     max_depth=0,  # 0 = no recursion; negative => unlimited
     metadata_text=None,
@@ -426,6 +438,7 @@ def build_file_cards_from_directory(
         width=width,
         height=height,
         cmyk_mode=cmyk_mode,
+        exclude_exts=exclude_exts,
         exclude_file_path=exclude_file_path,
         border_color=border_color,
         border_inch_width=border_inch_width,
@@ -617,13 +630,15 @@ if __name__ == "__main__":
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
     parser.add_argument('--include-video-frames', default=False, action='store_true', help='Also output individual video frames as cards (default: overview only)')
     parser.add_argument('--max-video-frames', type=int, default=30, help='Minimum number of video frames to include')
-
+    parser.add_argument('--exclude-exts', default=None, help='Comma-separated list of file extensions to exclude (e.g. "dng, oci")')
     parser.add_argument('--metadata-text', default=None, help='Custom metadata text to include on the card')
     parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
     parser.add_argument('--slack-data-root', help='Path to Slack export root (directory containing messages.json and files/). If provided, the script will treat input as Slack data and resolve relative filepaths accordingly.')
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
-
+    exclude_exts = [ext.strip().lower() for ext in args.exclude_exts.split(',') if ext.strip()]
+    if exclude_exts:
+        logging.info(f"Excluding file extensions: {exclude_exts}")
     # If a file list CSV is provided, parse it and process that list in order.
     files_from_list = None
     if args.file_list:
@@ -810,7 +825,8 @@ if __name__ == "__main__":
             args.output_dir,
             args.cmyk_mode,
             args.page_size,
-            exclude_file_path=args.exclude_file_path,
+            exclude_file_path=exclude_exts,
+            exclude_extensions=exclude_exts,
             border_color=t_border_color,
             border_inch_width=args.border_inch_width,
             include_video_frames=args.include_video_frames,
@@ -825,7 +841,7 @@ if __name__ == "__main__":
             args.output_dir,
             args.cmyk_mode,
             args.page_size,
-            exclude_file_path=args.exclude_file_path,
+            exclude_file_path=exclude_exts,
             border_color=t_border_color,
             border_inch_width=args.border_inch_width,
             include_video_frames=args.include_video_frames,
