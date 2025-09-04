@@ -35,7 +35,7 @@ All command line arguments supported by `create_file_cards.py`:
 - `--border-inch-width`: Border width in inches (default: 0.125).
 - `--include-video-frames`: Also output individual video frames as cards (default: overview only).
 - `--max-video-frames`: Minimum number of video frames to include (default: 30).
-- `--exclude-exts`: Comma-separated list of file extensions to exclude (e.g. "dng,oci").
+- `--exclude-exts`: Comma-separated list of file extensions to exclude (e.g. ".dng,.oci,.hex").
 - `--metadata-text`: Custom metadata text to include on the card.
 - `--cards-per-chunk`: If >0, split card images into chunked folders of this many cards and produce one PDF per chunk.
 - `--slack-data-root`: Path to Slack export root (directory containing messages.json and files/). If provided, the script will treat input as Slack data and resolve relative filepaths accordingly.

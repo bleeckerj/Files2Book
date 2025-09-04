@@ -52,6 +52,7 @@ def parse_page_size(size_name):
     dpi = 300
     sizes = {
         'A5': (5.83, 8.27),
+        'A5_FULLBLEED': (5.955, 8.395),
         'A4': (8.27, 11.69),
         'A3': (11.69, 16.54),
         'A2': (16.54, 23.39),
@@ -62,7 +63,9 @@ def parse_page_size(size_name):
         'LEGAL': (8.5, 14),
         'TABLOID': (11, 17),
         'DIGEST': (5.5, 8.5),         # Digest size
+        'DIGEST_FULLBLEED': (5.625, 8.625),
         'POCKETBOOK': (4.25, 6.87),   # PocketBook size
+        'POCKETBOOK_FULLBLEED': (4.375, 6.995),
         # Playing card sizes (in inches, rounded to 2 decimals)
         'POKER': (2.48, 3.46),        # 63x88mm
         'BRIDGE': (2.24, 3.46),       # 57x88mm
@@ -284,7 +287,7 @@ def build_file_cards_from_list(
     output_dir='file_card_tests',
     cmyk_mode=False,
     page_size='LARGE_TAROT',
-    exclude_extensions=None,
+    exclude_exts=None,
     exclude_file_path=None,
     border_color=(250, 250, 250),
     border_inch_width=0.125,
@@ -640,6 +643,9 @@ if __name__ == "__main__":
         exclude_exts = [ext.strip().lower() for ext in args.exclude_exts.split(',') if ext.strip()]
     else:
         exclude_exts = []    # If a file list CSV is provided, parse it and process that list in order.
+
+    exclude_file_path = args.exclude_file_path
+    
     files_from_list = None
     if args.file_list:
         if not os.path.isfile(args.file_list):
@@ -825,8 +831,8 @@ if __name__ == "__main__":
             args.output_dir,
             args.cmyk_mode,
             args.page_size,
-            exclude_file_path=exclude_exts,
-            exclude_extensions=exclude_exts,
+            exclude_file_path=exclude_file_path,
+            exclude_exts=exclude_exts,
             border_color=t_border_color,
             border_inch_width=args.border_inch_width,
             include_video_frames=args.include_video_frames,
@@ -841,7 +847,8 @@ if __name__ == "__main__":
             args.output_dir,
             args.cmyk_mode,
             args.page_size,
-            exclude_file_path=exclude_exts,
+            exclude_file_path=exclude_file_path,
+            exclude_exts=exclude_exts,
             border_color=t_border_color,
             border_inch_width=args.border_inch_width,
             include_video_frames=args.include_video_frames,

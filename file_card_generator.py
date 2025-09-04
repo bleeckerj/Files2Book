@@ -1459,7 +1459,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
         
         # Move Name to the end
-        if not exclude_file_path:
+        if exclude_file_path:
             file_info['Filepath'] = "/".join(Path(file_path).parts[-3:])
             #file_info['Filepath'] = str(file_path)
 
@@ -1678,7 +1678,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             #    preview_lines = ["PDF preview not available."]
         except Exception as e:
             preview_lines = [f"PDF error: {e}"]
-    elif ext.lower() in {'.mp4', '.mov', '.avi', '.mkv'}:
+    elif ext.lower() in FILE_TYPE_GROUPS['movie']['extensions']:
         # Dynamically determine grid size based on video length
         try:
             import cv2
@@ -2170,27 +2170,6 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             bg_fill = bg_rgb
             bg_outline = bg_outline_rgb
             text_fill = (0, 0, 0)
-
-        if exclude_file_path is False:
-            last_parts = Path(file_path).parts[-3:]
-            short_path = "/".join(last_parts)
-            filename = Path(file_path).name
-            # Truncate filename if longer than 25 characters
-            # And if we have one of those huge unwieldly filenames that
-            # Instagram produces, just show the last two parts of the file path
-            if len(filename) > 50:
-                filename = f"{filename[:25]}...{filename[-25:]}"
-                short_path = "/".join(last_parts[:-1])
-            # Draw the short path (excluding filename) above the filename
-            if len(last_parts) > 1:
-                draw.text((width//2, outer_padding + header_height + metadata_top_margin), short_path, fill=text_black, font=info_font, anchor="mm")
-                draw.text((width//2, outer_padding + header_height + metadata_top_margin + metadata_line_height), filename, fill=text_black, font=info_font, anchor="mm")
-                y_offset = metadata_line_height * 2 + 5
-            else:
-                draw.text((width//2, outer_padding + header_height + metadata_top_margin), filename, fill=text_black, font=info_font, anchor="mm")
-                y_offset = metadata_line_height + 5
-            logging.debug(f"File Path is {short_path}")
-            logging.debug(f"Last Parts is {last_parts} and it is {len(last_parts)} elements long")
         draw_text_box(
             draw,
             custom_metadata_text,
@@ -2207,6 +2186,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             background_outline_width=1,
         )
         y = outer_padding + header_height + metadata_top_margin + metadata_height + y_offset
+
     else:
         ################################
         ##                            ##
@@ -2236,7 +2216,28 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 else:
                     draw.text((outer_padding, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
                     y += metadata_line_height
-
+                    
+    # if exclude_file_path is False:
+    #     last_parts = Path(file_path).parts[-3:]
+    #     short_path = "/".join(last_parts)
+    #     filename = Path(file_path).name
+    #     # Truncate filename if longer than 25 characters
+    #     # And if we have one of those huge unwieldly filenames that
+    #     # Instagram produces, just show the last two parts of the file path
+    #     if len(filename) > 50:
+    #         filename = f"{filename[:25]}...{filename[-25:]}"
+    #         short_path = "/".join(last_parts[:-1])
+    #     # Draw the short path (excluding filename) above the filename
+    #     if len(last_parts) > 1:
+    #         draw.text((width//2, outer_padding + header_height + metadata_top_margin), short_path, fill=text_black, font=info_font, anchor="mm")
+    #         draw.text((width//2, outer_padding + header_height + metadata_top_margin + metadata_line_height), filename, fill=text_black, font=info_font, anchor="mm")
+    #         y_offset = metadata_line_height * 2 + 5
+    #     else:
+    #         draw.text((width//2, outer_padding + header_height + metadata_top_margin), filename, fill=text_black, font=info_font, anchor="mm")
+    #         y_offset = metadata_line_height + 5
+    #     logging.debug(f"File Path is {short_path}")
+    #     logging.debug(f"Last Parts is {last_parts} and it is {len(last_parts)} elements long")
+    #     y += y_offset
     # Make sure the preview area starts below the last metadata line
     preview_box_top = max(preview_box_top, int(y + spacing_between_metadata_and_content_preview))
     preview_box_height = preview_box_bottom - preview_box_top - preview_box_padding * 2
