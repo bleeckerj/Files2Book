@@ -636,10 +636,10 @@ if __name__ == "__main__":
     parser.add_argument('--slack-data-root', help='Path to Slack export root (directory containing messages.json and files/). If provided, the script will treat input as Slack data and resolve relative filepaths accordingly.')
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
-    exclude_exts = [ext.strip().lower() for ext in args.exclude_exts.split(',') if ext.strip()]
-    if exclude_exts:
-        logging.info(f"Excluding file extensions: {exclude_exts}")
-    # If a file list CSV is provided, parse it and process that list in order.
+    if args.exclude_exts is not None:
+        exclude_exts = [ext.strip().lower() for ext in args.exclude_exts.split(',') if ext.strip()]
+    else:
+        exclude_exts = []    # If a file list CSV is provided, parse it and process that list in order.
     files_from_list = None
     if args.file_list:
         if not os.path.isfile(args.file_list):
