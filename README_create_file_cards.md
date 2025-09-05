@@ -26,16 +26,16 @@ All command line arguments supported by `create_file_cards.py`:
 - `--file-list`: Path to a CSV file containing comma-separated file paths (items may be quoted). If provided, `--input-dir` is not required and the ordered file list will be processed.
 - `--cmyk-mode`: Generate cards in CMYK mode.
 - `--cmyk`: Alias for `--cmyk-mode`.
-- `--page-size`: Page size (default: LARGE_TAROT). Accepts predefined sizes (A0-A5, LETTER, LEGAL, TABLOID, DIGEST, POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE) or custom WxH in inches (e.g., "3.5x5.0").
+- `--page-size`: Page size (default: LARGE_TAROT). Accepts predefined sizes (A0-A5, A5_FULLBLEED, LETTER, LEGAL, TABLOID, DIGEST, DIGEST_FULLBLEED, POKER, BRIDGE, MINI, LARGE_TAROT, SMALL_TAROT, LARGE_SQUARE, SMALL_SQUARE) or custom WxH in inches (e.g., "3.5x5.0").
 - `--pdf-output-name`: Path to save the combined PDF.
 - `--max-depth`: Maximum folder recursion depth (default: 0, no recursion).
 - `--exclude-file-path`: Exclude the vertical file path from the card (default: shown).
 - `--delete-cards-after-pdf`: Delete individual card files after PDF is created.
 - `--border-color`: Border color for the cards in RGB format (default: "250,250,250").
-- `--border-inch-width`: Border width in inches (default: 0.125).
+- `--border-inch-width`: Border width in inches (default: 0.125). Generally for getting a color on the 'trim' which will appear as a color on the outside of the page edge.
 - `--include-video-frames`: Also output individual video frames as cards (default: overview only).
 - `--max-video-frames`: Minimum number of video frames to include (default: 30).
-- `--exclude-exts`: Comma-separated list of file extensions to exclude (e.g. ".dng,.oci,.hex").
+- `--exclude-exts`: Comma-separated list of file extensions to exclude (e.g. ".dng,.oci,.hex"). You need to include the "." for the moment.
 - `--metadata-text`: Custom metadata text to include on the card.
 - `--cards-per-chunk`: If >0, split card images into chunked folders of this many cards and produce one PDF per chunk.
 - `--slack-data-root`: Path to Slack export root (directory containing messages.json and files/). If provided, the script will treat input as Slack data and resolve relative filepaths accordingly.
