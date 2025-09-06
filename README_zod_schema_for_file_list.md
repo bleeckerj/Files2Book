@@ -22,14 +22,18 @@ qr_data is transmogrified into a QR Code, that may or may not be suitable depend
 
 ```
 // Zod schema for a general metadata dictionary (string keys, string values or null)
-import { z } from "zod";
-
+// you must have one of filepath, path, uri
 const MetadataSchema = z.record(z.string(), z.string().nullable());
 
 const FileEntrySchema = z.object({
-  filepath: z.string(),
+  filepath: z.string().optional(),
+  path: z.string().optional(),
+  uri: z.string().optional(),
   metadata: MetadataSchema.optional(),
   qr_data: z.string().optional()
+}).refine(obj => Boolean(obj.filepath || obj.path || obj.uri), {
+  message: "One of 'filepath', 'path' or 'uri' is required",
+  path: ["filepath", "path", "uri"]
 });
 
 const FileListSchema = z.array(FileEntrySchema);

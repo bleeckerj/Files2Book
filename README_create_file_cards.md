@@ -152,3 +152,17 @@ For batch processing of multiple Slack channels or directories, use the included
 `batch_create_file_cards.js` automates running `generate_flipbook_pages.py` for every channel directory (with a `files` subdirectory) under a root directory. This is useful for Slack exports or other bulk file sets.
 
 See `README_batch_create_file_cards.md` for details.
+
+## Preparing Instagram Data (very specific use case)
+
+Instagram data dumps are a bit confusing — or not well-formed to begin with. You have to manually merge separate gigabytes-sized .zip files and such all, and then pre-process the index files (within the folder `your_instagram_activity`) to prepare them for ingestion into `create_file_cards`.
+
+I've started using `jq`
+
+Here's a `jq` line that will sort of...flatten the JSON activity data files, assuming `uri` is a more quotidian relative file path, and it then shoves everything else in a `metadata` dictionary sibling to `uri`
+
+```
+jq '[ .ig_reels_media[]?.media[]? | { uri: .uri, metadata: (del(.uri)) } ]' reels.json > reels_flat.json
+```
+
+This should get the structure close enough to what `create_file_cards` expects when you pass it a JSON list to ingest.
