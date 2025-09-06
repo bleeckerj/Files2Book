@@ -1243,7 +1243,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     # Proportional font sizes
     title_font_size = int(20 * scale)
-    info_font_size = int(15 * scale)  # Smaller font size for metadata
+    info_font_size = int(18 * scale)  # Smaller font size for metadata
     preview_font_size = int(12 * scale)
     fit_font_size = int(15 * scale)
     # Proportional paddings (keeping the original border_width value)
@@ -2034,11 +2034,11 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     # Header within the content area
     # This is where we draw the title
         
-    ###
+    ####################################
     ###
     ### HERE IS WHERE WE DRAW THE HEADER and HEADER TEXT
     ###
-    1###
+    ####################################
     if rgb_mode:
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=file_type_info['color'])
         text_color = 'white'
@@ -2046,11 +2046,29 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         draw.rounded_rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], 5, fill=color)
         text_color = (0, 0, 0, 0)
     # Position the file name vertically centered in the header area, accounting for outer padding
-    title_text = (
-        file_info.get("_title", None) if file_info.get("_title") is not None
-        else title if title is not None
-        else file_path.name.upper()
-    )
+    # Determine the title text for the header
+    if file_info.get("_title") is not None:
+        title_text = file_info.get("_title")
+    elif title is not None and title.strip() != "":
+        title_text = title
+    else:
+        # Try to use a human-readable creation timestamp if available
+        ts = (
+            file_info.get("creation_timestamp")
+            or file_info.get("creation_ts")
+            or file_info.get("timestamp")
+        )
+        title_text = None
+        if ts is not None:
+            try:
+                ts_float = float(ts)
+                dt = datetime.fromtimestamp(ts_float)
+                title_text = dt.strftime("%B %d, %Y %H:%M:%S")
+            except Exception:
+                # If parsing fails, fallback to string
+                title_text = str(ts)
+        if not title_text:
+            title_text = file_path.name.upper()
     rect_top = outer_padding
     rect_bottom = outer_padding + header_height  # or outer_padding + header_height + 10 if you added 10
     rect_height = rect_bottom - rect_top
@@ -2194,17 +2212,28 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         ##                            ##
         ################################
         for key, value in file_info.items():
-            if key.lower() == 'qr_data':
+            
+            if value is None or value == '':
+                continue
+            elif key.lower() == 'creation_timestamp' or key.lower() == 'ts' or key.lower() == 'timestamp':
+                try:
+                    # Try to convert to f loat and then to datetime
+                    ts_float = float(value)
+                    dt = datetime.fromtimestamp(ts_float)
+                    line = dt.strftime("%B %d, %Y %H:%M:%S")
+                except Exception:
+                    pass
+            
+            elif key.lower() == 'qr_data':
                 continue  # Skip QR data in metadata display
-            if key.lower() == '_title':
+            elif key.lower() == '_title':
                 continue # Skip _title as it's shown in header
-            if key.lower() == 'name' or key.lower() == 'filename' or key.lower() == 'filepath' or key.lower() == 'created':
+            elif key.lower() == 'name' or key.lower() == 'filename' or key.lower() == 'filepath' or key.lower() == 'created':
                 line = f"{value}"
             elif key.lower() == '_blank':
                 line = ""
             elif key.startswith('_'):
                 line = f"{value}"
-
             else:
                 line = f"{key}: {value}"
             # Wrap the line to fit within the content area width
@@ -2217,27 +2246,36 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     draw.text((outer_padding, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
                     y += metadata_line_height
                     
-    # if exclude_file_path is False:
-    #     last_parts = Path(file_path).parts[-3:]
-    #     short_path = "/".join(last_parts)
-    #     filename = Path(file_path).name
-    #     # Truncate filename if longer than 25 characters
-    #     # And if we have one of those huge unwieldly filenames that
-    #     # Instagram produces, just show the last two parts of the file path
-    #     if len(filename) > 50:
-    #         filename = f"{filename[:25]}...{filename[-25:]}"
-    #         short_path = "/".join(last_parts[:-1])
-    #     # Draw the short path (excluding filename) above the filename
-    #     if len(last_parts) > 1:
-    #         draw.text((width//2, outer_padding + header_height + metadata_top_margin), short_path, fill=text_black, font=info_font, anchor="mm")
-    #         draw.text((width//2, outer_padding + header_height + metadata_top_margin + metadata_line_height), filename, fill=text_black, font=info_font, anchor="mm")
-    #         y_offset = metadata_line_height * 2 + 5
-    #     else:
-    #         draw.text((width//2, outer_padding + header_height + metadata_top_margin), filename, fill=text_black, font=info_font, anchor="mm")
-    #         y_offset = metadata_line_height + 5
-    #     logging.debug(f"File Path is {short_path}")
-    #     logging.debug(f"Last Parts is {last_parts} and it is {len(last_parts)} elements long")
-    #     y += y_offset
+        if exclude_file_path is False:
+            last_parts = Path(file_path).parts[-3:]
+            short_path = "/".join(last_parts)
+            filename = Path(file_path).name
+            # Truncate filename if longer than 25 characters
+            # And if we have one of those huge unwieldly filenames that
+            # Instagram produces, just show the last two parts of the file path
+            if len(filename) > 50:
+                filename = f"{filename[:25]}...{filename[-25:]}"
+                short_path = "/".join(last_parts[:-1])
+
+            # Place path using computed metadata_height to avoid relying on incremental y
+            meta_bottom = outer_padding + header_height + metadata_top_margin + metadata_height
+            gap = max(4, int(6 * scale))
+            path_y = int(meta_bottom + gap)
+
+            # Draw the short path (excluding filename) BELOW the metadata we just wrote.
+            # Use path_y instead of the incrementally advanced y to avoid drift.
+            if len(last_parts) > 1:
+                draw.text((width//2, path_y), short_path, fill=text_black, font=info_font, anchor="mm")
+                draw.text((width//2, path_y + metadata_line_height), filename, fill=text_black, font=info_font, anchor="mm")
+                y_offset = metadata_line_height * 2 + 5
+            else:
+                draw.text((width//2, path_y), filename, fill=text_black, font=info_font, anchor="mm")
+                y_offset = metadata_line_height + 5
+
+            # Advance y based on the placement we used for path
+            y = path_y + y_offset
+            #logging.debug(f"File Path is {short_path}")
+            #logging.debug(f"Last Parts is {last_parts} and it is {len(last_parts)} elements long")
     # Make sure the preview area starts below the last metadata line
     preview_box_top = max(preview_box_top, int(y + spacing_between_metadata_and_content_preview))
     preview_box_height = preview_box_bottom - preview_box_top - preview_box_padding * 2

@@ -134,13 +134,28 @@ def _process_file_iterable(
     files_to_process = []
     # Pre-count valid files
     for p in file_iterable:
-        # its either filepath, or file in the thing or we end up skipping
-        pth = Path(p['filepath'] if isinstance(p, dict) and 'filepath' in p else p['file'] if isinstance(p, dict) and 'file' in p else p)
+        # its either filepath, or file  or uti in the thing or we end up skipping
+        pth = Path(
+            p['filepath'] if isinstance(p, dict) and 'filepath' in p
+            else p['uri'] if isinstance(p, dict) and 'uri' in p
+            else p['file'] if isinstance(p, dict) and 'file' in p
+            else p
+        )
+
         if pth.suffix.lower() in exclude_exts:
             logging.info(f"Excluded by extension: {pth.name}")
             continue
 
-        if pth.is_file():
+        try:
+            is_file = pth.is_file()
+        except OSError as e:
+            logging.error(f"OSError while checking file '{pth}': {e}")
+            continue
+        except Exception as e:
+            logging.error(f"Error while checking file '{pth}': {e}")
+            continue
+
+        if is_file:
             total_files_to_process_count += 1
             files_to_process.append(p)
         else:
@@ -150,7 +165,13 @@ def _process_file_iterable(
 
     # Iterate again for actual processing
     for p in files_to_process:
-        file_path = Path(p['filepath'] if isinstance(p, dict) and 'filepath' in p else p['file'] if isinstance(p, dict) and 'file' in p else p)
+        file_path = Path(
+            p['filepath'] if isinstance(p, dict) and 'filepath' in p
+            else p['uri'] if isinstance(p, dict) and 'uri' in p
+            else p['file'] if isinstance(p, dict) and 'file' in p
+            else p
+        )
+
         try:
             file_type = determine_file_type(file_path)
             logging.debug(f"Processing {file_path.name} - Type: {file_type}")
@@ -668,7 +689,7 @@ if __name__ == "__main__":
                                 fp = None
                                 metadata = None
                                 if isinstance(elem, dict):
-                                    fp = elem.get('filepath') or elem.get('path') or elem.get('file')
+                                    fp = elem.get('filepath') or elem.get('uri') or elem.get('path') or elem.get('file')
                                     metadata = elem.get('metadata')
                                 elif isinstance(elem, str):
                                     fp = elem
@@ -895,31 +916,39 @@ if __name__ == "__main__":
         
         # For chunked output we assemble chunk PDFs below; skip assembling a top-level PDF here to avoid empty PDFs.
         
-        # Delete individual card files if requested (only for non-chunked flow)
-        if args.delete_cards_after_pdf and (getattr(args, "cards_per_chunk", 0) or 0) == 0:
-            logging.info("Deleting individual card files after PDF creation...")
-            output_dir_path = Path(args.output_dir)
-            # Collect both single-card and per-frame card outputs
-            delete_patterns = global_glob_pattern
-            deleted = 0
-            for pattern in delete_patterns:
-                for card_file in output_dir_path.glob(pattern):
-                    # Skip the combined PDF if it ever matched (it shouldn't with these patterns)
-                    if pdf_path and Path(card_file).resolve() == Path(pdf_path).resolve():
-                        continue
-                    try:
-                        card_file.unlink()
-                        deleted += 1
-                        logging.debug(f"Deleted: {card_file}")
-                    except Exception as e:
-                        logging.error(f"Error deleting {card_file}: {e}")
-            logging.info(f"Card files cleanup complete. Deleted {deleted} files.")
-    
-        # Chunked PDF assembly
+        # Determine chunking
         cards_per_chunk = getattr(args, "cards_per_chunk", 0) or 0
         output_dir_path = Path(args.output_dir)
+
+        # If chunked, skip top-level assembly (chunks were assembled during processing)
         if cards_per_chunk and cards_per_chunk > 0:
-            logging.info("Chunk PDFs were assembled during processing; skipping post-processing assembly.")
+            logging.info("cards_per_chunk specified; chunk PDFs were assembled during processing; skipping top-level combined PDF.")
         else:
-            assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
+            # First assemble the combined PDF from the generated cards
+            try:
+                assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
+                logging.info(f"Assembled top-level PDF: {pdf_path}")
+            except Exception as e:
+                logging.error(f"Error assembling top-level PDF: {e}")
+                logging.error("Traceback:\n" + traceback.format_exc())
+
+            # Then, if requested, delete the individual card image files
+            if args.delete_cards_after_pdf and cards_per_chunk == 0:
+                logging.info("Deleting individual card files after PDF creation...")
+                output_dir_path = Path(args.output_dir)
+                # Collect both single-card and per-frame card outputs
+                delete_patterns = global_glob_pattern
+                deleted = 0
+                for pattern in delete_patterns:
+                    for card_file in output_dir_path.glob(pattern):
+                        # Skip the combined PDF if it ever matched (it shouldn't with these patterns)
+                        if pdf_path and Path(card_file).resolve() == Path(pdf_path).resolve():
+                            continue
+                        try:
+                            card_file.unlink()
+                            deleted += 1
+                            logging.debug(f"Deleted: {card_file}")
+                        except Exception as e:
+                            logging.error(f"Error deleting {card_file}: {e}")
+                logging.info(f"Card files cleanup complete. Deleted {deleted} files.")
 
