@@ -359,7 +359,7 @@ def get_original_timestamp(file_path):
                                 return datetime.strptime(ts_human, "%Y-%m-%d %H:%M:%S")
                             except Exception:
                                 return ts_human  # Return as string if parsing fails
-                        ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts')
+                        ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts') or msg.get('creation_timestamp')
                         if ts:
                             try:
                                 return datetime.fromtimestamp(float(ts))
@@ -1348,7 +1348,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                                     slack_message_id = msg.get('client_msg_id') or msg.get('ts')
                                     slack_user_id = msg.get('user') or msg.get('username') or fobj.get('user')
                                     slack_shared_date = None
-                                    ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts')
+                                    ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts') or msg.get('creation_timestamp')
                                     if ts:
                                         try:
                                             slack_shared_date = datetime.fromtimestamp(float(ts)).strftime('%Y-%m-%d %H:%M:%S')
