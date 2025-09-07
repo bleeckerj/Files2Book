@@ -2,7 +2,7 @@
 
 Purpose
 -------
-`preprocess_mj_json.py` scans a folder of JSON files produced by Midjourney (or similar) and produces a single JSON array suitable for ingestion by `create_file_cards.py`. For each input JSON file the script:
+`preprocess_mj_json.py` scans a folder of JSON files produced by my Midjourney downloader (or similar) and produces a single JSON array suitable for ingestion by `create_file_cards.py`. For each input JSON file the script:
 
 - extracts the `image_path` as `filepath`
 - extracts a simplified `metadata` object containing:
