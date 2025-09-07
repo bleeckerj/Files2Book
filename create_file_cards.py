@@ -682,28 +682,37 @@ if __name__ == "__main__":
                 try:
                     with open(args.file_list, 'r', encoding='utf-8') as jf:
                         data = json.load(jf)
-                        # Expecting an array. Each element can be a dict with 'filepath' key
-                        # or a plain string path. Preserve order from the file.
+                        # The array is either at the root or under a 'file' or 'filelist' key
                         if isinstance(data, list):
-                            for elem in data:
-                                fp = None
-                                metadata = None
-                                if isinstance(elem, dict):
-                                    fp = elem.get('filepath') or elem.get('uri') or elem.get('path') or elem.get('file')
-                                    metadata = elem.get('metadata')
-                                elif isinstance(elem, str):
-                                    fp = elem
-                                if not fp:
-                                    continue
-                                # Normalize: expand user, strip whitespace
-                                fp_str = os.path.expanduser(str(fp).strip())
-                                # If the filepath is relative, resolve it against --input-dir if provided,
-                                # otherwise against the current working directory.
-                                if not os.path.isabs(fp_str):
-                                    base_dir = args.input_dir if getattr(args, 'input_dir', None) else os.getcwd()
-                                    fp_str = os.path.join(base_dir, fp_str)
-                                entry = {"filepath": fp_str, "metadata": metadata}
-                                files_from_list.append(entry)
+                            array = data
+                        elif isinstance(data, dict):
+                            # Try common keys
+                            array = data.get('file') or data.get('filelist')
+                            if array is None:
+                                logging.error("JSON file does not contain a root array or a 'file'/'filelist' key.")
+                                sys.exit(1)
+                        else:
+                            logging.error("JSON file is not a list or dict.")
+                            sys.exit(1)
+                        for elem in array:
+                            fp = None
+                            metadata = None
+                            if isinstance(elem, dict):
+                                fp = elem.get('filepath') or elem.get('uri') or elem.get('path') or elem.get('file')
+                                metadata = elem.get('metadata')
+                            elif isinstance(elem, str):
+                                fp = elem
+                            if not fp:
+                                continue
+                            # Normalize: expand user, strip whitespace
+                            fp_str = os.path.expanduser(str(fp).strip())
+                            # If the filepath is relative, resolve it against --input-dir if provided,
+                            # otherwise against the current working directory.
+                            if not os.path.isabs(fp_str):
+                                base_dir = args.input_dir if getattr(args, 'input_dir', None) else os.getcwd()
+                                fp_str = os.path.join(base_dir, fp_str)
+                            entry = {"filepath": fp_str, "metadata": metadata}
+                            files_from_list.append(entry)
                 except Exception as e:
                      logging.error(f"Error reading JSON file list {args.file_list}: {e}")
                      sys.exit(1)

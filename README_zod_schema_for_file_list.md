@@ -20,9 +20,8 @@ qr_data is transmogrified into a QR Code, that may or may not be suitable depend
 
 
 
-```
+```typescript
 // Zod schema for a general metadata dictionary (string keys, string values or null)
-// you must have one of filepath, path, uri
 const MetadataSchema = z.record(z.string(), z.string().nullable());
 
 const FileEntrySchema = z.object({
@@ -36,5 +35,83 @@ const FileEntrySchema = z.object({
   path: ["filepath", "path", "uri"]
 });
 
-const FileListSchema = z.array(FileEntrySchema);
+const FileListArraySchema = z.array(FileEntrySchema);
+
+const FileListSchema = FileListArraySchema.or(
+  z.object({
+    file: FileListArraySchema
+  }).passthrough()
+).or(
+  z.object({
+    filelist: FileListArraySchema
+  }).passthrough()
+);
+
+// Usage:
+// FileListSchema.parse(data) will accept either an array of file entries,
+// or an object with a 'file' or 'filelist' key containing such an array.
 ```
+
+## Representative Examples
+
+### 1. As a plain array
+
+```json
+[
+  {
+    "filepath": "images/photo1.jpg",
+    "metadata": {
+      "author": "Jane",
+      "caption": "Sunset"
+    }
+  },
+  {
+    "filepath": "images/photo2.jpg",
+    "metadata": {
+      "_hidden_note": "not shown",
+      "caption": ""
+    }
+  }
+]
+```
+
+### 2. As an object with a `file` key
+
+```json
+{
+  "file": [
+    {
+      "filepath": "images/photo1.jpg",
+      "metadata": {
+        "author": "Jane"
+      }
+    },
+    {
+      "filepath": "images/photo2.jpg",
+      "metadata": {
+        "caption": "Sunset"
+      }
+    }
+  ]
+}
+```
+
+### 3. As an object with a `filelist` key
+
+```json
+{
+  "filelist": [
+    {
+      "filepath": "images/photo1.jpg"
+    },
+    {
+      "filepath": "images/photo2.jpg",
+      "metadata": {
+        "caption": "Sunset"
+      }
+    }
+  ]
+}
+```
+
+All three forms are valid according
