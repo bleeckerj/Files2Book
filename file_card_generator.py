@@ -2,6 +2,7 @@ import os
 import time
 import re
 import bs4
+import pillow_heif
 import numpy as np
 from datetime import datetime
 import hashlib
@@ -15,7 +16,6 @@ import textwrap
 import zipfile
 import bz2
 import gzip
-import textwrap
 from bs4 import BeautifulSoup
 from qr_code_generator import create_qr_code
 
@@ -84,6 +84,8 @@ except ImportError:
 
 
 def wrap_text_by_pixel(draw, text, font, max_width):
+    if text == "":
+        return [""]
     words = text.split()
     lines = []
     current_line = ""
@@ -217,9 +219,14 @@ FILE_TYPE_GROUPS = {
         'color': (42, 219, 61)  # HEX: 2adb3d
     },
     'image': {
-        'extensions': {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp'},
+        'extensions': {'.jpg', '.jpeg', '.png','.bmp', '.tif', '.tiff', '.webp'},
         'icon': "IMAGE",
-        'color': (0, 244, 240)  # HEX: 00f4f0
+        'color': (0, 136, 255)  # HEX: 0088FF
+    },
+    'animated': {
+        'extensions': {'.gif'},
+        'icon': "ANIMATED",
+        'color': (255, 126, 54)  # HEX: ff7e36
     },
     'cad': {
         'extensions': {'.stp', '.step', '.igs', '.iges', '.stl', '.dxf', '.obj'},
@@ -227,6 +234,8 @@ FILE_TYPE_GROUPS = {
         'color': (45, 150, 230)  # HEX: 2D96E6
     }
 }
+
+SPECIAL_METADATA_DIRECT_VALUE_KEYS = {"name", "filename", "filepath", "created"}
 
 def scale_image_by_percent(image, percent):
     """Scale a PIL image by a given percentage (e.g., percent=0.95 for 95%)."""
@@ -350,7 +359,7 @@ def get_original_timestamp(file_path):
                                 return datetime.strptime(ts_human, "%Y-%m-%d %H:%M:%S")
                             except Exception:
                                 return ts_human  # Return as string if parsing fails
-                        ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts')
+                        ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts') or msg.get('creation_timestamp')
                         if ts:
                             try:
                                 return datetime.fromtimestamp(float(ts))
@@ -416,7 +425,7 @@ def get_gz_preview(file_path, max_bytes=1024, preview_box=None):
         orig_name = Path(file_path).stem
         ext = Path(orig_name).suffix.lower()
         # Try image preview
-        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.heic', '.heif','.webp'} and preview_box:
+        if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.heic', '.heif','.webp'} and preview_box:
             try:
                 img = Image.open(io.BytesIO(data))
                 img.thumbnail(preview_box)
@@ -564,7 +573,7 @@ def get_pdf_preview(file_path, box_w, box_h):
     try:
         # First, get the total number of pages
         from pdf2image import convert_from_path
-        import numpy as np
+        #import numpy as np
         #logging.debug(f"Attempting to extract PDF preview: {file_path}")
         all_pages = convert_from_path(str(file_path))
         n_total = len(all_pages)
@@ -753,6 +762,7 @@ def get_font_preview(file_path, box_w, box_h):
         special_chars = "!@#$%^&*()_+-=[]{}|;:'\",.<>/?"
         
         # Font sizes to display
+        # Font sizes to display
         sizes = [36, 48, 64, 72]
         
         # Get font metadata if possible
@@ -897,7 +907,7 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=3, rotate_
             cap.release()
             return None
         # Select frames using a normal distribution (bell curve) centered in the video
-        import numpy as np
+        #import numpy as np
         num_frames = grid_cols * grid_rows
         mean = frame_count / 2
         stddev = frame_count / 4
@@ -939,9 +949,9 @@ def get_video_preview(file_path, box_w, box_h, grid_cols=3, grid_rows=3, rotate_
     except Exception:
         return None
 
-def get_video_frames(file_path, max_frames=9, rotate_frames_if_portrait=True):
+def get_video_frames(file_path, total_frames=9, rotate_frames_if_portrait=True):
     """
-    Extracts up to max_frames from the video file and returns them as PIL Images.
+    Extracts up to total_frames from the video file and returns them as PIL Images.
     """
     try:
         cap = cv2.VideoCapture(str(file_path))
@@ -950,9 +960,9 @@ def get_video_frames(file_path, max_frames=9, rotate_frames_if_portrait=True):
             cap.release()
             return []
         # Evenly spaced frame indices
-        indices = [int(i) for i in np.linspace(0, frame_count - 1, max_frames)]
+        indices = [int(i) for i in np.linspace(0, frame_count - 1, total_frames)]
         frames = []
-        portrait_mode = False
+        #portrait_mode = False
         for idx in indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
@@ -970,9 +980,61 @@ def get_video_frames(file_path, max_frames=9, rotate_frames_if_portrait=True):
         logging.warning("Error extracting video frames", exc_info=True)
         return []
 
+def get_video_frames_weighted(file_path, total_frames=24, rotate_frames_if_portrait=True):
+    """
+    Extracts frames from the video file with more frames from the middle 80%.
+    """
+    try:
+        cap = cv2.VideoCapture(str(file_path))
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_count == 0:
+            cap.release()
+            return []
+
+        # Calculate how many frames for each segment
+        first_pct = 0.05
+        middle_pct = 0.80
+        last_pct = 0.35
+
+        first_n = max(1, int(total_frames * first_pct))
+        middle_n = max(1, int(total_frames * middle_pct))
+        last_n = total_frames - first_n - middle_n
+
+        # Frame ranges
+        first_range = (0, int(frame_count * first_pct))
+        middle_range = (int(frame_count * first_pct), int(frame_count * (first_pct + middle_pct)))
+        last_range = (int(frame_count * (first_pct + middle_pct)), frame_count - 1)
+
+        indices = []
+        # First 10%
+        indices += [int(i) for i in np.linspace(first_range[0], first_range[1], first_n, endpoint=False)]
+        # Middle 80%
+        indices += [int(i) for i in np.linspace(middle_range[0], middle_range[1], middle_n, endpoint=False)]
+        # Last 10%
+        indices += [int(i) for i in np.linspace(last_range[0], last_range[1], last_n, endpoint=True)]
+
+        # Remove duplicates and sort
+        indices = sorted(set(indices))
+
+        frames = []
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(frame)
+            if rotate_frames_if_portrait and pil_img.width > pil_img.height:
+                pil_img = pil_img.rotate(90, expand=True)
+            frames.append(pil_img)
+        cap.release()
+        return frames
+    except Exception:
+        logging.warning("Error extracting weighted video frames", exc_info=True)
+        return []
+
 # Check for pillow-heif availability
 try:
-    import pillow_heif
     PILLOW_HEIF_AVAILABLE = True
 except ImportError:
     PILLOW_HEIF_AVAILABLE = False
@@ -1112,9 +1174,8 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, metadata_text=None, title=None, metadata=None):
-    #logging.debug(f"Creating file info card for {file_path} with size {width}x{height}, cmyk_mode={cmyk_mode}")
-    #logging.debug(f"File path: {file_path}, exclude_file_path={exclude_file_path}, border_color={border_color}, border_inch_width={border_inch_width}, include_video_frames={include_video_frames}, metadata_text={metadata_text}")
+def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, max_video_frames=30, metadata_text=None, title=None, metadata=None):
+
     original_dt = None
     
     file_info = {}
@@ -1127,8 +1188,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         
     file_path = Path(file_path)
     # ignore "._*" ".DS_Store" files
-    if file_path.name.startswith("._") or file_path.name == ".DS_Store":
-        logging.info(f"Ignoring file: {file_path.name}")
+    if file_path.name.startswith("._") or file_path.name.startswith(".") or file_path.name == ".DS_Store":
+        logging.info(f"Ignoring weird dot file: {file_path.name}")
         return None
     # Proportional scaling
     base_width = 800
@@ -1141,12 +1202,15 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     # Create the full-sized background image that is the canvas for the preview
     # Use non-alpha modes so downstream PDF assembly doesn't hit alpha issues
-    if cmyk_mode:
-        # Light background in CMYK
-        img = Image.new('CMYK', (width, height), rgb_to_cmyk(250, 250, 250))
-    else:
-        # Light background in RGB
-        img = Image.new('RGB', (width, height), (250, 250, 250))
+    try:
+        if cmyk_mode:
+            # Light background in CMYK
+            img = Image.new('CMYK', (width, height), rgb_to_cmyk(250, 250, 250))
+        else:
+            # Light background in RGB
+            img = Image.new('RGB', (width, height), (250, 250, 250))
+    except Exception as e:
+        logging.error(f"Error creating background image: {e}")
     draw = ImageDraw.Draw(img)
 
     # Draw the border around the content area
@@ -1159,8 +1223,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         # For RGB mode, use standard black border
         draw.rectangle(
             [outer_padding, outer_padding, width - outer_padding - 1, height - outer_padding - 1],
-            outline=(0, 0, 0), 
-            width=border_width
+            outline=(255, 0, 0), 
+            width=0
         )
     else:
         # For CMYK mode, use solid black (K channel only at 100%) for maximum visibility
@@ -1179,15 +1243,15 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     # Proportional font sizes
     title_font_size = int(20 * scale)
-    info_font_size = int(15 * scale)  # Smaller font size for metadata
+    info_font_size = int(18 * scale)  # Smaller font size for metadata
     preview_font_size = int(12 * scale)
     fit_font_size = int(15 * scale)
     # Proportional paddings (keeping the original border_width value)
     icon_space = int((30) * scale)
-    metadata_line_height = int(info_font_size * 1.02)  # Tighter line spacing for metadata
+    metadata_line_height = int(info_font_size * 1.05)  # Tighter line spacing for metadata
     spacing_between_metadata_and_content_preview = int(icon_space * scale)
-    preview_box_padding = int(2 * scale)
-    header_height = int(15 * scale)
+    preview_box_padding = int(10 * scale)
+    header_height = int(25 * scale)
 
     # Add a margin between the header/title and the metadata box
     metadata_top_margin = int(12 * scale)
@@ -1206,7 +1270,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     file_type_info = get_file_type_info(file_path)
     logging.info(f"Processing {file_path.name} - Type: {file_type_info['group']}")
-    icon = file_type_info['icon']
+    #icon = file_type_info['icon']
     ext = file_path.suffix.lower()
 
 
@@ -1268,9 +1332,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             except Exception:
                 channel_dir = slack_data_root
 
-            messages_json = slack_data_root / "messages.json"
-            users_json = parent / "users.json"
-            avatars_dir = slack_data_root.parent / "avatars_40x40"
+            messages_json = channel_dir / "messages.json"
+            users_json = slack_data_root / "users.json"
+            avatars_dir = slack_data_root / "avatars"
             #user_profile = None
             if messages_json.exists():
                 try:
@@ -1284,27 +1348,44 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                                     slack_message_id = msg.get('client_msg_id') or msg.get('ts')
                                     slack_user_id = msg.get('user') or msg.get('username') or fobj.get('user')
                                     slack_shared_date = None
-                                    ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts')
+                                    ts = fobj.get('timestamp') or fobj.get('created') or msg.get('ts') or msg.get('creation_timestamp')
                                     if ts:
                                         try:
                                             slack_shared_date = datetime.fromtimestamp(float(ts)).strftime('%Y-%m-%d %H:%M:%S')
                                         except Exception:
                                             slack_shared_date = str(ts)
                                     # Resolve avatar from local 'avatars' directory
-                                    avatars_dir = slack_data_root.parent / "avatars"
+                                    #avatars_dir = slack_data_root.parent / "avatars"
+                                    # if its not in the parent of the slack_data_root, checkin in
+                                    # slack_data_root / "avatars"
+                                    #if not avatars_dir.exists():
+                                    #    avatars_dir = slack_data_root / "avatars"
                                     #logging.debug(f"Looking for avatars in: {avatars_dir}")
                                     if slack_user_id and avatars_dir.exists():
-                                        avatar_path = avatars_dir / f"{slack_user_id}.jpg"
-                                        #logging.debug(f"Checking avatar path: {avatar_path}")
-                                        if avatar_path.exists():
-                                            slack_avatar = str(avatar_path)
+                                        if slack_user_id == 'U08B6KZJ4':
+                                            # special case for the OMATA bot, use the omata avatar
+                                            # pick a random one either 'U62S2LGFK' or 'U08B6KZJ4'
+                                            slack_avatar = str((avatars_dir / random.choice(["U62S2LGFK", "U08B6KZJ4"])).with_suffix(".jpg"))
+                                        else:
+                                            avatar_path = avatars_dir / f"{slack_user_id}.jpg"
+                                            #logging.debug(f"Checking avatar path: {avatar_path}")
+                                            if avatar_path.exists():
+                                                slack_avatar = str(avatar_path)
                                     #logging.debug(f"Found avatar for {slack_user_id}: {slack_avatar}")
                                     # Resolve user name from users.json
-                                    if users_json.exists() and slack_user_id:
+                                    if slack_user_id == 'U08B6KZJ4':
+                                        # here's a list of names, pick one
+                                        villain_names = ["Astaroth", "Nyx", "Zebulon", "Thorne", "Snidely", "Cruella", "Mojo", "Ratso", "Cruntolimeu", "Hexadreadcimal", "Viperina", "Jinque", "Zorton", "Malbeced", "Draco", "Scarabella", "Venomina", "Clawdia", "Grumbleton", "Slinko", "Druenna", "Morgul", "Tricksy", "Cankle", "Cackles", "Drusilda", "Dank Druid", "Fizzlewick", "Gloomsworth", "Malarkus", "Nefaria", "Zombina", "Snivelston", "Velsneer"]
+                                        # pick a random villain name
+                                        slack_user_name = random.choice(villain_names)
+                                        
+                                    elif users_json.exists() and slack_user_id:
                                         try:
+
                                             with open(users_json, 'r', encoding='utf-8', errors='ignore') as uf:
                                                 users = json.load(uf)
                                             for user in users:
+
                                                 if user.get('id') == slack_user_id or user.get('name') == slack_user_id:
                                                     slack_user_name = user.get('real_name') or user.get('profile', {}).get('real_name') or user.get('name')
                                                     break
@@ -1314,6 +1395,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                         if slack_channel:
                             break
                 except Exception:
+                    logging.error(f"Error reading messages.json in {channel_dir}", exc_info=True)
+                    logging.error(traceback.format_exc())
                     pass
                 
                 
@@ -1376,8 +1459,9 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
         
         # Move Name to the end
-        if not exclude_file_path:
+        if exclude_file_path:
             file_info['Filepath'] = "/".join(Path(file_path).parts[-3:])
+            #file_info['Filepath'] = str(file_path)
 
     ##
     ##
@@ -1468,7 +1552,8 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     image_thumb = None
     pdf_grid_thumb = None
     gpx_thumb = None
-    video_thumb = None
+    #video_thumb = None
+    video_thumb_grid = None
     fit_gps_thumb = None
     zip_file_list = None
     zip_file_preview_img = None
@@ -1476,7 +1561,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     video_frames = []
     video_frame_thumbs = []
 
-    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp'}:
+    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}:
         image = get_image_thumbnail(
             file_path,
             box_size=(max_line_width_pixels, preview_box_height),
@@ -1492,19 +1577,62 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 image = image.rotate(90, expand=True)
                 img_w, img_h = image.size
                 logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
-
-            # Scale to fit preview area
-            # scale_factor = min(
-            #     (max_line_width_pixels) / img_w,
-            #     (preview_box_height) / img_h
-            # ) * 0.95
-            # logging.debug(f"Scaling image by factor {scale_factor:.3f} for {file_path.name}")
-            # new_w = int(img_w * scale_factor)
-            # new_h = int(img_h * scale_factor)
             
             image_thumb = ImageOps.contain(image, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
             
-            #logging.debug(f"Final image_thumb size: {new_w}x{new_h} for {file_path.name}")
+    elif ext in {'.gif'}:
+        try:
+            img = Image.open(file_path)
+            frames = []
+            # Extract all frames from the GIF
+            for frame_idx in range(img.n_frames):
+                img.seek(frame_idx)
+                frame = img.convert("RGBA")
+                frames.append(frame.copy())
+            # Determine grid size based on number of frames
+            n_total = len(frames)
+            best_score = -1
+            best_grid = None
+            best_indices = None
+
+            for rows in range(1, n_total + 1):
+                cols = int(math.ceil(n_total / rows))
+                num_cells = rows * cols
+                thumb_w = max_line_width_pixels // cols
+                thumb_h = preview_box_height // rows
+                # Select evenly spaced frames to fill the grid
+                indices = [int(i) for i in np.linspace(0, n_total - 1, num_cells)]
+                total_used_area = 0
+                for idx in indices:
+                    w, h = frames[idx].size
+                    frame_scale = min(thumb_w / w, thumb_h / h)
+                    used_w = int(w * frame_scale)
+                    used_h = int(h * frame_scale)
+                    total_used_area += used_w * used_h
+                score = total_used_area
+                if score > best_score:
+                    best_score = score
+                    best_grid = (rows, cols, thumb_w, thumb_h)
+                    best_indices = indices
+
+            grid_rows, grid_cols, thumb_w, thumb_h = best_grid
+            selected_frames = [frames[idx] for idx in best_indices]
+            gif_frame_thumbs = []
+            for frame in selected_frames:
+                thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
+                gif_frame_thumbs.append(thumb)
+
+            grid_img = Image.new('RGBA', (max_line_width_pixels, preview_box_height), (245, 245, 245, 255))
+            for idx, thumb in enumerate(gif_frame_thumbs):
+                x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                grid_img.paste(thumb, (x, y), mask=thumb)
+
+            gif_thumb_grid = grid_img.convert("RGBA")
+            image_thumb = gif_thumb_grid
+        except Exception as e:
+            preview_lines = [f"GIF error: {e}"]
+    
     elif ext in {'.heic', '.heif'}:
         image = get_heif_image(file_path)
         if image is not None:
@@ -1540,7 +1668,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                             pass
         except Exception as e:
             preview_lines = [f"NUMBERS error: {e}"]
-    elif ext == '.pdf':
+    elif ext.lower() == '.pdf':
         try:
             #pages = convert_from_path(str(file_path), first_page=1, last_page=1)
             #if pages:
@@ -1550,45 +1678,96 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             #    preview_lines = ["PDF preview not available."]
         except Exception as e:
             preview_lines = [f"PDF error: {e}"]
-    elif ext in {'.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm'}:
+    elif ext.lower() in FILE_TYPE_GROUPS['movie']['extensions']:
         # Dynamically determine grid size based on video length
-        def get_video_grid_size(file_path):
-            try:
-                import cv2
-                cap = cv2.VideoCapture(str(file_path))
-                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                cap.release()
-                # Use a matrix/function to scale grid size with video length
-                # Short videos: 3x3, Medium: 4x3, Long: 4x4, Very long: 5x4, etc.
-                if frame_count < 30:
-                    return 3, 3
-                elif frame_count < 900:
-                    return 4, 4
-                elif frame_count < 1800:
-                    return 4, 5
-                elif frame_count < 3600:
-                    return 4, 5
+        try:
+            import cv2
+            # if the video frame sizes are the same aspect ratio
+            # as the page then set max_video_frames to 12
+            cap = cv2.VideoCapture(str(file_path))
+            ret, frame = cap.read()
+            cap.release()
+            if ret and frame is not None:
+                frame_h, frame_w = frame.shape[:2]
+                page_orientation = "portrait" if height > width else "landscape"
+                frame_orientation = "portrait" if frame_h > frame_w else "landscape"
+                if page_orientation == frame_orientation:
+                    local_max_video_frames = 12
                 else:
-                    # For very long videos, cap at 4x6
-                    return 4, 5
-            except Exception:
-                return 3, 3
-        grid_cols, grid_rows = get_video_grid_size(file_path)
-        video_thumb = get_video_preview(file_path, max_line_width_pixels, preview_box_height, grid_cols=grid_cols, grid_rows=grid_rows)
-        video_frames = get_video_frames(file_path, max_frames=grid_cols * grid_rows)
-        video_frame_thumbs = []
-        for frame in video_frames:
-            scale_factor = min(
-                (max_line_width_pixels) / frame.width,
-                (preview_box_height) / frame.height
-            ) * 0.98
-            new_w = int(frame.width * scale_factor)
-            new_h = int(frame.height * scale_factor)
-            thumb = frame.resize((new_w, new_h), Image.LANCZOS)
-            video_frame_thumbs.append(thumb)
+                    local_max_video_frames = max_video_frames
+            cap = cv2.VideoCapture(str(file_path))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            cap.release()
+            #video_frames = get_video_frames(file_path, total_frames=min(max_video_frames, frame_count))
+            video_frames = get_video_frames_weighted(file_path, total_frames=min(local_max_video_frames+2, frame_count))
+            total_frames=min(local_max_video_frames, frame_count)
+            n_total = total_frames
+            # initialize video_frames
+            best_score = -1
+            best_grid = None
+            best_indices = None
+            frame_scale = 0
+            
+            # min_thumb_area = int(0.005 * max_line_width_pixels * preview_box_height)  # 10% of preview area
 
+            for rows in range(1, n_total + 1):
+                cols = int(math.ceil(n_total / rows))
+                num_cells = rows * cols
+                thumb_w = max_line_width_pixels // cols
+                thumb_h = preview_box_height // rows
+                # Constraint: skip if thumbnail area is too small
+                # if thumb_w * thumb_h > min_thumb_area:
+                #     continue
+                indices = [int(i) for i in np.linspace(0, n_total - 1, min(len(video_frames), num_cells))]
+                total_used_area = 0
+                for idx in indices:
+                    w, h = video_frames[idx].size
+                    frame_scale = min(thumb_w / w, thumb_h / h)
+                    used_w = int(w * frame_scale)
+                    used_h = int(h * frame_scale)
+                    total_used_area += used_w * used_h
+                score = total_used_area
+                if score > best_score:
+                    best_score = score
+                    best_grid = (rows, cols, thumb_w, thumb_h)
+                    best_indices = indices
+            if best_grid is None:
+                logging.warning("No valid grid configuration found for frames. Skipping preview grid.")
+                return img  # or return None, or fallback to another preview
+
+
+            grid_rows, grid_cols, thumb_w, thumb_h = best_grid
+            video_frames = get_video_frames_weighted(file_path, total_frames=num_cells+1)
+            selected_frames = [video_frames[idx] for idx in best_indices]
+            video_frame_thumbs = []
+            for frame in selected_frames:
+                thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
+                video_frame_thumbs.append(thumb)
+
+            grid_img = Image.new('RGBA', (max_line_width_pixels, preview_box_height), (255, 255, 255, 255))
+            for idx, thumb in enumerate(video_frame_thumbs):
+                x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                
+                if thumb.mode == "RGBA":
+                    grid_img.paste(thumb, (x, y), mask=thumb)
+                else:
+                    grid_img.paste(thumb, (x, y))
+
+            video_thumb_grid = grid_img.convert("RGBA")
+            # Save the video grid image for debugging
+            # try:
+            #     debug_out_dir = Path("./debug_video_cards_out")
+            #     debug_out_dir.mkdir(parents=True, exist_ok=True)
+            #     debug_out_path = debug_out_dir / f"{file_path.stem}_video_grid_debug.png"
+            #     video_thumb_grid.save(debug_out_path)
+            #     logging.info(f"Saved video grid debug image to {debug_out_path}")
+            # except Exception as e:
+            #     logging.error(f"Error saving video grid debug image: {e}")
+        except Exception as e:
+            preview_lines = [f"Video error: {e}"]
     # Defer drawing to later section after header/metadata are drawn.
-    elif ext == '.gpx':
+    elif ext.lower() == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
         # Mapbox integration for GPX with polyline
         try:
@@ -1608,10 +1787,10 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     gpx_thumb = mapbox_img
         except Exception:
             pass
-    elif ext in {'.xlsx', '.xls'}:
+    elif ext.lower() in {'.xlsx', '.xls'}:
         preview_lines = get_excel_preview(file_path, max_rows=max_preview_lines, max_cols=8)
 
-    elif ext in {'.fit', '.tcx'}:
+    elif ext.lower() in {'.fit', '.tcx'}:
         preview_lines, fit_meta = get_fit_summary_preview(file_path)
         fit_gps_thumb = get_fit_gps_preview(file_path, max_line_width_pixels, preview_box_height)
         # Mapbox integration for FIT/TCX with polyline
@@ -1637,7 +1816,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     fit_gps_thumb = mapbox_img
         except Exception:
             pass
-    elif ext == '.docx':
+    elif ext.lower() == '.docx':
         try:
             from docx import Document
             doc = Document(file_path)
@@ -1689,11 +1868,11 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         preview_lines = preview_lines[:max_preview_lines]
     elif file_type_info['group'] == 'text':
         preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length) or []
-    elif ext == '.zip':
+    elif ext.lower() == '.zip':
         zip_file_list = get_zip_preview(file_path, max_files=max_preview_lines)
         zip_file_preview_img = None
         zip_file_preview_lines = None
-    elif ext == '.rar':
+    elif ext.lower() == '.rar':
         try:
             logging.info(f"Processing RAR file: {file_path}")
             import rarfile
@@ -1704,13 +1883,13 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 logging.info(f"Found {len(names)} items in RAR file: {file_path}")
         except Exception as e:
             preview_lines = [f"RAR error: {e}"]
-    elif ext == '.gz':
+    elif ext.lower() == '.gz':
         preview_lines, image_thumb, _ = get_gz_preview(
             file_path, max_bytes=max_preview_lines * 16, preview_box=(max_line_width_pixels, preview_box_height))
         image_thumb = image_thumb  # If image_thumb is None, preview_lines will be used
-    elif ext == '.bz2':
+    elif ext.lower() == '.bz2':
         preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
-    elif ext == '.key':
+    elif ext.lower() == '.key':
         logging.info(f"****** Processing Keynote file: {file_path}")
         try:
             logging.info(f"Processing Keynote file: {file_path}")
@@ -1744,7 +1923,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"KEY error: {e}"]
-    elif ext == '.pptx' or ext == '.ppt':
+    elif ext.lower() == '.pptx' or ext.lower() == '.ppt':
         try:
             logging.info(f"Processing PPT(X) file: {file_path}")
             # Extract all images from ppt/media
@@ -1766,7 +1945,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 # Select images at evenly distributed intervals
                 indices = [0]
                 if n_preview > 1 and n_total > 1:
-                    import numpy as np
+                    #import numpy as np
                     remaining = np.linspace(1, n_total - 1, n_preview - 1)
                     indices += [int(round(i)) for i in remaining]
                 indices = sorted(set(indices))
@@ -1796,7 +1975,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                     image_thumb = grid_img
         except Exception as e:
             preview_lines = [f"PPTX error: {e}"]
-    elif ext == '.ai':
+    elif ext.lower() == '.ai':
         try:
             pages = convert_from_path(str(file_path), first_page=1, last_page=1)
             if pages:
@@ -1853,21 +2032,72 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         color = file_type_info['color']
     # We already set border_width earlier based on scale
     # Header within the content area
+    # This is where we draw the title
+        
+    ####################################
+    ###
+    ### HERE IS WHERE WE DRAW THE HEADER and HEADER TEXT
+    ###
+    ####################################
     if rgb_mode:
         draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=file_type_info['color'])
         text_color = 'white'
     else:
-        draw.rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], fill=color)
+        draw.rounded_rectangle([outer_padding, outer_padding, width-outer_padding, outer_padding+header_height], 5, fill=color)
         text_color = (0, 0, 0, 0)
     # Position the file name vertically centered in the header area, accounting for outer padding
-    header_text = title.upper() if title is not None else file_path.name.upper()
-    draw.text((width//2, outer_padding + header_height//2), header_text, fill=text_color, font=title_font, anchor="mm")
-    # draw.text((width//2, outer_padding + header_height//2), file_path.name.upper(), fill=text_color, font=title_font, anchor="mm")
-    # Position the icon below the header, accounting for outer padding
-    # icon_y = outer_padding + header_height + int(20 * scale)
-    # icon_color = file_type_info['color'] if rgb_mode else color
-    # draw.text((width//2, icon_y), icon, fill=icon_color, font=title_font, anchor="mm")
-    # y = icon_y + 60
+    # Determine the title text for the header
+    if file_info.get("_title") is not None:
+        title_text = file_info.get("_title")
+    elif title is not None and title.strip() != "":
+        title_text = title
+    else:
+        # Try to use a human-readable creation timestamp if available
+        ts = (
+            file_info.get("creation_timestamp")
+            or file_info.get("creation_ts")
+            or file_info.get("timestamp")
+        )
+        title_text = None
+        if ts is not None:
+            try:
+                ts_float = float(ts)
+                dt = datetime.fromtimestamp(ts_float)
+                title_text = dt.strftime("%B %d, %Y %H:%M:%S")
+            except Exception:
+                # If parsing fails, fallback to string
+                title_text = str(ts)
+        if not title_text:
+            title_text = file_path.name.upper()
+    rect_top = outer_padding
+    rect_bottom = outer_padding + header_height  # or outer_padding + header_height + 10 if you added 10
+    rect_height = rect_bottom - rect_top
+
+    # Get text size
+    text_bbox = draw.textbbox((0, 0), title_text, font=title_font)
+    text_height = text_bbox[3] - text_bbox[1]
+
+    # Calculate vertical center
+    center_y = rect_top + (rect_height // 2)
+    
+
+    
+    # The coordinates passed to draw.text are interpreted according to the anchor parameter:
+    # - If anchor is not specified (or "lt"), (x, y) is the upper left corner of the text.
+    # - If anchor="mm", (x, y) is the center of the text.
+    # - Other anchor values change the reference point (e.g., "rm" is right-middle).
+    # By default, draw.text((x, y), ...) places the text with its upper left at (x, y).
+    draw.text((width // 2, center_y), title_text, fill=text_color, font=title_font, anchor="mm") 
+    ## was drawing a line to try and figure out why the text was not centering on the y axis.
+    # draw.line([(outer_padding, center_y), (width - outer_padding, center_y)], fill="red", width=2)
+    
+    
+    
+    ###
+    ###
+    ### HERE IS WHERE WE DRAW THE AVATAR THING
+    ###
+    ###
     avatar_size = int(120 * scale)
     avatar_img = None
 
@@ -1882,7 +2112,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     elif 'slack_avatar' in locals() and slack_avatar:
         try:
             #logging.debug(f"Loading avatar from: {slack_avatar}")
-            avatar_img = Image.open(slack_avatar).convert('RGB')
+            avatar_img = Image.open(slack_avatar).convert('RGBA')
             #logging.debug(f"Avatar loaded: size={avatar_img.size}, mode={avatar_img.mode}")
             avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
             #logging.debug(f"Avatar resized: size={avatar_img.size}")
@@ -1894,7 +2124,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             
     if metadata is not None and metadata.get('avatar_path'):
         try:
-            avatar_img = Image.open(metadata['avatar_path']).convert('RGB')
+            avatar_img = Image.open(metadata['avatar_path']).convert('RGBA')
             avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
             avatar_img = round_image_corners(avatar_img, radius=int(7 * scale))
         except Exception as e:
@@ -1909,10 +2139,14 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         try:
             # Position avatar relative to the left border (outer_padding)
             #logging.debug(f"Pasting avatar at: x={avatar_x_coordinate}, y={avatar_y_coordinate}")
+            #avatar_img.save(f"debug_video_cards_out/debug_avatar_pre_paste_{slack_message_id}.png")
             img.paste(avatar_img, (avatar_x_coordinate, avatar_y_coordinate), mask=avatar_img)
+            # debug save the image at this point so we can figure out why the avatar isn't being
+            # presented in cards that are movies !??
+            #img.save(f"debug_video_cards_out/debug_avatar_{slack_message_id}.jpg")
         except Exception as e:
             logging.error(f"Error pasting avatar image: {e}")
-    y = avatar_y_coordinate + 5*scale # avatar and metadata can be horizontally aligned
+    y = avatar_y_coordinate + 12*scale # avatar and metadata can be horizontally aligned
     
     ########################################
     # DO NOT REMOVE THIS COMMENT EVER
@@ -1954,27 +2188,6 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             bg_fill = bg_rgb
             bg_outline = bg_outline_rgb
             text_fill = (0, 0, 0)
-
-        if exclude_file_path is False:
-            last_parts = Path(file_path).parts[-3:]
-            short_path = "/".join(last_parts)
-            filename = Path(file_path).name
-            # Truncate filename if longer than 25 characters
-            # And if we have one of those huge unwieldly filenames that
-            # Instagram produces, just show the last two parts of the file path
-            if len(filename) > 50:
-                filename = f"{filename[:25]}...{filename[-25:]}"
-                short_path = "/".join(last_parts[:-1])
-            # Draw the short path (excluding filename) above the filename
-            if len(last_parts) > 1:
-                draw.text((width//2, outer_padding + header_height + metadata_top_margin), short_path, fill=text_black, font=info_font, anchor="mm")
-                draw.text((width//2, outer_padding + header_height + metadata_top_margin + metadata_line_height), filename, fill=text_black, font=info_font, anchor="mm")
-                y_offset = metadata_line_height * 2 + 5
-            else:
-                draw.text((width//2, outer_padding + header_height + metadata_top_margin), filename, fill=text_black, font=info_font, anchor="mm")
-                y_offset = metadata_line_height + 5
-            logging.debug(f"File Path is {short_path}")
-            logging.debug(f"Last Parts is {last_parts} and it is {len(last_parts)} elements long")
         draw_text_box(
             draw,
             custom_metadata_text,
@@ -1991,6 +2204,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
             background_outline_width=1,
         )
         y = outer_padding + header_height + metadata_top_margin + metadata_height + y_offset
+
     else:
         ################################
         ##                            ##
@@ -1998,24 +2212,81 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         ##                            ##
         ################################
         for key, value in file_info.items():
-            if key.lower() == 'qr_data':
+            
+            if value is None or value == '':
+                continue
+            elif key.lower() == 'creation_timestamp' or key.lower() == 'ts' or key.lower() == 'timestamp':
+                try:
+                    # Try to convert to f loat and then to datetime
+                    ts_float = float(value)
+                    dt = datetime.fromtimestamp(ts_float)
+                    line = dt.strftime("%B %d, %Y %H:%M:%S")
+                except Exception:
+                    pass
+            
+            elif key.lower() == 'qr_data':
                 continue  # Skip QR data in metadata display
-            if key.lower() == 'name' or key.lower() == 'filename' or key.lower() == 'filepath' or key.lower() == 'created':
+            elif key.lower() == '_title':
+                continue # Skip _title as it's shown in header
+            elif key.lower() == 'name' or key.lower() == 'filename' or key.lower() == 'filepath' or key.lower() == 'created':
+                line = f"{value}"
+            elif key.lower() == '_blank':
+                line = ""
+            elif key.startswith('_'):
                 line = f"{value}"
             else:
                 line = f"{key}: {value}"
             # Wrap the line to fit within the content area width
             wrapped_lines = wrap_text_by_pixel(draw, line, info_font, content_area_width_for_wrap - avatar_size)
             for wrapped_line in wrapped_lines:
-                draw.text((avatar_x_coordinate +avatar_size + meta_pad, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
-                y += metadata_line_height
+                if avatar_img is not None and y < (avatar_y_coordinate + avatar_size):
+                    draw.text((avatar_x_coordinate + avatar_size + meta_pad, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
+                    y += metadata_line_height
+                else:
+                    draw.text((outer_padding, y), wrapped_line, fill=text_black, font=info_font, anchor="lt")
+                    y += metadata_line_height
+                    
+        if exclude_file_path is False:
+            last_parts = Path(file_path).parts[-3:]
+            short_path = "/".join(last_parts)
+            filename = Path(file_path).name
+            # Truncate filename if longer than 25 characters
+            # And if we have one of those huge unwieldly filenames that
+            # Instagram produces, just show the last two parts of the file path
+            if len(filename) > 50:
+                filename = f"{filename[:25]}...{filename[-25:]}"
+                short_path = "/".join(last_parts[:-1])
 
+            # Place path using computed metadata_height to avoid relying on incremental y
+            meta_bottom = outer_padding + header_height + metadata_top_margin + metadata_height
+            gap = max(4, int(6 * scale))
+            path_y = int(meta_bottom + gap)
+
+            # Draw the short path (excluding filename) BELOW the metadata we just wrote.
+            # Use path_y instead of the incrementally advanced y to avoid drift.
+            if len(last_parts) > 1:
+                draw.text((width//2, path_y), short_path, fill=text_black, font=info_font, anchor="mm")
+                draw.text((width//2, path_y + metadata_line_height), filename, fill=text_black, font=info_font, anchor="mm")
+                y_offset = metadata_line_height * 2 + 5
+            else:
+                draw.text((width//2, path_y), filename, fill=text_black, font=info_font, anchor="mm")
+                y_offset = metadata_line_height + 5
+
+            # Advance y based on the placement we used for path
+            y = path_y + y_offset
+            #logging.debug(f"File Path is {short_path}")
+            #logging.debug(f"Last Parts is {last_parts} and it is {len(last_parts)} elements long")
     # Make sure the preview area starts below the last metadata line
     preview_box_top = max(preview_box_top, int(y + spacing_between_metadata_and_content_preview))
     preview_box_height = preview_box_bottom - preview_box_top - preview_box_padding * 2
     max_preview_lines = max(1, preview_box_height // line_height)
 
     y = preview_box_top
+    ###
+    ###
+    ### Here we draw the preview box
+    ###
+    ###
     draw.rectangle(
         [preview_box_left, preview_box_top, preview_box_right, preview_box_bottom],
         fill=preview_background_color,
@@ -2088,14 +2359,14 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
         img.paste(gpx_thumb, (int(x0), int(y0)))
-    elif video_thumb is not None:
+    elif video_thumb_grid is not None:
         # Paste the overview thumbnail into the preview area on the base card (which already has header+metadata)
-        img_w, img_h = video_thumb.size
+        img_w, img_h = video_thumb_grid.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        img.paste(video_thumb, (int(x0), int(y0)))
+        img.paste(video_thumb_grid, (int(x0), int(y0)))
 
         if video_frame_thumbs:
             dpi = 300
@@ -2268,7 +2539,8 @@ def save_card_as_tiff(img, output_path, cmyk_mode=False):
                 compression='none',  # No compression for maximum quality
                 dpi=(300, 300)       # Set DPI to 300
             )
-            logging.debug(f"Saved CMYK TIFF with reinforced border: {output_path}")
+            logging.info(f"Saved CMYK TIFF with reinforced border: {output_path}")
+            logging.info(f"{output_path}")
         else:
             # For RGB mode, add a clear border too
             draw = ImageDraw.Draw(img)
@@ -2277,7 +2549,9 @@ def save_card_as_tiff(img, output_path, cmyk_mode=False):
             
             # Standard save
             img.save(output_path, format='TIFF', compression='tiff_deflate')
-            logging.debug(f"Saved RGB TIFF with reinforced border: {output_path}")
+            logging.info(f"Saved RGB TIFF with reinforced border: {output_path}")
+            logging.info(f"{output_path}")
+
     except Exception as e:
         logging.error(f"Error saving TIFF image: {e}")
         # Fall back to basic save method
@@ -2428,6 +2702,7 @@ if __name__ == "__main__":
     import argparse
     from pathlib import Path
 
+
     parser = argparse.ArgumentParser(description="Generate debug file cards for given files")
     parser.add_argument("files", nargs="+", help="One or more input files to generate cards for")
     parser.add_argument("--output-dir", default="./cards_out", help="Directory to write generated TIFFs into")
@@ -2435,6 +2710,7 @@ if __name__ == "__main__":
     parser.add_argument("--height", type=int, default=1000, help="Card height in pixels")
     parser.add_argument("--cmyk", action="store_true", help="Save cards in CMYK mode")
     parser.add_argument("--include-video-frames", action="store_true", help="If a video, include per-frame cards")
+    parser.add_argument("--max-video-frames", type=int, default=9, help="Minimum number of video frames to include should it come to that")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -2442,7 +2718,7 @@ if __name__ == "__main__":
 
     for fp in args.files:
         try:
-            cards = create_file_info_card(fp, width=args.width, height=args.height, cmyk_mode=args.cmyk, include_video_frames=args.include_video_frames)
+            cards = create_file_info_card(fp, width=args.width, height=args.height, cmyk_mode=args.cmyk, include_video_frames=args.include_video_frames, max_video_frames=args.max_video_frames)
             if isinstance(cards, list):
                 for idx, card in enumerate(cards):
                     out_path = out_dir / f"{Path(fp).stem}_{idx}.tiff"

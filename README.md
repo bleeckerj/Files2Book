@@ -1,12 +1,36 @@
-# Files2Books and Slack2Books
+# Files2Book
 
 This is a collection of utilities that were cobbled together in order to support a project where I wanted to archive all of the Slack channels for https://omata.com into a series of books, one book per channel.
 
-These onvert directories containing PDFs, images, PPTX, and video files into organized print preview cards with optional grid layouts with optional flipbook generation of `movie` file types, although the value of that is more ludic than anything else as `movie` file types will be made into a grid of still frames.
+## Why?
 
-This set of utilities builds on [SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata), which is a generalizable exporter of Slack channels. The output of that is a clobber of JSON files and file-files from the channels (files that were in message payloads).
+Well, I ran the company largely alone for 8 years before (happily and profitably) selling the company — and I wanted to memorialize the work and if you know me you know I love the weight of a book and what that weight (can possibly but not always in fact maybe less often) represents. The idea of cooking out physical tangible books from Slack channels, social media exhaust nozzles, folder hierachires, my ‘week notes’ — all things that otherwise would get lost either materially or from memory..well, that's a very ‘Julian’ thing to do.
 
-[SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata) generates a conditioned directory hierarchy for every chanel. File2Card was created to handle the `files` directory that this creates, allowing you to create a PDF document containing representations (`previews`) of many different file types one might encounter that has been shared as message payload.
+So, the utility value here is that, to me.
+
+## Eh? What?
+
+There's a 30TB RAID drive array somewhere that contains the bulk of the projects and work I've done over — hah! — nearly 30 years. I gradually shove data from old (and retired) laptops and such, etcetera. But I can't see that stuff, even if I could look at the physical box of RAID arrayed drives and presumably some blinking lights.
+
+How do you ‘scrapbook’ data?
+
+That's the question I guess I was working through.
+
+If my nephews came to the Laboratory and asked, as they have, ‘Yo, unc. 'Sup with all that weird stuff you do?', what am I going to do? Sure, I can tell them stories to the degree I recall things. But suppose I could open a book and start browsing through stuff and recalling stories the way we used to browse through those 3-ring binder photo albums that kept actual wet chemistry photographs?
+
+## Okay. Enough already. What's here?
+
+These convert directories containing PDFs, images, PPTX, and video files into organized print preview cards with optional grid layouts with optional flipbook generation of `movie` file types, although the value of that is more ludic than anything else as `movie` file types will be made into a grid of still frames.
+
+This set of utilities builds on [SlackExporter](https://github.com/bleeckerj/SlackExporter), which is a generalizable exporter of Slack channels. The output of that is a clobber of JSON files and file-files from the channels (files that were in message payloads).
+
+### Why Slack?
+
+Well, that's where I started without knowing where I'd end up. By that I mean, I was somewhat obsessed with making a book from all the Slack messages and files shared therein because OMATA happened a fair bit in Slack (distributed manufacturing and R&D team, etcetera).
+
+[SlackExporter](https://github.com/bleeckerj/SlackExporter) generates a conditioned directory hierarchy for every chanel. File2Card was created to handle the `files` directory that this creates, allowing you to create a PDF document containing representations (`previews`) of many different file types one might encounter that has been shared as message payload.
+
+(I've also created other exporters from various nozzles, endpoints, and ingestion flanges like Midjourney and Instagram that will cook out useful metadata and content — that one can then point `create_file_cards.py` at in various ways, including consuming a properly structured JSON file or just point it at a file hierarchy, and it'll make PDFs suitable for printing.)
 
 For me, that means things like PPTX, PNG, JPG, HEIC/HEIF, MOV, MP4, TXT, ZIP, RAR, PDF and so forth. These file types are converted into some kind of generally useful visual preview, although some are jsut represented as hex dumps, which is only useful aas an index and indicator that, you know — there was this file here, and here is what it is called, and here is where it was shared and, through much more effort, here is who shared it (as it should be referred to in the potentially quite extensive message transcripts.)
 
@@ -17,116 +41,98 @@ Well, I wrote more about that here:
 
 ## Features
 
-- Convert PDFs and images into grid layouts
-- Generate flipbooks from video files
+- Convert files and such into individual "info" previews — the idiom I use here is `cards`
+- Handles a variety of canonical and typical filetypes - images of various formats, video files (making grids of a selection of frames across the entire video, weighted towards the central 80% or so, if memory serves)
+- Generate flipbooks from video files, optionally. An older feature.
 - Support for various page sizes (A4, A5, Letter, Digest, Pocketbook, etc.)
-- Configurable grid layouts
-- Customizable margins, gaps, and borders
-- Option to exclude video stills from main grid pages
-- PDF output support
-- CMYK color mode support with customizable CMYK values
- - Optional per-frame video cards (`--include-video-frames`) in addition to overview grids
+- Customizable margins and border colors (cause the edges of books deserve some panache)
+- Option to include each individual video frame  (`--include-video-frames`) as their own page, which is a bit insane, but might have value in some weird context.
+- PDF output support, obvs.
+- CMYK color mode support with customizable CMYK values. Perfect for physical printing, which is what this is all about.
+ - Optional per-frame video cards in addition to overview grids
  - Cleanup flag to remove generated images after PDF assembly (`--delete-cards-after-pdf`)
+ - Exclude the file path to the file with `--exclude-file-path`
 
 ## Usage Note
 
-These utilities has been used to create the shelf books of the Slack channels for OMATA. The extraction of all content from those Slack channels is handled by the separate repository [SlackExporterForOmata](https://github.com/bleeckerj/SlackExporterForOmata).
+See the individual utilities, but the main useful one I've found is `create_file_cards.py` The other ones were created leading up to this one canonical one, I think.
 
-The steps are to first use SlackExporterForOmata to extract all the messages and files and everything from the channels. The messages appear as gigantic structured data JSON files and the data files that have been shared in the channel appear in a sidecar directory called, you know ``“files”``.
+## Run Examples 
 
-Run `batch_create_file_cards.js` will create “cards” representing the files that have been shared in all of the Slack channels that were digested by `SlackExporterForOmata` formatted and crap. (You can also try running with LARGE_TAROT if you feel like someday printing out actually cards.)
+Each little utility has its own configuration, and each has its own README for specifity.
 
-```
-node batch_create_file_cards.js --page-size A5 --root-dir ../SlackExporterForOmata --output-dir '/Users/julian/Dropbox (Personal)/Projects By Year/@2025/OMATA Process Diary/OMATA-SlackBooks/file-cards/'
-```
-
----
-
-Run 
+ The main program here is [create_file_cards.py](README_create_file_cards.md) so I'll just refer to it specifically, while also suggesting you may find some of the more nuanced utilities more what you're looking for.
 
 ```
-python3 ./directory_to_flipbooks.py /Users/julian/Code/SlackExporterForOmata/id-explorations/files/ --page-size A5 --p
-age-orientation portrait --video-fps 1 --cmyk-mode --cmyk-flipbook-background '61,53
-,42,14' --output-dir '/Users/julian/Dropbox (Personal)/Projects By Year/@2025/OMATA Process Diary/OMATA-SlackBooks/slack-channel-cards/'
+ python3 ./create_file_cards.py --page-size "DIGEST" --input-dir "./Chapters/InDesign/CURRENT/04052021/MakingOfOMATA_8x10_V1_01122021 Folder/Links/" --cmyk --output-dir "/Users/julian/Dropbox (Personal)/Projects By Year/@2025/Making Of Book Images Cards/V1/" --max-depth 1 --exclude-file-path --pdf-output-name MakingOfOMATA_V1_ImageBook.pdf
+ ```
+
+```
+python create_file_cards.py \
+  --page-size "5.75x8.75" \
+  --slack-data-root "/SlackExporterForOmata/omata-brand/" \
+  --file-list "/SlackExporterForOmata/omata-brand/downloaded_files.json" \
+  --output-dir "/SlackExporterForOmata/slack-channels-file-cards/omata-brand_file_cards_output" \
+  --cmyk-mode \
+  --max-depth 3 \
+  --border-color "161 216 26" \
+  --border-inch-width 0.2 \
+  --delete-cards-after-pdf \
+  --cards-per-chunk 500 \
+  --input-dir "/SlackExporterForOmata/"
+  ```
+  Where `/SlackExporterForOmata` is the root directory by which the elements in `file-list` are relatively specified.
+
+  e.g. here is one element in the `downloaded_files.json`
+
+  ```
+    {
+    "filepath": "omata-app/files/1487105611/Calibartion_Screens_based_on_Dir__2A",
+    "raw_ts": "1487105611",
+    "actual_ts": "1487105611.000000",
+    "permalink": "https://omata.slack.com/docs/T08B657GW/F04AB5GC60J",
+    "permalink_public": null
+    }
 ```
 
-will output in a subdirectory of `--output-dir` a bunch of folders of all the video files found from that Slack channel's shared files turned into 'flipbook' style pages (or cards) and a combined PDF for each, at the `--video-fps` specified
+Here's another command that just reads from a directory:
 
-YOu can use `batch_directory_to_flipbooks.sh` to just do this for all of the channels, quite possibly.
+```
+python create_file_cards.py \
+  --input-dir "/Volumes/Crucial X10/MidjourneyImages/images/autotrader_1089358474426712224/images/" \
+  --border-color "161 216 26" \
+  --border-inch-width 0 \
+  --output-dir "/Volumes/Crucial X10/MidjourneyImages/autotrader_output" \
+  --max-depth 3 \
+  --cmyk-mode \
+  --page-size DIGEST \
+  --pdf-output-name "autotrader_output.pdf" \
+  --cards-per-chunk 500 \
+  --delete-cards-after-pdf
+```
 
-Then running `process_all_slack_dirs.py` (here from this repo) will churn on all of that and make pages and combined PDFs for each Slack channel suitable for printing books and putting them on your shelf. (It will not create the covers and spine..you have to do that by hand at the moment.)
+Recursively walks down a directory hierarchy ingesting everything in its path and turning those every things into an preview card. It chunks these in quantities of 500, so you'll get PDFs with 500 pages up to the total accounting of all the files that can be handled. (Actually, even files that cannot be handled will be represented in some fashion, all except "." files which are always ignored no matter what.)
 
-Oh, the `SlackExporterForOmata` will also create an `avatar` directory containing tiny avatar icons, and a few other json files like `channels.json` and `users.json`. `user.json is used here to create tables and indices of various sorts.
+You'll get them as `DIGEST` sized (5.25"x8.25"), CMYK (natch), basically no border and they should be named `autotrader_output`-ish with some indexical reference, all in their own `chunk_xxx` folder, underneath the specified `output-dir`
 
-### Create the cards at LARGE_TAROT size
-
-`python3 generate_flipbook_pages.py --page-size LARGE_TAROT --input-dir ../SlackExporterForOmata/omata-backoffice/files --output-dir omata-backoffice_file_cards --cmyk-mode`
-
-This will go through all the files in the input directory and generate a card that is a kind of preview of the file contents, varying depending on what kind of data the file represents (image, zip, fit, gpx, etc.)
-
-### Combines them into a PDF where each pageis A5
-
-`./combine_images_to_pdf.js --input-dir omata-backoffice_file_cards --cmyk-mode --page-size A5 --dpi 300 --output-file omata-backoffice_file_cards/omata-backoffice_file_cards_combined.pdf`
-
-### New flags in create_file_cards.py
-
-- `--cmyk`: alias for `--cmyk-mode`
-- `--include-video-frames`: include individual video frame cards in addition to the overview
-- `--delete-cards-after-pdf`: delete `*_card.*` and `*_card_*.*` images after combining into a PDF
-
-This will get you a PDF combining all of the cards, each one embedded on an A5 sized page.
+All of the card files will be deleted (presumably to save disk space as they are typically quite large TIFFs), leaving only 1 or more PDFs.
 
 ## Requirements
 
+Obvs, create a Python virtual environment to save any headaches down the road.
+
+Then do the usual incantations:
+
 ```bash
-pip install pillow pdf2image opencv-python numpy
+source .venv/bin/activate
+pip install -r requirements
 ```
 
-Note: You'll also need `poppler` installed for PDF processing:
+Note: You'll also need `poppler` installed for PDF processing, as the library pdf2image requires it:
 - Mac: `brew install poppler`
 
-## Usage
+As I've only run this on macOS, I cannot say how to install Poppler on other platforms, but cf: https://poppler.freedesktop.org/ but Homebrew should support Ubuntu, for example - I'll probably try that.
 
-Basic usage:
-```bash
-python3 directory_to_images.py /path/to/input/directory [options]
-```
-
-Or:
-```bash
-python3 process_all_slack_dirs.py
-```
-
-This, when pointed appropriately, will create all the stuff.
-
-### Command Line Arguments
-
-Required:
-- `input_dir`: Path to directory containing images, PDFs, and/or videos
-
-Optional:
-- `--layout`: Choose 'grid' or 'masonry' (default: grid)
-- `--page-size`: Page size (e.g., 'A4', 'A5', '8.5x11', 'ANSI A') (default: 8.5x11)
-- `--page-orientation`: 'portrait' or 'landscape' (default: portrait)
-- `--image-fit-mode`: 'uniform', 'rotate', or 'scale' (default: uniform)
-- `--grid-rows`: Number of rows in grid layout
-- `--grid-cols`: Number of columns in grid layout
-- `--grid`: Shorthand for grid size (e.g., '2x3')
-- `--gap`: Gap between images in inches (default: 0.0333)
-- `--hairline-width`: Border width in inches (default: 0.0033)
-- `--hairline-color`: Border color (default: black)
-- `--padding`: Space between image and border in inches (default: 0.0167)
-- `--page-margin`: Page margin in inches (default: 0.25)
-- `--output-pdf`: Generate a PDF of all pages
-- `--output-dir`: Custom output directory
-- `--flipbook-mode`: Enable flipbook creation from videos
-- `--video-fps`: Frames per second for video extraction (default: 1)
-- `--exclude-video-stills`: Exclude video frames from main grid pages
-- `--handle-non-visual`: Create information cards for non-visual files (default: true)
-- `--no-handle-non-visual`: Skip non-visual files (don't create information cards)
-- `--cmyk-mode`: Output images in CMYK color mode instead of RGB
-- `--cmyk-background`: CMYK background color as C,M,Y,K values (0-255, comma-separated, defaults to 0,0,0,0 which is white)
-- `--cmyk-flipbook-background`: CMYK background color for flipbook blank pages as C,M,Y,K values (0-255, comma-separated, defaults to 22,0,93,0 which is Omata acid green)
 
 ### Example Commands
 
@@ -383,10 +389,6 @@ For all image previews (including movie frames and PDF/AI pages):
 - This ensures the preview makes optimal use of the available space.
 
 ## Examples relavant to my work / OMATA
-
-```
- python3 ./create_file_cards.py --page-size "DIGEST" --input-dir "./Chapters/InDesign/CURRENT/04052021/MakingOfOMATA_8x10_V1_01122021 Folder/Links/" --cmyk --output-dir "/Users/julian/Dropbox (Personal)/Projects By Year/@2025/Making Of Book Images Cards/V1/" --max-depth 1 --exclude-file-path --pdf-output-name MakingOfOMATA_V1_ImageBook.pdf
- ```
 
 
 ## License

@@ -1,0 +1,84 @@
+preprocess_ig_posts — README
+
+Purpose
+-------
+This document explains how `preprocess_ig_posts.py` in this repository works and describes the expected input JSON shape. The script prepares Instagram export JSON (posts, reels, media) into a normalized JSON file ready for downstream processing.
+
+Key requirement: JSON must contain an ARRAY of items
+--------------------------------------------------
+Many Instagram export files wrap the posts array inside an outer object whose key is the dump name. For example:
+
+{
+  "ig_archived_posts": [
+    { ... },
+    { ... }
+  ]
+}
+
+`preprocess_ig_posts.py` expects the input to be the ARRAY itself (i.e. the top-level JSON value should be `[...]`). If your file has an outer object, you must extract the inner array before running the script.
+
+Quick fixes
+-----------
+- Using `jq` to extract the first array value (common case):
+
+```bash
+jq '.[0] // .your_instagram_activity // .posts // .media // .' input.json > input_array.json
+```
+
+----------
+Install `jq`
+
+- macOS (Homebrew): brew install jq
+- Debian/Ubuntu: sudo apt-get install jq
+- Windows: choco install jq or use WSL
+- Or download binaries from https://stedolan.github.io/jq/
+-----------
+
+- Using Python to read an object and write the inner array (example picks the first array found):
+
+```python
+import json
+p = 'input.json'
+with open(p) as f:
+    data = json.load(f)
+
+# If outer object, find first array value
+if isinstance(data, dict):
+    arr = None
+    for v in data.values():
+        if isinstance(v, list):
+            arr = v
+            break
+    if arr is None:
+        raise SystemExit('No array found in input JSON')
+else:
+    arr = data
+
+with open('input_array.json', 'w') as out:
+    json.dump(arr, out)
+```
+
+Usage
+-----
+Run the script with an input and output path. Example:
+
+```bash
+python3 preprocess_ig_posts.py --input-json "/path/to/input_array.json" --output-json "/path/to/prepared.json"
+```
+
+Options
+-------
+Refer to the script's `--help` for available flags and options. Typical flags include `--input-json` and `--output-json`.
+
+Output
+------
+The script writes a normalized JSON file (array) suitable for downstream tooling in this repo. The exact structure depends on the script's logic (metadata, derived fields, etc.).
+
+Notes
+-----
+- If your export contains nested structure, use the quick-fix examples above to extract the actual posts array.
+- Keep a backup of the original export file before transforming it.
+
+Contact
+-------
+If you need help, open an issue or contact the repository owner.

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from PIL import Image
 import argparse
-from fpdf import FPDF
+#from fpdf import FPDF
 import logging
 import time
 import shutil
@@ -22,21 +22,24 @@ os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "120000" # that's 2 minutes!
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
+    # format='%(asctime)s:%(levelname)s - %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
+    format='%(levelname)s - %(filename)s:%(funcName)s:%(lineno)d - %(message)s'
+
 )
-# Import the file card generator
-IMAGE_EXTS = frozenset({'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'})
+
 total_files_handled_count = 0
-def is_valid_card_file(p: Path) -> bool:
-    """
-    Return True if p is a regular file (not a dotfile) and has a supported image extension.
-    """
-    if not isinstance(p, Path):
-        return False
-    name = p.name
-    if name.startswith(".") or name.startswith("._"):
-        return False
-    return p.is_file() and p.suffix.lower() in IMAGE_EXTS
+exclude_exts = None
+#IMAGE_EXTS = frozenset({'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.webp'})
+# def is_valid_card_file(p: Path) -> bool:
+#     """
+#     Return True if p is a regular file (not a dotfile) and has a supported image extension.
+#     """
+#     if not isinstance(p, Path):
+#         return False
+#     name = p.name
+#     if name.startswith(".") or name.startswith("._"):
+#         return False
+#     return p.is_file() and p.suffix.lower() in IMAGE_EXTS
 
 from file_card_generator import create_file_info_card, determine_file_type, save_card_as_tiff
 import file_card_generator
@@ -49,6 +52,7 @@ def parse_page_size(size_name):
     dpi = 300
     sizes = {
         'A5': (5.83, 8.27),
+        'A5_FULLBLEED': (5.955, 8.395),
         'A4': (8.27, 11.69),
         'A3': (11.69, 16.54),
         'A2': (16.54, 23.39),
@@ -59,7 +63,9 @@ def parse_page_size(size_name):
         'LEGAL': (8.5, 14),
         'TABLOID': (11, 17),
         'DIGEST': (5.5, 8.5),         # Digest size
+        'DIGEST_FULLBLEED': (5.625, 8.625),
         'POCKETBOOK': (4.25, 6.87),   # PocketBook size
+        'POCKETBOOK_FULLBLEED': (4.375, 6.995),
         # Playing card sizes (in inches, rounded to 2 decimals)
         'POKER': (2.48, 3.46),        # 63x88mm
         'BRIDGE': (2.24, 3.46),       # 57x88mm
@@ -95,9 +101,11 @@ def _process_file_iterable(
     height: int,
     cmyk_mode: bool = False,
     exclude_file_path: bool = False,
+    exclude_exts: list = None,
     border_color=(250, 250, 250),
     border_inch_width: float = 0.125,
     include_video_frames: bool = False,
+    max_video_frames: int = 30,
     metadata_text=None,
     cards_per_chunk: int = 0,
     pdf_name=None,
@@ -120,12 +128,34 @@ def _process_file_iterable(
     else:
         chunk_dir = output_path
 
+    if exclude_exts is None:
+        exclude_exts = []
+        
     files_to_process = []
     # Pre-count valid files
     for p in file_iterable:
-        # its either filepath, or file in the thing or we end up skipping
-        pth = Path(p['filepath'] if isinstance(p, dict) and 'filepath' in p else p['file'] if isinstance(p, dict) and 'file' in p else p)
-        if pth.is_file():
+        # its either filepath, or file  or uti in the thing or we end up skipping
+        pth = Path(
+            p['filepath'] if isinstance(p, dict) and 'filepath' in p
+            else p['uri'] if isinstance(p, dict) and 'uri' in p
+            else p['file'] if isinstance(p, dict) and 'file' in p
+            else p
+        )
+
+        if pth.suffix.lower() in exclude_exts:
+            logging.info(f"Excluded by extension: {pth.name}")
+            continue
+
+        try:
+            is_file = pth.is_file()
+        except OSError as e:
+            logging.error(f"OSError while checking file '{pth}': {e}")
+            continue
+        except Exception as e:
+            logging.error(f"Error while checking file '{pth}': {e}")
+            continue
+
+        if is_file:
             total_files_to_process_count += 1
             files_to_process.append(p)
         else:
@@ -135,7 +165,13 @@ def _process_file_iterable(
 
     # Iterate again for actual processing
     for p in files_to_process:
-        file_path = Path(p['filepath'] if isinstance(p, dict) and 'filepath' in p else p['file'] if isinstance(p, dict) and 'file' in p else p)
+        file_path = Path(
+            p['filepath'] if isinstance(p, dict) and 'filepath' in p
+            else p['uri'] if isinstance(p, dict) and 'uri' in p
+            else p['file'] if isinstance(p, dict) and 'file' in p
+            else p
+        )
+
         try:
             file_type = determine_file_type(file_path)
             logging.debug(f"Processing {file_path.name} - Type: {file_type}")
@@ -151,6 +187,7 @@ def _process_file_iterable(
                 border_color=border_color,
                 border_inch_width=border_inch_width,
                 include_video_frames=include_video_frames,
+                max_video_frames=args.max_video_frames,
                 metadata_text=metadata_text,
                 metadata=metadata,
                 title=title
@@ -261,8 +298,9 @@ def find_files(root_dir, max_depth=None):
         if max_depth is not None and current_depth >= max_depth:
             dirnames[:] = []
         for filename in filenames:
-            if filename != '.DS_Store':
-                result.append(Path(dirpath) / filename)
+            pth = Path(dirpath) / filename
+            if not filename.startswith('.') and pth.suffix.lower() not in exclude_exts:
+                result.append(pth)
     return result
 
 def build_file_cards_from_list(
@@ -270,10 +308,12 @@ def build_file_cards_from_list(
     output_dir='file_card_tests',
     cmyk_mode=False,
     page_size='LARGE_TAROT',
-    exclude_file_path=False,
+    exclude_exts=None,
+    exclude_file_path=None,
     border_color=(250, 250, 250),
     border_inch_width=0.125,
     include_video_frames=False,
+    max_video_frames=30,
     metadata_text=None,
     cards_per_chunk=0,
     pdf_name=None,
@@ -325,8 +365,11 @@ def build_file_cards_from_list(
                         continue
                     new_name = f"{zip_base}__{Path(name).name}"
                     target_path = Path(temp_dir.name) / new_name
-                    with z.open(name) as src, open(target_path, "wb") as dst:
-                        shutil.copyfileobj(src, dst)
+                    try:
+                        with z.open(name) as src, open(target_path, "wb") as dst:
+                            shutil.copyfileobj(src, dst)
+                    except Exception as e:
+                        logging.error(f"Error extracting {name} from zip {fp}: {e}")
                     zip_expanded_files_list.append({'filepath': target_path, 'metadata': {'Zip File':zip_base}})
             zip_expanded_files_list.append({'filepath': fp})
         else:
@@ -343,9 +386,11 @@ def build_file_cards_from_list(
         height=height,
         cmyk_mode=cmyk_mode,
         exclude_file_path=exclude_file_path,
+        exclude_exts=exclude_exts,
         border_color=border_color,
         border_inch_width=border_inch_width,
         include_video_frames=include_video_frames,
+        max_video_frames=max_video_frames,
         metadata_text=metadata_text,
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
@@ -363,6 +408,8 @@ def build_file_cards_from_directory(
     border_color=(250, 250, 250),
     border_inch_width=0.125,
     include_video_frames=False,
+    exclude_exts=None,
+    max_video_frames=30,
     max_depth=0,  # 0 = no recursion; negative => unlimited
     metadata_text=None,
     cards_per_chunk=0,
@@ -403,7 +450,7 @@ def build_file_cards_from_directory(
     logging.debug(f"Parsed page size: {page_size} -> {width}x{height} pixels")
 
     if not input_path.is_dir():
-        print(f"Error: {input_dir} is not a directory")
+        logging.error(f"Error: {input_dir} is not a directory")
         return
 
     # Reuse the shared processing implementation by passing the find_files iterable
@@ -415,10 +462,12 @@ def build_file_cards_from_directory(
         width=width,
         height=height,
         cmyk_mode=cmyk_mode,
+        exclude_exts=exclude_exts,
         exclude_file_path=exclude_file_path,
         border_color=border_color,
         border_inch_width=border_inch_width,
         include_video_frames=include_video_frames,
+        max_video_frames=args.max_video_frames,
         metadata_text=metadata_text,
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
@@ -604,14 +653,20 @@ if __name__ == "__main__":
     parser.add_argument('--border-color', default='250,250,250', help='Border color for the cards in RGB format (default: 250,250,250)')
     parser.add_argument('--border-inch-width', type=float, default=0.125, help='Border width in inches (default: 0.125)')
     parser.add_argument('--include-video-frames', default=False, action='store_true', help='Also output individual video frames as cards (default: overview only)')
+    parser.add_argument('--max-video-frames', type=int, default=30, help='Minimum number of video frames to include')
+    parser.add_argument('--exclude-exts', default=None, help='Comma-separated list of file extensions to exclude (e.g. "dng, oci")')
     parser.add_argument('--metadata-text', default=None, help='Custom metadata text to include on the card')
     parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
     parser.add_argument('--slack-data-root', help='Path to Slack export root (directory containing messages.json and files/). If provided, the script will treat input as Slack data and resolve relative filepaths accordingly.')
-
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
+    if args.exclude_exts is not None:
+        exclude_exts = [ext.strip().lower() for ext in args.exclude_exts.split(',') if ext.strip()]
+    else:
+        exclude_exts = []    # If a file list CSV is provided, parse it and process that list in order.
 
-    # If a file list CSV is provided, parse it and process that list in order.
+    exclude_file_path = args.exclude_file_path
+    
     files_from_list = None
     if args.file_list:
         if not os.path.isfile(args.file_list):
@@ -634,7 +689,7 @@ if __name__ == "__main__":
                                 fp = None
                                 metadata = None
                                 if isinstance(elem, dict):
-                                    fp = elem.get('filepath') or elem.get('path') or elem.get('file')
+                                    fp = elem.get('filepath') or elem.get('uri') or elem.get('path') or elem.get('file')
                                     metadata = elem.get('metadata')
                                 elif isinstance(elem, str):
                                     fp = elem
@@ -695,40 +750,40 @@ if __name__ == "__main__":
             sys.exit(1)
 
         if not files_from_list:
-            print(f"Error: {args.file_list} contains no valid file paths.")
+            logging.error(f"Error: {args.file_list} contains no valid file paths.")
             sys.exit(1)
 
     # Validate and adjust input_dir when no file-list was provided
     input_dir_provided = bool(args.input_dir)
     if files_from_list is None:
         if not input_dir_provided:
-            print("Error: --input-dir is required unless --file-list is provided.")
+            logging.error("Error: --input-dir is required unless --file-list is provided.")
             sys.exit(1)
         input_path = Path(args.input_dir)
         if args.slack_data_root:
             files_subdir = input_path / "files"
             if files_subdir.is_dir():
                 args.input_dir = str(files_subdir)
-                print(f"Using 'files' subdirectory: {args.input_dir}")
+                logging.info(f"Using 'files' subdirectory: {args.input_dir}")
             else:
-                print(f"Error: No 'files' subdirectory found in {args.input_dir}.")
+                logging.error(f"Error: No 'files' subdirectory found in {args.input_dir}.")
                 sys.exit(1)
         else:
             input_path = Path(args.input_dir)
     if getattr(args, "slack_data_root", None):
         slack_data_root = Path(args.slack_data_root)
         if not slack_data_root.exists() or not slack_data_root.is_dir():
-            print(f"Error: Slack data directory {args.slack_data_root} not found or not a directory.")
+            logging.error(f"Error: Slack data directory {args.slack_data_root} not found or not a directory.")
             sys.exit(1)
         # Prefer the standard 'files' subdirectory if present
         files_subdir = slack_data_root / "files"
         if files_subdir.is_dir():
             args.input_dir = str(files_subdir)
-            print(f"Using Slack 'files' subdirectory: {args.input_dir}")
+            logging.info(f"Using Slack 'files' subdirectory: {args.input_dir}")
         else:
             # Fall back to the provided slack root itself (useful if user points at a channel dir)
             args.input_dir = str(slack_data_root)
-            print(f"Using Slack data directory: {args.input_dir}")
+            logging.info(f"Using Slack data directory: {args.input_dir}")
 
         # Propagate into file_card_generator so file_card_generator.get_original_timestamp()
         # can resolve messages.json / users.json relative to the same slack export root.
@@ -753,6 +808,7 @@ if __name__ == "__main__":
 
     output_path_obj = Path(args.output_dir)
     output_dir_name = output_path_obj.name
+    logging.info(f"Output directory will be: {output_dir_name}")
     # Compute pdf_name consistently
     if getattr(args, "cards_per_chunk", 0) and args.cards_per_chunk > 0:
         pdf_name = None
@@ -796,7 +852,8 @@ if __name__ == "__main__":
             args.output_dir,
             args.cmyk_mode,
             args.page_size,
-            exclude_file_path=args.exclude_file_path,
+            exclude_file_path=exclude_file_path,
+            exclude_exts=exclude_exts,
             border_color=t_border_color,
             border_inch_width=args.border_inch_width,
             include_video_frames=args.include_video_frames,
@@ -811,7 +868,8 @@ if __name__ == "__main__":
             args.output_dir,
             args.cmyk_mode,
             args.page_size,
-            exclude_file_path=args.exclude_file_path,
+            exclude_file_path=exclude_file_path,
+            exclude_exts=exclude_exts,
             border_color=t_border_color,
             border_inch_width=args.border_inch_width,
             include_video_frames=args.include_video_frames,
@@ -858,31 +916,39 @@ if __name__ == "__main__":
         
         # For chunked output we assemble chunk PDFs below; skip assembling a top-level PDF here to avoid empty PDFs.
         
-        # Delete individual card files if requested (only for non-chunked flow)
-        if args.delete_cards_after_pdf and (getattr(args, "cards_per_chunk", 0) or 0) == 0:
-            logging.info("Deleting individual card files after PDF creation...")
-            output_dir_path = Path(args.output_dir)
-            # Collect both single-card and per-frame card outputs
-            delete_patterns = global_glob_pattern
-            deleted = 0
-            for pattern in delete_patterns:
-                for card_file in output_dir_path.glob(pattern):
-                    # Skip the combined PDF if it ever matched (it shouldn't with these patterns)
-                    if pdf_path and Path(card_file).resolve() == Path(pdf_path).resolve():
-                        continue
-                    try:
-                        card_file.unlink()
-                        deleted += 1
-                        logging.debug(f"Deleted: {card_file}")
-                    except Exception as e:
-                        logging.error(f"Error deleting {card_file}: {e}")
-            logging.info(f"Card files cleanup complete. Deleted {deleted} files.")
-    
-        # Chunked PDF assembly
+        # Determine chunking
         cards_per_chunk = getattr(args, "cards_per_chunk", 0) or 0
         output_dir_path = Path(args.output_dir)
+
+        # If chunked, skip top-level assembly (chunks were assembled during processing)
         if cards_per_chunk and cards_per_chunk > 0:
-            logging.info("Chunk PDFs were assembled during processing; skipping post-processing assembly.")
+            logging.info("cards_per_chunk specified; chunk PDFs were assembled during processing; skipping top-level combined PDF.")
         else:
-            assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
+            # First assemble the combined PDF from the generated cards
+            try:
+                assemble_cards_to_pdf(args.output_dir, pdf_path, (width, height))
+                logging.info(f"Assembled top-level PDF: {pdf_path}")
+            except Exception as e:
+                logging.error(f"Error assembling top-level PDF: {e}")
+                logging.error("Traceback:\n" + traceback.format_exc())
+
+            # Then, if requested, delete the individual card image files
+            if args.delete_cards_after_pdf and cards_per_chunk == 0:
+                logging.info("Deleting individual card files after PDF creation...")
+                output_dir_path = Path(args.output_dir)
+                # Collect both single-card and per-frame card outputs
+                delete_patterns = global_glob_pattern
+                deleted = 0
+                for pattern in delete_patterns:
+                    for card_file in output_dir_path.glob(pattern):
+                        # Skip the combined PDF if it ever matched (it shouldn't with these patterns)
+                        if pdf_path and Path(card_file).resolve() == Path(pdf_path).resolve():
+                            continue
+                        try:
+                            card_file.unlink()
+                            deleted += 1
+                            logging.debug(f"Deleted: {card_file}")
+                        except Exception as e:
+                            logging.error(f"Error deleting {card_file}: {e}")
+                logging.info(f"Card files cleanup complete. Deleted {deleted} files.")
 
