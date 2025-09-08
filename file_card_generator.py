@@ -221,7 +221,7 @@ FILE_TYPE_GROUPS = {
     'image': {
         'extensions': {'.jpg', '.jpeg', '.png','.bmp', '.tif', '.tiff', '.webp'},
         'icon': "IMAGE",
-        'color': (0, 136, 255)  # HEX: 0088FF
+        'color': (50, 50, 50)  # HEX: 0088FF
     },
     'animated': {
         'extensions': {'.gif'},
@@ -1269,6 +1269,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         fit_font = ImageFont.load_default()
 
     file_type_info = get_file_type_info(file_path)
+    logging.info(f"In directory {file_path.parent}")
     logging.info(f"Processing {file_path.name} - Type: {file_type_info['group']}")
     #icon = file_type_info['icon']
     ext = file_path.suffix.lower()
@@ -2258,7 +2259,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
                 short_path = "/".join(last_parts[:-1])
 
             # Place path using computed metadata_height to avoid relying on incremental y
-            meta_bottom = outer_padding + header_height + metadata_top_margin + metadata_height
+            meta_bottom = y # outer_padding + header_height + metadata_top_margin + metadata_height
             gap = max(4, int(6 * scale))
             path_y = int(meta_bottom + gap)
 
