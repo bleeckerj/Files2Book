@@ -117,6 +117,34 @@ You'll get them as `DIGEST` sized (5.25"x8.25"), CMYK (natch), basically no bord
 
 All of the card files will be deleted (presumably to save disk space as they are typically quite large TIFFs), leaving only 1 or more PDFs.
 
+## Supported Page Sizing
+
+### Various standard book sizes (standard units - inches)
+'A5': (5.83, 8.27)                  
+'A5_FULLBLEED': (5.955, 8.395),
+'A4': (8.27, 11.69),
+'A3': (11.69, 16.54),
+'A2': (16.54, 23.39),
+'A1': (23.39, 33.11),
+'A0': (33.11, 46.81),
+'TRADE_LARGE': (7, 9),
+'LETTER': (8.5, 11),
+'LEGAL': (8.5, 14),
+'TABLOID': (11, 17),
+'DIGEST': (5.5, 8.5),
+'DIGEST_FULLBLEED': (5.625, 8.625),
+'POCKETBOOK': (4.25, 6.87),
+'POCKETBOOK_FULLBLEED': (4.375, 6.995),
+
+### Playing card sizes (in inches, rounded to 2 decimals)
+'POKER': (2.48, 3.46),        # 63x88mm
+'BRIDGE': (2.24, 3.46),       # 57x88mm
+'MINI': (1.73, 2.68),         # 44x68mm
+'LARGE_TAROT': (2.76, 4.72),  # 70x120mm
+'SMALL_TAROT': (2.76, 4.25),  # 70x108mm
+'LARGE_SQUARE': (2.76, 2.76), # 70x70mm
+'SMALL_SQUARE': (2.48, 2.48), # 63x63mm
+
 ## Requirements
 
 Obvs, create a Python virtual environment to save any headaches down the road.
@@ -134,7 +162,9 @@ Note: You'll also need `poppler` installed for PDF processing, as the library pd
 As I've only run this on macOS, I cannot say how to install Poppler on other platforms, but cf: https://poppler.freedesktop.org/ but Homebrew should support Ubuntu, for example - I'll probably try that.
 
 
-### Example Commands
+## Some related utilities
+
+Some of these may be somewhat deprectated as they were integrated into `create_file_cards.py` possibly
 
 Create a 3x2 grid of images on A5 paper:
 ```bash
@@ -159,7 +189,7 @@ python3 directory_to_images.py /path/to/files/ \
     --layout grid \
     --grid-rows 3 \
     --grid-cols 2 \
-    --page-size A5 \
+    --page-size A5_FULLBLEED \
     --flipbook-mode \
     --video-fps 1 \
     --exclude-video-stills \
@@ -192,30 +222,6 @@ python3 directory_to_images.py /path/to/files/ \
     --output-pdf
 ```
 
-## Batch Processing All Slack Channels
-
-To process all Slack channel directories at once (for example, to generate shelf books for every channel), use the provided `process_all_slack_dirs.py` script. This script will automatically run `directory_to_images.py` for every channel directory (with a `files/` subdirectory) in your exported Slack workspace folder.
-
-### Command Line Arguments for Batch Processing
-
-- `--base-dir`: Path to the base directory containing all Slack export directories (default: "/Users/julian/Code/SlackExporterForOmata")
-- `--script-path`: Path to the directory_to_images.py script (default: "/Users/julian/Code/pdf-to-grid-of-images/directory_to_images.py")
-
-### Example Usage
-
-Basic usage with default paths:
-```bash
-python3 process_all_slack_dirs.py
-```
-
-Specifying custom paths:
-```bash
-python3 process_all_slack_dirs.py \
-    --base-dir /path/to/slack/exports \
-    --script-path /path/to/directory_to_images.py
-```
-
-This will generate output pages and flipbooks for every channel in your Slack export, using the options specified in the script.
 
 ## CMYK Color Mode
 
@@ -270,98 +276,9 @@ The tool automatically categorizes files into these groups:
 
 Any other file types will be rendered with a generic file information card.
 
-### Example Command with Non-Visual File Support
-
-Process all files in a directory, including creating information cards for non-visual files:
-
-```bash
-python3 directory_to_images.py /path/to/files/ \
-    --layout grid \
-    --grid-rows 2 \
-    --grid-cols 1 \
-    --handle-non-visual \
-    --output-pdf
-```
-
-To process only visual files (images, PDFs, videos) and skip non-visual files:
-
-```bash
-python3 directory_to_images.py /path/to/files/ \
-    --layout grid \
-    --grid-rows 2 \
-    --grid-cols 1 \
-    --no-handle-non-visual \
-    --output-pdf
-```
-
-# PDF to Grid of Images
-
-This tool processes files and creates visual file cards, which can be combined into a single PDF.
-
-## Features
-
-- Generates file info cards from various file types
-- Supports both RGB and CMYK color modes
-- Displays file metadata, previews, and visual indicators
-- Handles special file types like GPS files, archives, and more
-- Assembles cards into a single PDF document
-
-## Usage
-
-```bash
-python generate_flipbook_pages.py --input-dir ./files --output-dir ./card_output --cmyk-mode --page-size LARGE_TAROT
-```
-
-### Options
-
-- `--input-dir`: Directory containing files to create cards for
-- `--output-dir`: Directory to save card images (default: file_card_tests)
-- `--cmyk-mode`: Generate cards in CMYK mode (for printing)
-- `--page-size`: Card size (A4, LETTER, TABLOID, POKER, BRIDGE, etc. or WxH in inches)
-- `--pdf-output-name`: Filename to save for the combined PDF
-
-## PDF Assembly
-
-For highest quality PDF assembly, use the Node.js script:
-
-```bash
-node combine_images_to_pdf.js -i ./card_output -o combined_cards.pdf --cmyk-mode --sort-order name
-```
-
-```bash
-combine_images_to_pdf.js --input-dir general_file_cards --cmyk-mode --page-size A5 --dpi 300 --output-file general_file_cards/general_file_cards_combined.pdf
-```
-
-## Requirements
-
-- Python 3.7+
-- Pillow (PIL Fork)
-- Additional requirements in requirements.txt
-
-# file_card_generator README
-
-file_card_generator.py generates visual info cards for files of many types.
-
-Supported preview types:
-- Images (PNG, JPG, etc.)
-- PDF
-- Text/code/data files
-- Keynote (.key): Lists contents and shows embedded images in a grid
-- DOCX (.docx): Extracts and previews text
-
-Not yet supported:
-- PPTX (.pptx): No preview, only metadata
-
-Other features:
-- Slack metadata integration
-- GPS/Map previews for GPX/FIT
-- Archive previews (ZIP, GZ, BZ2)
-
-See the code for details on each preview type.
-
 ## Movie File Preview Logic
 
-For movie files (`.mp4`, `.mov`, `.avi`, `.mkv`), the preview shows a grid of 4 frames.  
+For movie files (`.mp4`, `.mov`, `.avi`, `.mkv`), the preview shows frames, the number of which are based on the command line parameter `--max-video-frames` which is not an absolute determinant of the number of frames shown but more a hint as the algorithm to lay the frames out really wants to fill the available space in a complete grid with no blank holes and is somewhat imperfect in doing that, but usually is close enough (for jazz).  
 Frames are selected as follows:
 - One random frame from the first 10% of the video
 - One random frame from 10%–50%
@@ -389,6 +306,16 @@ For all image previews (including movie frames and PDF/AI pages):
 - This ensures the preview makes optimal use of the available space.
 
 ## Examples relavant to my work / OMATA
+
+
+## Supportive utilities
+
+[generate-filelist-for-files2books](https://github.com/bleeckerj/generate-filelist-for-files2books)
+
+[SlackExporter](https://github.com/bleeckerj/SlackExporter)
+
+[DownloadDiscordImages](https://github.com/bleeckerj/download-discord-images)
+
 
 
 ## License

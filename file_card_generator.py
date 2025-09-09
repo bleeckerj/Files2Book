@@ -1258,10 +1258,10 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     # Load fonts
     try:
-        title_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", title_font_size)
-        info_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", info_font_size)
-        preview_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", preview_font_size)
-        fit_font = ImageFont.truetype("/Users/julian/OMATA Dropbox/Julian Bleecker/PRODUCTION ASSETS/FONTS/3270/3270NerdFontMono-Regular.ttf", fit_font_size)
+        title_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", title_font_size)
+        info_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", info_font_size)
+        preview_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", preview_font_size)
+        fit_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", fit_font_size)
     except:
         title_font = ImageFont.load_default()
         info_font = ImageFont.load_default()
