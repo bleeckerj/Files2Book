@@ -1,8 +1,11 @@
+import sys
+print(sys.executable)
 import os
 import time
 import re
 import bs4
 import pillow_heif
+
 import numpy as np
 from datetime import datetime
 import hashlib
@@ -219,7 +222,7 @@ FILE_TYPE_GROUPS = {
         'color': (42, 219, 61)  # HEX: 2adb3d
     },
     'image': {
-        'extensions': {'.jpg', '.jpeg', '.png','.bmp', '.tif', '.tiff', '.webp'},
+        'extensions': {'.dng','.jpg', '.jpeg', '.png','.bmp', '.tif', '.tiff', '.webp'},
         'icon': "IMAGE",
         'color': (50, 50, 50)  # HEX: 0088FF
     },
@@ -698,8 +701,17 @@ def get_pdf_preview(file_path, box_w, box_h):
         return None
 
 def get_image_thumbnail(file_path, box_size=(320, 320), cmyk_mode=False):
+    ext = Path(file_path).suffix.lower()
     try:
-        img = Image.open(file_path)
+        if ext.lower() == '.dng':
+            import rawpy
+            import numpy as np
+            with rawpy.imread(str(file_path)) as raw:
+                rgb = raw.postprocess()
+            img = Image.fromarray(rgb)
+        else:
+            img = Image.open(file_path)
+
         # Composite transparent images onto white/light background BEFORE any CMYK conversion
         if img.mode in ("RGBA", "LA"):
             #logging.debug(f"Compositing transparent image onto white background: {file_path.name}")
@@ -732,7 +744,8 @@ def get_image_thumbnail(file_path, box_size=(320, 320), cmyk_mode=False):
         y = (box_h - new_h) // 2
         thumb.paste(img, (x, y))
         return thumb
-    except Exception:
+    except Exception as e:
+        logging.error(f"Error creating image thumbnail for {file_path}: {e}")
         return None
 
 def get_font_preview(file_path, box_w, box_h):
@@ -1258,11 +1271,19 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
     # Load fonts
     try:
-        title_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", title_font_size)
-        info_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", info_font_size)
-        preview_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", preview_font_size)
-        fit_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", fit_font_size)
-    except:
+        
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        font_path = os.path.join(script_dir, "FONTS", "3270NerdFontMono-Regular.ttf")
+        title_font = ImageFont.truetype(font_path, title_font_size)
+        
+        #title_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", title_font_size)
+
+        info_font = ImageFont.truetype(font_path, info_font_size)
+        preview_font = ImageFont.truetype(font_path, preview_font_size)
+        fit_font = ImageFont.truetype(font_path, fit_font_size)
+    except Exception as e:
+        logging.error(f"Error loading custom font: {e}")
+        logging.error("Could not load custom font, falling back to default font")
         title_font = ImageFont.load_default()
         info_font = ImageFont.load_default()
         preview_font = ImageFont.load_default()
@@ -1409,7 +1430,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
 
 
         # Step 1: Check if file is an EXIF-capable image type
-        exif_candidate = ext in {'.jpg', '.jpeg', '.tif', '.tiff'}
+        exif_candidate = ext in {'.dng', '.jpg', '.jpeg', '.tif', '.tiff'}
         if exif_candidate:
             logging.debug(f"File {file_path} is an EXIF-capable image type: {ext}")
             try:
@@ -1562,7 +1583,7 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     video_frames = []
     video_frame_thumbs = []
 
-    if ext in {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}:
+    if ext in {'.dng', '.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}:
         image = get_image_thumbnail(
             file_path,
             box_size=(max_line_width_pixels, preview_box_height),
@@ -2213,9 +2234,11 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         ##                            ##
         ################################
         for key, value in file_info.items():
-            
+            #logging.info(f"Metadata key: {key}, value: {value}")
             if value is None or value == '':
                 continue
+            elif key.lower() == 'sequence_group' or key.lower() == 'sequence_index':
+                continue # Skip sequence info in metadata display
             elif key.lower() == 'creation_timestamp' or key.lower() == 'ts' or key.lower() == 'timestamp':
                 try:
                     # Try to convert to f loat and then to datetime
@@ -2482,7 +2505,10 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
     color_border_width = min_border_px #max(min_border_px, int(10 * scale), 20)
     
     # color_border_width = min(int(20 * scale), 20)  # Scales with 'scale', but never exceeds 15
-    draw.rectangle([0, 0, width, height], outline=rgb_to_cmyk(*border_color), width=color_border_width)
+    if cmyk_mode:
+        draw.rectangle([0, 0, width, height], outline=rgb_to_cmyk(*border_color), width=color_border_width)
+    else:
+        draw.rectangle([0, 0, width, height], outline=border_color, width=color_border_width)
     return img
 
 def determine_file_type(file_path):
