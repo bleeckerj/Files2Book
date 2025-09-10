@@ -3,6 +3,7 @@ import os
 import sys
 from pathlib import Path
 from PIL import Image
+from PIL.ExifTags import TAGS
 import argparse
 #from fpdf import FPDF
 import logging
@@ -16,6 +17,7 @@ import csv
 import json
 import tempfile
 import zipfile
+from datetime import datetime
 
 
 os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "120000" # that's 2 minutes!
@@ -353,25 +355,29 @@ def build_file_cards_from_list(
     # Expand zip files
     zip_expanded_files_list = []
     temp_dirs = []
+    expanded_files = []
     for entry in file_list:
         fp = entry['filepath']
         if str(fp).lower().endswith('.zip'):
             temp_dir = tempfile.TemporaryDirectory()
             temp_dirs.append(temp_dir)
             zip_base = Path(fp).stem
-            with zipfile.ZipFile(fp, 'r') as z:
-                for name in z.namelist():
-                    if name.startswith("._") or name.startswith("__MACOSX") or name.startswith(".DS"):
-                        continue
-                    new_name = f"{zip_base}__{Path(name).name}"
-                    target_path = Path(temp_dir.name) / new_name
-                    try:
+            try:
+                with zipfile.ZipFile(fp, 'r') as z:
+                    for name in z.namelist():
+                        # Ignore macOS "._*" files and metadata
+                        if name.startswith("._") or name.startswith("__MACOSX") or name.startswith(".DS"):
+                            continue
+                        # Add zip file name as prefix to extracted file
+                        new_name = f"{zip_base}__{Path(name).name}"
+                        target_path = Path(temp_dir.name) / new_name
                         with z.open(name) as src, open(target_path, "wb") as dst:
                             shutil.copyfileobj(src, dst)
-                    except Exception as e:
-                        logging.error(f"Error extracting {name} from zip {fp}: {e}")
-                    zip_expanded_files_list.append({'filepath': target_path, 'metadata': {'Zip File':zip_base}})
-            zip_expanded_files_list.append({'filepath': fp})
+                        expanded_files.append(target_path)
+            except zipfile.BadZipFile:
+                logging.warning(f"Bad zip file: {fp}. Skipping.")
+            except Exception as e:
+                logging.error(f"Error extracting zip file {fp}: {e}")
         else:
             zip_expanded_files_list.append(entry)
 
@@ -631,11 +637,33 @@ def expand_zip_files(file_list):
                     with z.open(name) as src, open(target_path, "wb") as dst:
                         shutil.copyfileobj(src, dst)
                     expanded_files.append(target_path)
-            expanded_files.append(file_path)
         else:
             expanded_files.append(file_path)
     return expanded_files, temp_dirs
 
+
+def get_file_creation_date(fp):
+    # Try EXIF for images
+    try:
+        img = Image.open(fp)
+        exif = img._getexif()
+        if exif:
+            for tag, value in exif.items():
+                decoded = TAGS.get(tag, tag)
+                if decoded in ("DateTimeOriginal", "DateTime", "DateTimeDigitized"):
+                    # Format: "YYYY:MM:DD HH:MM:SS"
+                    try:
+                        dt = datetime.strptime(value, "%Y:%m:%d %H:%M:%S")
+                        return dt.timestamp()
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    # Fallback: filesystem mtime
+    try:
+        return Path(fp).stat().st_mtime
+    except Exception:
+        return 0.0
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test file card generation and PDF assembly for various file types')
@@ -761,6 +789,15 @@ if __name__ == "__main__":
         if not files_from_list:
             logging.error(f"Error: {args.file_list} contains no valid file paths.")
             sys.exit(1)
+
+        # PATCH: Sort files_from_list by creation date (EXIF or filesystem)
+        for entry in files_from_list:
+            fp = entry.get("filepath") if isinstance(entry, dict) else entry
+            entry["_sort_date"] = get_file_creation_date(fp)
+        files_from_list.sort(key=lambda x: x["_sort_date"])
+        for entry in files_from_list:
+            if "_sort_date" in entry:
+                del entry["_sort_date"]
 
     # Validate and adjust input_dir when no file-list was provided
     input_dir_provided = bool(args.input_dir)
