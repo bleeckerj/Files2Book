@@ -1187,7 +1187,21 @@ def get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, width, height
     return None
 
 
-def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exclude_file_path=False, border_color=(245, 245, 245), border_inch_width=0.125, include_video_frames=False, max_video_frames=30, metadata_text=None, title=None, metadata=None):
+def create_file_info_card(
+    file_path,
+    width=800,
+    height=800,
+    cmyk_mode=False,
+    exclude_file_path=False,
+    border_color=(245, 245, 245),
+    border_inch_width=0.125,
+    include_video_frames=False,
+    max_video_frames=30,
+    metadata_text=None,
+    title=None,
+    metadata=None,
+    video_mode="grid"  # <-- NEW ARGUMENT
+):
 
     original_dt = None
     
@@ -1701,91 +1715,72 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         except Exception as e:
             preview_lines = [f"PDF error: {e}"]
     elif ext.lower() in FILE_TYPE_GROUPS['movie']['extensions']:
-        # Dynamically determine grid size based on video length
         try:
             import cv2
-            # if the video frame sizes are the same aspect ratio
-            # as the page then set max_video_frames to 12
             cap = cv2.VideoCapture(str(file_path))
             ret, frame = cap.read()
             cap.release()
-            if ret and frame is not None:
-                frame_h, frame_w = frame.shape[:2]
-                page_orientation = "portrait" if height > width else "landscape"
-                frame_orientation = "portrait" if frame_h > frame_w else "landscape"
-                if page_orientation == frame_orientation:
-                    local_max_video_frames = 12
-                else:
-                    local_max_video_frames = max_video_frames
-            cap = cv2.VideoCapture(str(file_path))
-            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            cap.release()
-            #video_frames = get_video_frames(file_path, total_frames=min(max_video_frames, frame_count))
-            video_frames = get_video_frames_weighted(file_path, total_frames=min(local_max_video_frames+2, frame_count))
-            total_frames=min(local_max_video_frames, frame_count)
-            n_total = total_frames
-            # initialize video_frames
-            best_score = -1
-            best_grid = None
-            best_indices = None
-            frame_scale = 0
-            
-            # min_thumb_area = int(0.005 * max_line_width_pixels * preview_box_height)  # 10% of preview area
+            if not ret or frame is None:
+                raise Exception("Could not read first frame from video.")
+            if video_mode == "first_frame":
+                # Only show the first frame as the preview
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                pil_img = Image.fromarray(frame)
+                # Rotate if needed
+                if height > width and pil_img.width > pil_img.height:
+                    pil_img = pil_img.rotate(90, expand=True)
+                image_thumb = ImageOps.contain(pil_img, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
+            else:
+                # --- Dynamic grid computation for video frames (like GIF logic) ---
+                # Extract frames
+                total_frames = max_video_frames if max_video_frames > 0 else 9
+                frames = get_video_frames(file_path, total_frames=total_frames, rotate_frames_if_portrait=True)
+                n_total = len(frames)
+                if n_total == 0:
+                    raise Exception("No frames extracted from video.")
+                best_score = -1
+                best_grid = None
+                best_indices = None
 
-            for rows in range(1, n_total + 1):
-                cols = int(math.ceil(n_total / rows))
-                num_cells = rows * cols
-                thumb_w = max_line_width_pixels // cols
-                thumb_h = preview_box_height // rows
-                # Constraint: skip if thumbnail area is too small
-                # if thumb_w * thumb_h > min_thumb_area:
-                #     continue
-                indices = [int(i) for i in np.linspace(0, n_total - 1, min(len(video_frames), num_cells))]
-                total_used_area = 0
-                for idx in indices:
-                    w, h = video_frames[idx].size
-                    frame_scale = min(thumb_w / w, thumb_h / h)
-                    used_w = int(w * frame_scale)
-                    used_h = int(h * frame_scale)
-                    total_used_area += used_w * used_h
-                score = total_used_area
-                if score > best_score:
-                    best_score = score
-                    best_grid = (rows, cols, thumb_w, thumb_h)
-                    best_indices = indices
-            if best_grid is None:
-                logging.warning("No valid grid configuration found for frames. Skipping preview grid.")
-                return img  # or return None, or fallback to another preview
+                for rows in range(1, n_total + 1):
+                    cols = int(math.ceil(n_total / rows))
+                    num_cells = rows * cols
+                    thumb_w = max_line_width_pixels // cols
+                    thumb_h = preview_box_height // rows
+                    # Select evenly spaced frames to fill the grid
+                    indices = [int(i) for i in np.linspace(0, n_total - 1, num_cells)]
+                    total_used_area = 0
+                    for idx in indices:
+                        w, h = frames[idx].size
+                        frame_scale = min(thumb_w / w, thumb_h / h)
+                        used_w = int(w * frame_scale)
+                        used_h = int(h * frame_scale)
+                        total_used_area += used_w * used_h
+                    score = total_used_area
+                    if score > best_score:
+                        best_score = score
+                        best_grid = (rows, cols, thumb_w, thumb_h)
+                        best_indices = indices
 
+                grid_rows, grid_cols, thumb_w, thumb_h = best_grid
+                selected_frames = [frames[idx] for idx in best_indices]
+                video_frame_thumbs = []
+                for frame in selected_frames:
+                    thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
+                    video_frame_thumbs.append(thumb)
 
-            grid_rows, grid_cols, thumb_w, thumb_h = best_grid
-            video_frames = get_video_frames_weighted(file_path, total_frames=num_cells+1)
-            selected_frames = [video_frames[idx] for idx in best_indices]
-            video_frame_thumbs = []
-            for frame in selected_frames:
-                thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
-                video_frame_thumbs.append(thumb)
+                grid_img = Image.new('RGBA', (max_line_width_pixels, preview_box_height), (245, 245, 245, 255))
 
-            grid_img = Image.new('RGBA', (max_line_width_pixels, preview_box_height), (255, 255, 255, 255))
-            for idx, thumb in enumerate(video_frame_thumbs):
-                x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
-                y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
-                
-                if thumb.mode == "RGBA":
-                    grid_img.paste(thumb, (x, y), mask=thumb)
-                else:
-                    grid_img.paste(thumb, (x, y))
+                for idx, thumb in enumerate(video_frame_thumbs):
+                    x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                    y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                    # Ensure thumb is RGBA
+                    if thumb.mode != "RGBA":
+                        thumb = thumb.convert("RGBA")
+                    # Use alpha channel as mask if present
+                    grid_img.paste(thumb, (x, y), mask=thumb.split()[-1] if thumb.mode == "RGBA" else None)
 
-            video_thumb_grid = grid_img.convert("RGBA")
-            # Save the video grid image for debugging
-            # try:
-            #     debug_out_dir = Path("./debug_video_cards_out")
-            #     debug_out_dir.mkdir(parents=True, exist_ok=True)
-            #     debug_out_path = debug_out_dir / f"{file_path.stem}_video_grid_debug.png"
-            #     video_thumb_grid.save(debug_out_path)
-            #     logging.info(f"Saved video grid debug image to {debug_out_path}")
-            # except Exception as e:
-            #     logging.error(f"Error saving video grid debug image: {e}")
+                image_thumb = grid_img.convert("RGBA")
         except Exception as e:
             preview_lines = [f"Video error: {e}"]
     # Defer drawing to later section after header/metadata are drawn.
@@ -2435,16 +2430,12 @@ def create_file_info_card(file_path, width=800, height=800, cmyk_mode=False, exc
         ### HERE WE PASTE THE IMAGE THUMBNAIL
         ###
         
+        img_w, img_h = image_thumb.size
         box_w = preview_box_right - preview_box_left - preview_box_padding * 2
         box_h = preview_box_height - preview_box_padding * 2
         
-        image_thumb = ImageOps.contain(image_thumb, (box_w, box_h), Image.LANCZOS)
-        img_w, img_h = image_thumb.size
-        
         x0 = preview_box_left + preview_box_padding + max(0, (box_w - img_w)//2)
         y0 = preview_box_top + preview_box_padding + max(0, (box_h - img_h)//2)
-        logging.debug(f"Pasting image thumbnail at: x={x0}, y={y0}, size={img_w}x{img_h}")
-        
         img.paste(image_thumb, (int(x0), int(y0)))
     elif fit_gps_thumb is not None:
         img_w, img_h = fit_gps_thumb.size
@@ -2725,6 +2716,7 @@ def rgb_to_cmyk(r, g, b):
     y = (y - k) if k < 255 else 0
     return (c, m, y, k)
 
+# --- CLI/test harness ---
 if __name__ == "__main__":
     import argparse
     from pathlib import Path
@@ -2745,14 +2737,45 @@ if __name__ == "__main__":
 
     for fp in args.files:
         try:
-            cards = create_file_info_card(fp, width=args.width, height=args.height, cmyk_mode=args.cmyk, include_video_frames=args.include_video_frames, max_video_frames=args.max_video_frames)
-            if isinstance(cards, list):
-                for idx, card in enumerate(cards):
-                    out_path = out_dir / f"{Path(fp).stem}_{idx}.tiff"
-                    save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)
+            ext = Path(fp).suffix.lower()
+            is_video = ext in FILE_TYPE_GROUPS['movie']['extensions']
+            if is_video:
+                # First frame card
+                card_first = create_file_info_card(
+                    fp,
+                    width=args.width,
+                    height=args.height,
+                    cmyk_mode=args.cmyk,
+                    include_video_frames=False,
+                    max_video_frames=args.max_video_frames,
+                    video_mode="first_frame"
+                )
+                out_path_first = out_dir / f"{Path(fp).stem}_firstframe.tiff"
+                save_card_as_tiff(card_first, str(out_path_first), cmyk_mode=args.cmyk)
+                # Grid card
+                card_grid = create_file_info_card(
+                    fp,
+                    width=args.width,
+                    height=args.height,
+                    cmyk_mode=args.cmyk,
+                    include_video_frames=args.include_video_frames,
+                    max_video_frames=args.max_video_frames,
+                    video_mode="grid"
+                )
+                out_path_grid = out_dir / f"{Path(fp).stem}_grid.tiff"
+                save_card_as_tiff(card_grid, str(out_path_grid), cmyk_mode=args.cmyk)
+                print(f"Saved first frame and grid cards for {fp} to {out_dir}")
             else:
+                card = create_file_info_card(
+                    fp,
+                    width=args.width,
+                    height=args.height,
+                    cmyk_mode=args.cmyk,
+                    include_video_frames=args.include_video_frames,
+                    max_video_frames=args.max_video_frames
+                )
                 out_path = out_dir / f"{Path(fp).stem}.tiff"
-                save_card_as_tiff(cards, str(out_path), cmyk_mode=args.cmyk)
-            print(f"Saved card(s) for {fp} to {out_dir}")
+                save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)
+                print(f"Saved card for {fp} to {out_dir}")
         except Exception as e:
             logging.error("Error processing %s: %s", fp, e, exc_info=True)

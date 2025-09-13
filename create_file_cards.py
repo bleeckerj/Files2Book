@@ -180,86 +180,130 @@ def _process_file_iterable(
 
             metadata = p.get('metadata') if isinstance(p, dict) and 'metadata' in p else None
             title = metadata['title'] if metadata and 'title' in metadata else file_path.stem
-            card = create_file_info_card(
-                file_path,
-                width=width,
-                height=height,
-                cmyk_mode=cmyk_mode,
-                exclude_file_path=exclude_file_path,
-                border_color=border_color,
-                border_inch_width=border_inch_width,
-                include_video_frames=include_video_frames,
-                max_video_frames=args.max_video_frames,
-                metadata_text=metadata_text,
-                metadata=metadata,
-                title=title
-            )
-            
-            if card is None:
-                logging.warning(f"No card generated for {file_path}. Skipping.")
-                continue
 
-            if isinstance(card, list):
-                for idx, card_img in enumerate(card):
-                    card_size = card_img.size
+            # PATCH: For video files, generate two cards: first frame and grid
+            if file_type == "movie":
+                # First frame card
+                card_first = create_file_info_card(
+                    file_path,
+                    width=width,
+                    height=height,
+                    cmyk_mode=cmyk_mode,
+                    exclude_file_path=exclude_file_path,
+                    border_color=border_color,
+                    border_inch_width=border_inch_width,
+                    include_video_frames=False,
+                    max_video_frames=max_video_frames,
+                    metadata_text=metadata_text,
+                    metadata=metadata,
+                    title=title,
+                    video_mode="first_frame"
+                )
+                # Grid card
+                card_grid = create_file_info_card(
+                    file_path,
+                    width=width,
+                    height=height,
+                    cmyk_mode=cmyk_mode,
+                    exclude_file_path=exclude_file_path,
+                    border_color=border_color,
+                    border_inch_width=border_inch_width,
+                    include_video_frames=include_video_frames,
+                    max_video_frames=max_video_frames,
+                    metadata_text=metadata_text,
+                    metadata=metadata,
+                    title=title,
+                    video_mode="grid"
+                )
+
+                # Save both cards
+                for idx, card_img in enumerate([card_first, card_grid]):
+                    if card_img is None:
+                        logging.warning(f"No card generated for {file_path} (video_mode {['first_frame','grid'][idx]}). Skipping.")
+                        continue
                     if cards_per_chunk and cards_per_chunk > 0:
                         if total_files_handled_count % cards_per_chunk == 0:
                             chunk_idx = total_files_handled_count // cards_per_chunk
                             chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
                             chunk_dir.mkdir(exist_ok=True, parents=True)
-                        output_file = chunk_dir / f"{current_chunk_file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
+                        output_file = chunk_dir / f"{current_chunk_file_count:04d}_{file_path.stem}_{['firstframe','grid'][idx]}_card.tiff"
                     else:
-                        output_file = output_path / f"{total_files_handled_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
+                        output_file = output_path / f"{current_chunk_file_count:04d}_{file_path.stem}_{['firstframe','grid'][idx]}_card.tiff"
                     save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
-                    total_files_handled_count += 1
                     logging.info(f"Saved card to {output_file}")
-                    current_chunk_file_count = get_count_of_non_dot_card_files(chunk_dir)
-                    # Count unique files in the chunk directory to avoid double-counting overlapping glob patterns
-
+                    total_files_handled_count += 1
+                    current_chunk_file_count = get_count_of_non_dot_card_files(chunk_dir if cards_per_chunk and cards_per_chunk > 0 else output_path)
                     if cards_per_chunk and cards_per_chunk > 0 and current_chunk_file_count % cards_per_chunk == 0:
                         pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
                         pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
                         logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
                         assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
                         logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
-
                         if delete_cards_after_pdf:
                             delete_cards_in_directory(chunk_dir)
-
-                        # chunk_idx += 1
-                        # chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
             else:
-                card_size = card.size
-                if cards_per_chunk and cards_per_chunk > 0:
-                    if total_files_handled_count % cards_per_chunk == 0:
-                        chunk_idx = total_files_handled_count // cards_per_chunk
-                        chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
-                        chunk_dir.mkdir(exist_ok=True, parents=True)
-                    output_file = chunk_dir / f"{current_chunk_file_count:04d}_{file_path.stem}_card.tiff"
+                card = create_file_info_card(
+                    file_path,
+                    width=width,
+                    height=height,
+                    cmyk_mode=cmyk_mode,
+                    exclude_file_path=exclude_file_path,
+                    border_color=border_color,
+                    border_inch_width=border_inch_width,
+                    include_video_frames=include_video_frames,
+                    max_video_frames=max_video_frames,
+                    metadata_text=metadata_text,
+                    metadata=metadata,
+                    title=title
+                )
+                if card is None:
+                    logging.warning(f"No card generated for {file_path}. Skipping.")
+                    continue
+                if isinstance(card, list):
+                    for idx, card_img in enumerate(card):
+                        card_size = card_img.size
+                        if cards_per_chunk and cards_per_chunk > 0:
+                            if total_files_handled_count % cards_per_chunk == 0:
+                                chunk_idx = total_files_handled_count // cards_per_chunk
+                                chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                                chunk_dir.mkdir(exist_ok=True, parents=True)
+                            output_file = chunk_dir / f"{current_chunk_file_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
+                        else:
+                            output_file = output_path / f"{total_files_handled_count:04d}_{file_path.stem}_card_{idx+1}.tiff"
+                        save_card_as_tiff(card_img, output_file, cmyk_mode=cmyk_mode)
+                        total_files_handled_count += 1
+                        logging.info(f"Saved card to {output_file}")
+                        current_chunk_file_count = get_count_of_non_dot_card_files(chunk_dir if cards_per_chunk and cards_per_chunk > 0 else output_path)
+                        if cards_per_chunk and cards_per_chunk > 0 and current_chunk_file_count % cards_per_chunk == 0:
+                            pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                            pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                            logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                            assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                            logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+                            if delete_cards_after_pdf:
+                                delete_cards_in_directory(chunk_dir)
                 else:
-                    output_file = output_path / f"{current_chunk_file_count:04d}_{file_path.stem}_card.tiff"
-                save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
-                logging.debug(f"Saved card to {output_file} with size: {card_size}")
-                total_files_handled_count += 1
-                current_chunk_file_count = get_count_of_non_dot_card_files(chunk_dir)
-                # Count unique files in the chunk directory to avoid double-counting overlapping glob patterns
-
-                # Do NOT overwrite the global file_count with the per-chunk count.
-                # file_count is the absolute index across all cards; chunk_file_count
-                # is only used to decide when a chunk is complete.
-
-                if cards_per_chunk and cards_per_chunk > 0 and current_chunk_file_count % cards_per_chunk == 0:
-                    pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
-                    pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
-                    logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
-                    assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
-                    logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
-
-                    if delete_cards_after_pdf:
-                        delete_cards_in_directory(chunk_dir)
-
-                    # chunk_idx += 1
-                    # chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                    card_size = card.size
+                    if cards_per_chunk and cards_per_chunk > 0:
+                        if total_files_handled_count % cards_per_chunk == 0:
+                            chunk_idx = total_files_handled_count // cards_per_chunk
+                            chunk_dir = output_path / f"chunk_{chunk_idx:04d}"
+                            chunk_dir.mkdir(exist_ok=True, parents=True)
+                        output_file = chunk_dir / f"{current_chunk_file_count:04d}_{file_path.stem}_card.tiff"
+                    else:
+                        output_file = output_path / f"{current_chunk_file_count:04d}_{file_path.stem}_card.tiff"
+                    save_card_as_tiff(card, output_file, cmyk_mode=cmyk_mode)
+                    logging.debug(f"Saved card to {output_file} with size: {card_size}")
+                    total_files_handled_count += 1
+                    current_chunk_file_count = get_count_of_non_dot_card_files(chunk_dir if cards_per_chunk and cards_per_chunk > 0 else output_path)
+                    if cards_per_chunk and cards_per_chunk > 0 and current_chunk_file_count % cards_per_chunk == 0:
+                        pdf_name_chunk = f"{output_path.name}_chunk_{chunk_idx:04d}.pdf"
+                        pdf_path_chunk = str(chunk_dir / pdf_name_chunk)
+                        logging.info(f"Assembling PDF for chunk {chunk_idx}: {pdf_path_chunk}")
+                        assemble_cards_to_pdf(str(chunk_dir), pdf_path_chunk, (width, height))
+                        logging.info(f"Saved chunk PDF: {pdf_path_chunk}")
+                        if delete_cards_after_pdf:
+                            delete_cards_in_directory(chunk_dir)
         except Exception as e:
             logging.error(f"Error processing {file_path.name}: {e}")
             logging.error("Traceback:\n" + traceback.format_exc())
