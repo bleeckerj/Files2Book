@@ -572,132 +572,126 @@ def get_fit_summary_preview(file_path):
     except Exception as e:
         return [f"FIT error: {e}"], {}
 
-def get_pdf_preview(file_path, box_w, box_h):
+def get_pdf_preview(file_path, box_w, box_h, all_pages: bool = False, max_pages: int = 42):
     try:
-        # First, get the total number of pages
         from pdf2image import convert_from_path
-        #import numpy as np
-        #logging.debug(f"Attempting to extract PDF preview: {file_path}")
-        all_pages = convert_from_path(str(file_path))
-        n_total = len(all_pages)
+        import numpy as np
+        # Convert PDF to PIL pages
+        all_pages_img = convert_from_path(str(file_path))
+        n_total = len(all_pages_img)
         logging.info(f"PDF {file_path} page count is {n_total} pages")
 
         if n_total == 0:
             logging.warning(f"No pages found in PDF: {file_path}")
             return None
 
-        # Cap how many pages we consider for previews to avoid extreme CPU and tiny thumbs
-        max_preview_cap = min(n_total, 42)
+        # Build overview grid (choose up to max_pages evenly distributed pages)
+        overview_cap = min(n_total, max_pages)
+        indices = [0]
+        if overview_cap > 1 and n_total > 1:
+            remaining = np.linspace(1, n_total - 1, overview_cap - 1)
+            indices += [int(round(i)) for i in remaining]
+        indices = sorted(set(indices))
+        selected_pages = [all_pages_img[i] for i in indices]
+        n_pages = len(selected_pages)
 
+        # Find best rows/cols to maximize thumbnail area (same algorithm as before)
         best_score = -1
         best_config = None
+        for rows in range(1, n_pages + 1):
+            cols = int(math.ceil(n_pages / rows))
+            cell_w = box_w // cols
+            cell_h = box_h // rows
+            if cell_w <= 0 or cell_h <= 0:
+                continue
+            total_used_area = 0
+            orientations = []
+            for page in selected_pages:
+                w, h = page.width, page.height
+                # no-rotate
+                scale_no = min(cell_w / w, cell_h / h) if w and h else 0
+                used_w_no = int(max(0, int(w * scale_no)))
+                used_h_no = int(max(0, int(h * scale_no)))
+                area_no = used_w_no * used_h_no
+                # rotated
+                scale_rot = min(cell_w / h, cell_h / w) if w and h else 0
+                used_w_rot = int(max(0, int(h * scale_rot)))
+                used_h_rot = int(max(0, int(w * scale_rot)))
+                area_rot = used_w_rot * used_h_rot
+                if area_rot > area_no:
+                    total_used_area += area_rot
+                    orientations.append(True)
+                else:
+                    total_used_area += area_no
+                    orientations.append(False)
+            score = total_used_area + n_pages * 10000
+            if score > best_score:
+                best_score = score
+                best_config = {
+                    'indices': indices,
+                    'rows': rows,
+                    'cols': cols,
+                    'cell_w': cell_w,
+                    'cell_h': cell_h,
+                    'selected_pages': selected_pages,
+                    'orientations': orientations
+                }
 
-        # Try all candidate preview counts (1..max_preview_cap)
-        for total_count in range(1, max_preview_cap + 1):
-            # Choose evenly distributed page indices for this total_count (always include first page)
-            indices = [0]
-            if total_count > 1 and n_total > 1:
-                remaining = np.linspace(1, n_total - 1, total_count - 1)
-                indices += [int(round(i)) for i in remaining]
-            indices = sorted(set(indices))
-            selected_pages = [all_pages[i] for i in indices]
-            n_pages = len(selected_pages)
+        # Build overview image
+        overview_img = None
+        if best_config:
+            pages = best_config['selected_pages']
+            rows = best_config['rows']
+            cols = best_config['cols']
+            cell_w = best_config['cell_w']
+            cell_h = best_config['cell_h']
+            orientations = best_config['orientations']
+            thumbs = []
+            for page, rotate_choice in zip(pages, orientations):
+                p = page.copy()
+                if rotate_choice:
+                    p = p.rotate(90, expand=True)
+                try:
+                    thumb = ImageOps.contain(p, (cell_w, cell_h), Image.LANCZOS)
+                except Exception:
+                    thumb = p.copy()
+                    thumb.thumbnail((cell_w, cell_h))
+                thumbs.append(thumb)
+            overview_img = Image.new('RGB', (box_w, box_h), (255, 255, 255))
+            for idx, thumb in enumerate(thumbs):
+                col = idx % cols
+                row = idx // cols
+                x = col * cell_w + (cell_w - thumb.width)//2
+                y = row * cell_h + (cell_h - thumb.height)//2
+                overview_img.paste(thumb, (x, y))
 
-            # Evaluate every possible rows partition for this selection
-            for rows in range(1, n_pages + 1):
-                cols = int(math.ceil(n_pages / rows))
-                cell_w = box_w // cols
-                cell_h = box_h // rows
+        if not all_pages:
+            return overview_img
 
-                # Ignore impossible cells
-                if cell_w <= 0 or cell_h <= 0:
-                    continue
-
-                total_used_area = 0
-                orientations = []  # True if rotated for best fit, False otherwise
-
-                # For each page, try both orientations and pick the one that uses more area in the cell
-                for page in selected_pages:
-                    w, h = page.width, page.height
-
-                    # No-rotate fit
-                    scale_no = min(cell_w / w, cell_h / h) if w and h else 0
-                    used_w_no = int(max(0, int(w * scale_no)))
-                    used_h_no = int(max(0, int(h * scale_no)))
-                    area_no = used_w_no * used_h_no
-
-                    # Rotated fit (90 degrees)
-                    scale_rot = min(cell_w / h, cell_h / w) if w and h else 0
-                    used_w_rot = int(max(0, int(h * scale_rot)))
-                    used_h_rot = int(max(0, int(w * scale_rot)))
-                    area_rot = used_w_rot * used_h_rot
-
-                    if area_rot > area_no:
-                        total_used_area += area_rot
-                        orientations.append(True)
-                    else:
-                        total_used_area += area_no
-                        orientations.append(False)
-
-                # Keep the configuration with the highest total used thumbnail area
-                score = total_used_area + n_pages * 10000  # Bonus: 10,000 per page shown
-
-                if score > best_score:
-                    best_score = score
-                    best_config = {
-                        'indices': indices,
-                        'rows': rows,
-                        'cols': cols,
-                        'cell_w': cell_w,
-                        'cell_h': cell_h,
-                        'selected_pages': selected_pages,
-                        'orientations': orientations
-                    }
-
-        if not best_config:
-            logging.warning(f"Could not determine a layout for PDF: {file_path}")
-            return None
-
-        # Build thumbnails using the chosen layout and orientations
-        selected_pages = best_config['selected_pages']
-        best_rows = best_config['rows']
-        best_cols = best_config['cols']
-        best_thumb_w = best_config['cell_w']
-        best_thumb_h = best_config['cell_h']
-        orientations = best_config['orientations']
-
-        thumbs = []
-        for page, rotate_choice in zip(selected_pages, orientations):
-            page = page.copy()
-            if rotate_choice:
-                page = page.rotate(90, expand=True)
-            # Scale the page to fit the cell while preserving aspect ratio
+        # Build per-page thumbnails (one per PDF page) scaled to fit the preview box
+        per_page_imgs = []
+        for page in all_pages_img:
+            p = page.copy()
+            # rotate to better fit portrait preview if needed
+            if box_h > box_w and p.width > p.height:
+                p = p.rotate(90, expand=True)
             try:
-                thumb = ImageOps.contain(page, (best_thumb_w, best_thumb_h), Image.LANCZOS)
+                thumb = ImageOps.contain(p, (box_w, box_h), Image.LANCZOS)
             except Exception:
-                # Fallback to thumbnail if ImageOps is not available for some reason
-                thumb = page.copy()
-                thumb.thumbnail((best_thumb_w, best_thumb_h))
-            thumbs.append(thumb)
-        grid_img = Image.new('RGB', (box_w, box_h), (255, 255, 255))
-        for idx, page in enumerate(thumbs):
-            # Default row-major placement: left-to-right, top-to-bottom
-            if not orientations[idx]:
-                col = idx % best_cols
-                row = idx // best_cols
-            else:
-                # For rotated pages, fill columns left-to-right, each column bottom-to-top
-                # This preserves the natural reading order when pages are rotated 90 degrees.
-                col = idx // best_rows
-                row_in_col = idx % best_rows
-                row = best_rows - 1 - row_in_col
-            x = col * best_thumb_w + (best_thumb_w - page.width) // 2
-            y = row * best_thumb_h + (best_thumb_h - page.height) // 2
-            grid_img.paste(page, (x, y))
+                thumb = p.copy()
+                thumb.thumbnail((box_w, box_h))
+            per_page_imgs.append(thumb)
 
-        return grid_img
+        # Return overview first (if available), then every page image
+        result = []
+        if overview_img is not None:
+            result.append(overview_img)
+        result.extend(per_page_imgs)
+        return result
+
     except Exception as e:
         logging.error(f"PDF preview error for {file_path}: {e}")
+        logging.error(traceback.format_exc())
         return None
 
 def get_image_thumbnail(file_path, box_size=(320, 320), cmyk_mode=False):
@@ -1200,7 +1194,9 @@ def create_file_info_card(
     metadata_text=None,
     title=None,
     metadata=None,
-    video_mode="grid"  # <-- NEW ARGUMENT
+    video_mode="grid",
+    all_pdf_pages: bool = False,
+    _pdf_preview_img=None
 ):
 
     original_dt = None
@@ -1597,147 +1593,46 @@ def create_file_info_card(
     video_frames = []
     video_frame_thumbs = []
 
-    if ext in {'.dng', '.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}:
-        image = get_image_thumbnail(
-            file_path,
-            box_size=(max_line_width_pixels, preview_box_height),
-            cmyk_mode=cmyk_mode
-        )
-        if image is not None:
-            img_w, img_h = image.size
-            logging.debug(f"Original image size: {img_w}x{img_h} for {file_path.name}")
-            logging.debug(f"width: {width}, height: {height}, img_w: {img_w}, img_h: {img_h}")
-            # Rotate image if card is portrait and image is landscape
-            if width < height and img_w > img_h:
-                logging.debug(f"Rotating image for portrait card: {file_path.name}")
-                image = image.rotate(90, expand=True)
+    # If a preview image was injected (per-page PDF processing), honor it and skip the
+    # expensive / type-detection preview generation below. This ensures the injected
+    # per-page image is used verbatim and not overwritten by the PDF branch.
+    if _pdf_preview_img is not None:
+        image_thumb = _pdf_preview_img
+        skip_type_preview = True
+    else:
+        skip_type_preview = False
+
+    if not skip_type_preview:
+        if ext in {'.dng', '.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp'}:
+            image = get_image_thumbnail(
+                file_path,
+                box_size=(max_line_width_pixels, preview_box_height),
+                cmyk_mode=cmyk_mode
+            )
+            if image is not None:
                 img_w, img_h = image.size
-                logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
-            
-            image_thumb = ImageOps.contain(image, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
-            
-    elif ext in {'.gif'}:
-        try:
-            img = Image.open(file_path)
-            frames = []
-            # Extract all frames from the GIF
-            for frame_idx in range(img.n_frames):
-                img.seek(frame_idx)
-                frame = img.convert("RGBA")
-                frames.append(frame.copy())
-            # Determine grid size based on number of frames
-            n_total = len(frames)
-            best_score = -1
-            best_grid = None
-            best_indices = None
-
-            for rows in range(1, n_total + 1):
-                cols = int(math.ceil(n_total / rows))
-                num_cells = rows * cols
-                thumb_w = max_line_width_pixels // cols
-                thumb_h = preview_box_height // rows
-                # Select evenly spaced frames to fill the grid
-                indices = [int(i) for i in np.linspace(0, n_total - 1, num_cells)]
-                total_used_area = 0
-                for idx in indices:
-                    w, h = frames[idx].size
-                    frame_scale = min(thumb_w / w, thumb_h / h)
-                    used_w = int(w * frame_scale)
-                    used_h = int(h * frame_scale)
-                    total_used_area += used_w * used_h
-                score = total_used_area
-                if score > best_score:
-                    best_score = score
-                    best_grid = (rows, cols, thumb_w, thumb_h)
-                    best_indices = indices
-
-            grid_rows, grid_cols, thumb_w, thumb_h = best_grid
-            selected_frames = [frames[idx] for idx in best_indices]
-            gif_frame_thumbs = []
-            for frame in selected_frames:
-                thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
-                gif_frame_thumbs.append(thumb)
-
-            grid_img = Image.new('RGBA', (max_line_width_pixels, preview_box_height), (245, 245, 245, 255))
-            for idx, thumb in enumerate(gif_frame_thumbs):
-                x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
-                y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
-                grid_img.paste(thumb, (x, y), mask=thumb)
-
-            gif_thumb_grid = grid_img.convert("RGBA")
-            image_thumb = gif_thumb_grid
-        except Exception as e:
-            preview_lines = [f"GIF error: {e}"]
-    
-    elif ext in {'.heic', '.heif'}:
-        image = get_heif_image(file_path)
-        if image is not None:
-            img_w, img_h = image.size
-            if width < height and img_w > img_h:
-                image = image.rotate(90, expand=True)
-                img_w, img_h = image.size
-            # scale_factor = min(
-            #     (max_line_width_pixels) / img_w,
-            #     (preview_box_height) / img_h
-            # ) * 0.95
-            # new_w = int(img_w * scale_factor)
-            # new_h = int(img_h * scale_factor)
-            # image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
-            image_thumb = ImageOps.contain(image, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
-    elif ext == '.numbers':
-        try:
-            with zipfile.ZipFile(file_path, 'r') as z:
-                names = z.namelist()
-                preview_lines = [f"NUMBERS file: {len(names)} items"]
-                preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
-                # Try to find a preview image
-                image_files = [name for name in names if name.lower().endswith(('.jpg', '.jpeg', '.png'))]
-                image_thumb = None
-                if image_files:
-                    with z.open(image_files[0]) as img_file:
-                        img_data = img_file.read()
-                        try:
-                            img = Image.open(io.BytesIO(img_data))
-                            img.thumbnail((max_line_width_pixels, preview_box_height))
-                            image_thumb = img
-                        except Exception:
-                            pass
-        except Exception as e:
-            preview_lines = [f"NUMBERS error: {e}"]
-    elif ext.lower() == '.pdf':
-        try:
-            #pages = convert_from_path(str(file_path), first_page=1, last_page=1)
-            #if pages:
-                #image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
-            image_thumb = get_pdf_preview(str(file_path), max_line_width_pixels, preview_box_height)
-            #else:
-            #    preview_lines = ["PDF preview not available."]
-        except Exception as e:
-            preview_lines = [f"PDF error: {e}"]
-    elif ext.lower() in FILE_TYPE_GROUPS['movie']['extensions']:
-        try:
-            import cv2
-            cap = cv2.VideoCapture(str(file_path))
-            ret, frame = cap.read()
-            cap.release()
-            if not ret or frame is None:
-                raise Exception("Could not read first frame from video.")
-            if video_mode == "first_frame":
-                # Only show the first frame as the preview
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                pil_img = Image.fromarray(frame)
-                # Rotate if needed
-                if height > width and pil_img.width > pil_img.height:
-                    pil_img = pil_img.rotate(90, expand=True)
-                image_thumb = ImageOps.contain(pil_img, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
-            else:
-                # --- Dynamic grid computation for video frames (like GIF logic) ---
-                # Extract frames
-                total_frames = max_video_frames if max_video_frames > 0 else 9
-                frames = get_video_frames(file_path, total_frames=total_frames, rotate_frames_if_portrait=True)
+                logging.debug(f"Original image size: {img_w}x{img_h} for {file_path.name}")
+                logging.debug(f"width: {width}, height: {height}, img_w: {img_w}, img_h: {img_h}")
+                # Rotate image if card is portrait and image is landscape
+                if width < height and img_w > img_h:
+                    logging.debug(f"Rotating image for portrait card: {file_path.name}")
+                    image = image.rotate(90, expand=True)
+                    img_w, img_h = image.size
+                    logging.debug(f"Image size after rotation: {img_w}x{img_h} for {file_path.name}")
+                
+                image_thumb = ImageOps.contain(image, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
+                
+        elif ext in {'.gif'}:
+            try:
+                img = Image.open(file_path)
+                frames = []
+                # Extract all frames from the GIF
+                for frame_idx in range(img.n_frames):
+                    img.seek(frame_idx)
+                    frame = img.convert("RGBA")
+                    frames.append(frame.copy())
+                # Determine grid size based on number of frames
                 n_total = len(frames)
-                if n_total == 0:
-                    raise Exception("No frames extracted from video.")
                 best_score = -1
                 best_grid = None
                 best_indices = None
@@ -1764,25 +1659,172 @@ def create_file_info_card(
 
                 grid_rows, grid_cols, thumb_w, thumb_h = best_grid
                 selected_frames = [frames[idx] for idx in best_indices]
-                video_frame_thumbs = []
+                gif_frame_thumbs = []
                 for frame in selected_frames:
                     thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
-                    video_frame_thumbs.append(thumb)
+                    gif_frame_thumbs.append(thumb)
 
                 grid_img = Image.new('RGBA', (max_line_width_pixels, preview_box_height), (245, 245, 245, 255))
-
-                for idx, thumb in enumerate(video_frame_thumbs):
+                for idx, thumb in enumerate(gif_frame_thumbs):
                     x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
                     y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
-                    # Ensure thumb is RGBA
-                    if thumb.mode != "RGBA":
-                        thumb = thumb.convert("RGBA")
-                    # Use alpha channel as mask if present
-                    grid_img.paste(thumb, (x, y), mask=thumb.split()[-1] if thumb.mode == "RGBA" else None)
+                    grid_img.paste(thumb, (x, y), mask=thumb)
 
-                image_thumb = grid_img.convert("RGBA")
-        except Exception as e:
-            preview_lines = [f"Video error: {e}"]
+                gif_thumb_grid = grid_img.convert("RGBA")
+                image_thumb = gif_thumb_grid
+            except Exception as e:
+                preview_lines = [f"GIF error: {e}"]
+        elif ext in {'.heic', '.heif'}:
+            image = get_heif_image(file_path)
+            if image is not None:
+                img_w, img_h = image.size
+                if width < height and img_w > img_h:
+                    image = image.rotate(90, expand=True)
+                    img_w, img_h = image.size
+                # scale_factor = min(
+                #     (max_line_width_pixels) / img_w,
+                #     (preview_box_height) / img_h
+                # ) * 0.95
+                # new_w = int(img_w * scale_factor)
+                # new_h = int(img_h * scale_factor)
+                # image_thumb = image.resize((new_w, new_h), Image.LANCZOS)
+                image_thumb = ImageOps.contain(image, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
+        elif ext == '.numbers':
+            try:
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    names = z.namelist()
+                    preview_lines = [f"NUMBERS file: {len(names)} items"]
+                    preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
+                    # Try to find a preview image
+                    image_files = [name for name in names if name.lower().endswith(('.jpg', '.jpeg', '.png'))]
+                    image_thumb = None
+                    if image_files:
+                        with z.open(image_files[0]) as img_file:
+                            img_data = img_file.read()
+                            try:
+                                img = Image.open(io.BytesIO(img_data))
+                                img.thumbnail((max_line_width_pixels, preview_box_height))
+                                image_thumb = img
+                            except Exception:
+                                pass
+            except Exception as e:
+                preview_lines = [f"NUMBERS error: {e}"]
+        elif ext.lower() == '.pdf':
+            try:
+                # Ask get_pdf_preview for overview and per-page thumbs when requested
+                pdf_result = get_pdf_preview(str(file_path), max_line_width_pixels, preview_box_height, all_pages=all_pdf_pages)
+                if isinstance(pdf_result, list):
+                    # pdf_result[0] is overview (if present), pdf_result[1:] are per-page thumbs
+                    cards = []
+                    # compute total pages count (exclude overview if present)
+                    overview_present = isinstance(pdf_result[0], Image.Image)
+                    total_pages = max(0, len(pdf_result) - (1 if overview_present else 0))
+                    for idx, preview_img in enumerate(pdf_result):
+                        # Build a page-specific title and metadata
+                        if idx == 0 and overview_present:
+                            page_title = (title or file_path.name) + " (Overview)"
+                            page_metadata = dict(metadata) if metadata else {}
+                        else:
+                            # For per-page images, numbering starts at 1 for the first real page
+                            page_number = idx if overview_present else idx + 1
+                            page_title = f"{(title or file_path.name)} (Page {page_number} of {total_pages})"
+                            page_metadata = dict(metadata) if metadata else {}
+                            page_metadata["PDF Page"] = f"{page_number} of {total_pages}"
+                        # Create a single card for this preview image by reusing create_file_info_card but injecting the preview image.
+                        card_img = create_file_info_card(
+                            file_path,
+                            width=width,
+                            height=height,
+                            cmyk_mode=cmyk_mode,
+                            exclude_file_path=exclude_file_path,
+                            border_color=border_color,
+                            border_inch_width=border_inch_width,
+                            include_video_frames=include_video_frames,
+                            max_video_frames=max_video_frames,
+                            metadata_text=metadata_text,
+                            title=page_title,
+                            metadata=page_metadata,
+                            video_mode=video_mode,
+                            all_pdf_pages=False,  # prevent nested all-pages recursion
+                            _pdf_preview_img=preview_img
+                        )
+                        cards.append(card_img)
+                    return cards
+                else:
+                    # Single-image result (overview)
+                    image_thumb = pdf_result
+            except Exception as e:
+                preview_lines = [f"PDF error: {e}"]
+
+        elif ext.lower() in FILE_TYPE_GROUPS['movie']['extensions']:
+            try:
+                import cv2
+                cap = cv2.VideoCapture(str(file_path))
+                ret, frame = cap.read()
+                cap.release()
+                if not ret or frame is None:
+                    raise Exception("Could not read first frame from video.")
+                if video_mode == "first_frame":
+                    # Only show the first frame as the preview
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    pil_img = Image.fromarray(frame)
+                    # Rotate if needed
+                    if height > width and pil_img.width > pil_img.height:
+                        pil_img = pil_img.rotate(90, expand=True)
+                    image_thumb = ImageOps.contain(pil_img, (max_line_width_pixels, preview_box_height), Image.LANCZOS)
+                else:
+                    # --- Dynamic grid computation for video frames (like GIF logic) ---
+                    # Extract frames
+                    total_frames = max_video_frames if max_video_frames > 0 else 9
+                    frames = get_video_frames(file_path, total_frames=total_frames, rotate_frames_if_portrait=True)
+                    n_total = len(frames)
+                    if n_total == 0:
+                        raise Exception("No frames extracted from video.")
+                    best_score = -1
+                    best_grid = None
+                    best_indices = None
+
+                    for rows in range(1, n_total + 1):
+                        cols = int(math.ceil(n_total / rows))
+                        num_cells = rows * cols
+                        thumb_w = max_line_width_pixels // cols
+                        thumb_h = preview_box_height // rows
+                        # Select evenly spaced frames to fill the grid
+                        indices = [int(i) for i in np.linspace(0, n_total - 1, num_cells)]
+                        total_used_area = 0
+                        for idx in indices:
+                            w, h = frames[idx].size
+                            frame_scale = min(thumb_w / w, thumb_h / h)
+                            used_w = int(w * frame_scale)
+                            used_h = int(h * frame_scale)
+                            total_used_area += used_w * used_h
+                        score = total_used_area
+                        if score > best_score:
+                            best_score = score
+                            best_grid = (rows, cols, thumb_w, thumb_h)
+                            best_indices = indices
+
+                    grid_rows, grid_cols, thumb_w, thumb_h = best_grid
+                    selected_frames = [frames[idx] for idx in best_indices]
+                    video_frame_thumbs = []
+                    for frame in selected_frames:
+                        thumb = ImageOps.contain(frame, (thumb_w, thumb_h), Image.LANCZOS)
+                        video_frame_thumbs.append(thumb)
+
+                    grid_img = Image.new('RGBA', (max_line_width_pixels, preview_box_height), (245, 245, 245, 255))
+
+                    for idx, thumb in enumerate(video_frame_thumbs):
+                        x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                        y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                        # Ensure thumb is RGBA
+                        if thumb.mode != "RGBA":
+                            thumb = thumb.convert("RGBA")
+                        # Use alpha channel as mask if present
+                        grid_img.paste(thumb, (x, y), mask=thumb.split()[-1] if thumb.mode == "RGBA" else None)
+
+                    image_thumb = grid_img.convert("RGBA")
+            except Exception as e:
+                preview_lines = [f"Video error: {e}"]
     # Defer drawing to later section after header/metadata are drawn.
     elif ext.lower() == '.gpx':
         gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
@@ -2204,7 +2246,7 @@ def create_file_info_card(
         else:
             bg_fill = bg_rgb
             bg_outline = bg_outline_rgb
-            text_fill = (0, 0, 0)
+            text_fill = (0, 0, 0, 255)
         draw_text_box(
             draw,
             custom_metadata_text,
@@ -2730,6 +2772,8 @@ if __name__ == "__main__":
     parser.add_argument("--cmyk", action="store_true", help="Save cards in CMYK mode")
     parser.add_argument("--include-video-frames", action="store_true", help="If a video, include per-frame cards")
     parser.add_argument("--max-video-frames", type=int, default=9, help="Minimum number of video frames to include should it come to that")
+    parser.add_argument("--all-pdf-pages", action="store_true", help="If set, generate an overview plus one card per PDF page")
+
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -2746,7 +2790,7 @@ if __name__ == "__main__":
                     width=args.width,
                     height=args.height,
                     cmyk_mode=args.cmyk,
-                    include_video_frames=False,
+                    include_video_frames=args.include_video_frames,
                     max_video_frames=args.max_video_frames,
                     video_mode="first_frame"
                 )
@@ -2772,10 +2816,27 @@ if __name__ == "__main__":
                     height=args.height,
                     cmyk_mode=args.cmyk,
                     include_video_frames=args.include_video_frames,
-                    max_video_frames=args.max_video_frames
+                    max_video_frames=args.max_video_frames,
+                    all_pdf_pages=args.all_pdf_pages,
                 )
-                out_path = out_dir / f"{Path(fp).stem}.tiff"
-                save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)
-                print(f"Saved card for {fp} to {out_dir}")
+                #out_path = out_dir / f"{Path(fp).stem}.tiff"
+                #save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)
+                #print(f"Saved card for {fp} to {out_dir}")
+                if card is None:
+                   logging.warning(f"No card generated for {fp}")
+                elif isinstance(card, list):
+                    for i, cimg in enumerate(card, start=1):
+                        suffix = f"_{i:02d}"
+                        out_path = out_dir / f"{Path(fp).stem}{suffix}.tiff"
+                        save_card_as_tiff(cimg, str(out_path), cmyk_mode=args.cmyk)
+                    print(f"Saved {len(card)} cards for {fp} to {out_dir}")
+                else:
+                    out_path = out_dir / f"{Path(fp).stem}.tiff"
+                    save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)
+                    print(f"Saved card for {fp} to {out_dir}")
+        
+        
+        
+        
         except Exception as e:
             logging.error("Error processing %s: %s", fp, e, exc_info=True)
