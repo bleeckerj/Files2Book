@@ -254,6 +254,7 @@ def _process_file_iterable(
                     max_video_frames=max_video_frames,
                     metadata_text=metadata_text,
                     metadata=metadata,
+                    all_pdf_pages=args.all_pdf_pages,
                     title=title
                 )
                 if card is None:
@@ -718,6 +719,7 @@ if __name__ == "__main__":
     parser.add_argument('--cmyk', dest='cmyk_mode', action='store_true', help='Alias for --cmyk-mode')
     parser.add_argument('--page-size', default='LARGE_TAROT', help='Page size (A4, LETTER, TABLOID, WxH in inches)')
     parser.add_argument('--pdf-output-name', help='Path to save the combined PDF')
+    parser.add_argument('--all-pdf-pages', default=False, action='store_true', help='For multi-page PDFs, include an overview page and then all pages in the card (default: overview only)')
     # parser.add_argument('--slack', action='store_true', help='Look for a "files" subdirectory in input-dir (for Slack data dumps)')
     parser.add_argument('--max-depth', type=int, default=0, help='Maximum folder recursion depth (default: 0, no recursion)')
     parser.add_argument('--exclude-file-path', default=False, action='store_true', help='Exclude the vertical file path from the card (default: shown)')

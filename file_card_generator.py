@@ -1195,7 +1195,7 @@ def create_file_info_card(
     title=None,
     metadata=None,
     video_mode="grid",
-    all_pdf_pages: bool = False,
+    all_pdf_pages=False,
     _pdf_preview_img=None
 ):
 
