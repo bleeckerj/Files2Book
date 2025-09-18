@@ -2773,7 +2773,7 @@ if __name__ == "__main__":
     parser.add_argument("--include-video-frames", action="store_true", help="If a video, include per-frame cards")
     parser.add_argument("--max-video-frames", type=int, default=9, help="Minimum number of video frames to include should it come to that")
     parser.add_argument("--all-pdf-pages", action="store_true", help="If set, generate an overview plus one card per PDF page")
-
+    parser.add_argument("--exclude-file-path", action="store_true", help="If set, do not include file path in metadata display")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -2792,7 +2792,8 @@ if __name__ == "__main__":
                     cmyk_mode=args.cmyk,
                     include_video_frames=args.include_video_frames,
                     max_video_frames=args.max_video_frames,
-                    video_mode="first_frame"
+                    video_mode="first_frame",
+                    exclude_file_path=args.exclude_file_path
                 )
                 out_path_first = out_dir / f"{Path(fp).stem}_firstframe.tiff"
                 save_card_as_tiff(card_first, str(out_path_first), cmyk_mode=args.cmyk)
@@ -2804,7 +2805,8 @@ if __name__ == "__main__":
                     cmyk_mode=args.cmyk,
                     include_video_frames=args.include_video_frames,
                     max_video_frames=args.max_video_frames,
-                    video_mode="grid"
+                    video_mode="grid",
+                    exclude_file_path=args.exclude_file_path
                 )
                 out_path_grid = out_dir / f"{Path(fp).stem}_grid.tiff"
                 save_card_as_tiff(card_grid, str(out_path_grid), cmyk_mode=args.cmyk)
@@ -2818,6 +2820,7 @@ if __name__ == "__main__":
                     include_video_frames=args.include_video_frames,
                     max_video_frames=args.max_video_frames,
                     all_pdf_pages=args.all_pdf_pages,
+                    exclude_file_path=args.exclude_file_path
                 )
                 #out_path = out_dir / f"{Path(fp).stem}.tiff"
                 #save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)
