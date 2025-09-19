@@ -252,36 +252,26 @@ def scale_image_by_percent(image, percent):
 def get_file_type_info(file_path):
     """Determine file type group and icon information."""
     ext = file_path.suffix.lower()
-    #logging.debug(f"ext={ext}")
+    # If no extension, treat as unknown
+    if not ext:
+        return {
+            'group': 'unknown',
+            'icon': "FILE",
+            'color': (250, 0, 63)  # Medium gray
+        }
     # Check if the extension is in any of our groups
     for group, info in FILE_TYPE_GROUPS.items():
         if ext in info['extensions']:
-            #logging.debug(f"Found group {group} for extension {ext} for file {file_path}")
             return {
                 'group': group,
                 'icon': info['icon'],
                 'color': info['color']
             }
-    # If not found, try to use mimetype to determine a general type
-    mime_type, _ = mimetypes.guess_type(str(file_path))
-    if mime_type:
-        if mime_type.startswith('text/'):
-            return {
-                'group': 'text',
-                'icon': "TXT",
-                'color': (216, 71, 151)  #  
-            }
-        elif mime_type.startswith('application/'):
-            return {
-                'group': 'application',
-                'icon': "APP",
-                'color': (238, 97, 35)  # Darker red
-            }
-    # Default for unknown types
+    # If extension is not recognized, treat as unknown (do NOT check mimetype)
     return {
         'group': 'unknown',
         'icon': "FILE",
-        'color': (250, 0, 63)  # Medium gray
+        'color': (250, 0, 63)
     }
 
 def format_file_size(size_bytes):
@@ -1196,7 +1186,8 @@ def create_file_info_card(
     metadata=None,
     video_mode="grid",
     all_pdf_pages=False,
-    _pdf_preview_img=None
+    _pdf_preview_img=None,
+    ignore_unknown_files=True,
 ):
 
     original_dt = None
@@ -1303,6 +1294,9 @@ def create_file_info_card(
     logging.info(f"In directory {file_path.parent}")
     logging.info(f"Processing {file_path.name} - Type: {file_type_info['group']}")
     #icon = file_type_info['icon']
+    if file_type_info['group'] == 'unknown' and ignore_unknown_files:
+        logging.info(f"Skipping unknown file type: {file_path.name}")
+        return None
     ext = file_path.suffix.lower()
 
 
@@ -1825,245 +1819,245 @@ def create_file_info_card(
                     image_thumb = grid_img.convert("RGBA")
             except Exception as e:
                 preview_lines = [f"Video error: {e}"]
-    # Defer drawing to later section after header/metadata are drawn.
-    elif ext.lower() == '.gpx':
-        gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
-        # Mapbox integration for GPX with polyline
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                gpx = gpxpy.parse(f)
-            points = []
-            for track in gpx.tracks:
-                for segment in track.segments:
-                    for p in segment.points:
-                        points.append((p.longitude, p.latitude))
-            if points:
-                lons, lats = zip(*points)
-                min_lon, max_lon = min(lons), max(lons)
-                min_lat, max_lat = min(lats), max(lats)
-                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), path_points=points)
-                if mapbox_img:
-                    gpx_thumb = mapbox_img
-        except Exception:
-            pass
-    elif ext.lower() in {'.xlsx', '.xls'}:
-        preview_lines = get_excel_preview(file_path, max_rows=max_preview_lines, max_cols=8)
+        # Defer drawing to later section after header/metadata are drawn.
+        elif ext.lower() == '.gpx':
+            gpx_thumb = get_gpx_preview(file_path, max_line_width_pixels, preview_box_height)
+            # Mapbox integration for GPX with polyline
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    gpx = gpxpy.parse(f)
+                points = []
+                for track in gpx.tracks:
+                    for segment in track.segments:
+                        for p in segment.points:
+                            points.append((p.longitude, p.latitude))
+                if points:
+                    lons, lats = zip(*points)
+                    min_lon, max_lon = min(lons), max(lons)
+                    min_lat, max_lat = min(lats), max(lats)
+                    mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), path_points=points)
+                    if mapbox_img:
+                        gpx_thumb = mapbox_img
+            except Exception:
+                pass
+        elif ext.lower() in {'.xlsx', '.xls'}:
+            preview_lines = get_excel_preview(file_path, max_rows=max_preview_lines, max_cols=8)
 
-    elif ext.lower() in {'.fit', '.tcx'}:
-        preview_lines, fit_meta = get_fit_summary_preview(file_path)
-        fit_gps_thumb = get_fit_gps_preview(file_path, max_line_width_pixels, preview_box_height)
-        # Mapbox integration for FIT/TCX with polyline
-        try:
-            fitfile = FitFile(str(file_path))
-            points = []
-            for record in fitfile.get_messages('record'):
-                lat = None
-                lon = None
-                for d in record:
-                    if d.name == 'position_lat':
-                        lat = d.value * (180.0 / 2**31)
-                    elif d.name == 'position_long':
-                        lon = d.value * (180.0 / 2**31)
-                if lat is not None and lon is not None:
-                    points.append((lon, lat))
-            if points:
-                lons, lats = zip(*points)
-                min_lon, max_lon = min(lons), max(lons)
-                min_lat, max_lat = min(lats), max(lats)
-                mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), path_points=points)
-                if mapbox_img:
-                    fit_gps_thumb = mapbox_img
-        except Exception:
-            pass
-    elif ext.lower() == '.docx':
-        try:
-            from docx import Document
-            doc = Document(file_path)
-            doc_lines = [p.text for p in doc.paragraphs if p.text.strip()]
-            logging.info(f"Extracted {len(doc_lines)} lines from DOCX file: {file_path}")
-            txt_path = file_path.with_suffix('.txt')
-            with open(txt_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(doc_lines))
-            preview_lines = []
-            for raw_line in doc_lines:
+        elif ext.lower() in {'.fit', '.tcx'}:
+            preview_lines, fit_meta = get_fit_summary_preview(file_path)
+            fit_gps_thumb = get_fit_gps_preview(file_path, max_line_width_pixels, preview_box_height)
+            # Mapbox integration for FIT/TCX with polyline
+            try:
+                fitfile = FitFile(str(file_path))
+                points = []
+                for record in fitfile.get_messages('record'):
+                    lat = None
+                    lon = None
+                    for d in record:
+                        if d.name == 'position_lat':
+                            lat = d.value * (180.0 / 2**31)
+                        elif d.name == 'position_long':
+                            lon = d.value * (180.0 / 2**31)
+                    if lat is not None and lon is not None:
+                        points.append((lon, lat))
+                if points:
+                    lons, lats = zip(*points)
+                    min_lon, max_lon = min(lons), max(lons)
+                    min_lat, max_lat = min(lats), max(lats)
+                    mapbox_img = get_mapbox_tile_for_bounds(min_lat, max_lat, min_lon, max_lon, min(max_line_width_pixels, 1280), min(preview_box_height, 1280), path_points=points)
+                    if mapbox_img:
+                        fit_gps_thumb = mapbox_img
+            except Exception:
+                pass
+        elif ext.lower() == '.docx':
+            try:
+                from docx import Document
+                doc = Document(file_path)
+                doc_lines = [p.text for p in doc.paragraphs if p.text.strip()]
+                logging.info(f"Extracted {len(doc_lines)} lines from DOCX file: {file_path}")
+                txt_path = file_path.with_suffix('.txt')
+                with open(txt_path, 'w', encoding='utf-8') as f:
+                    f.write('\n'.join(doc_lines))
+                preview_lines = []
+                for raw_line in doc_lines:
+                    wrapped = textwrap.wrap(raw_line, width=max_line_length)
+                    if not wrapped:
+                        preview_lines.append('')
+                    else:
+                        preview_lines.extend(wrapped)
+                preview_lines = preview_lines[:max_preview_lines]
+            except Exception as e:
+                preview_lines = [f"DOCX error: {e}"]
+        elif file_type_info['group'] == 'font':
+            # For font files, generate a visual preview
+            try:
+                image_thumb = get_font_preview(file_path, max_line_width_pixels, preview_box_height)
+                if image_thumb:
+                    preview_text_replaced_with_image = True
+                    preview_lines = []  # No text preview needed
+                else:
+                    preview_lines = [f"Font preview not available for {os.path.basename(file_path)}"]
+            except Exception as e:
+                preview_lines = [f"Font preview error: {str(e)}"]
+        elif file_type_info['group'] == 'binary' or ext == '.dfu':
+            preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
+        elif file_type_info['group'] in ['code', 'data', 'document', 'log']:
+            # Read a large chunk and wrap
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    raw_lines = []
+                    for i in enumerate(f):
+                        if i > 1000:
+                            break
+                        raw_lines.append(line.rstrip('\n'))
+            except Exception:
+                raw_lines = []
+            for raw_line in raw_lines:
                 wrapped = textwrap.wrap(raw_line, width=max_line_length)
                 if not wrapped:
                     preview_lines.append('')
                 else:
                     preview_lines.extend(wrapped)
             preview_lines = preview_lines[:max_preview_lines]
-        except Exception as e:
-            preview_lines = [f"DOCX error: {e}"]
-    elif file_type_info['group'] == 'font':
-        # For font files, generate a visual preview
-        try:
-            image_thumb = get_font_preview(file_path, max_line_width_pixels, preview_box_height)
-            if image_thumb:
-                preview_text_replaced_with_image = True
-                preview_lines = []  # No text preview needed
-            else:
-                preview_lines = [f"Font preview not available for {os.path.basename(file_path)}"]
-        except Exception as e:
-            preview_lines = [f"Font preview error: {str(e)}"]
-    elif file_type_info['group'] == 'binary' or ext == '.dfu':
-        preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
-    elif file_type_info['group'] in ['code', 'data', 'document', 'log']:
-        # Read a large chunk and wrap
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                raw_lines = []
-                for i in enumerate(f):
-                    if i > 1000:
-                        break
-                    raw_lines.append(line.rstrip('\n'))
-        except Exception:
-            raw_lines = []
-        for raw_line in raw_lines:
-            wrapped = textwrap.wrap(raw_line, width=max_line_length)
-            if not wrapped:
-                preview_lines.append('')
-            else:
-                preview_lines.extend(wrapped)
-        preview_lines = preview_lines[:max_preview_lines]
-    elif file_type_info['group'] == 'text':
-        preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length) or []
-    elif ext.lower() == '.zip':
-        zip_file_list = get_zip_preview(file_path, max_files=max_preview_lines)
-        zip_file_preview_img = None
-        zip_file_preview_lines = None
-    elif ext.lower() == '.rar':
-        try:
-            logging.info(f"Processing RAR file: {file_path}")
-            import rarfile
-            with rarfile.RarFile(file_path) as rf:
-                names = rf.namelist()
-                preview_lines = [f"RAR file: {len(names)} items"]
-                preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
-                logging.info(f"Found {len(names)} items in RAR file: {file_path}")
-        except Exception as e:
-            preview_lines = [f"RAR error: {e}"]
-    elif ext.lower() == '.gz':
-        preview_lines, image_thumb, _ = get_gz_preview(
-            file_path, max_bytes=max_preview_lines * 16, preview_box=(max_line_width_pixels, preview_box_height))
-        image_thumb = image_thumb  # If image_thumb is None, preview_lines will be used
-    elif ext.lower() == '.bz2':
-        preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
-    elif ext.lower() == '.key':
-        logging.info(f"****** Processing Keynote file: {file_path}")
-        try:
-            logging.info(f"Processing Keynote file: {file_path}")
-            with zipfile.ZipFile(file_path, 'r') as z:
-                names = z.namelist()
-                preview_lines = [f"Keynote file: {len(names)} items"]
-                preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
-                # Find up to 4 images (jpg/png)
-                image_files = [name for name in names if name.lower().endswith(('.jpg', '.jpeg', '.png'))][:4]
-                thumbs = []
-                for name in image_files:
-                    with z.open(name) as img_file:
-                        img_data = img_file.read()
-                        try:
-                            img = Image.open(io.BytesIO(img_data))
-                            thumbs.append(img)
-                        except Exception:
-                            continue
-                # Make a grid if images found
-                if thumbs:
-                    grid_cols = 2
-                    grid_rows = 2
-                    thumb_w = max_line_width_pixels // grid_cols
-                    thumb_h = preview_box_height // grid_rows
-                    grid_img = Image.new('RGB', (max_line_width_pixels, preview_box_height), (245, 245, 245))
-                    for idx, thumb in enumerate(thumbs):
-                        thumb.thumbnail((thumb_w, thumb_h))
-                        x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
-                        y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
-                        grid_img.paste(thumb, (x, y))
-                    image_thumb = grid_img
-        except Exception as e:
-            preview_lines = [f"KEY error: {e}"]
-    elif ext.lower() == '.pptx' or ext.lower() == '.ppt':
-        try:
-            logging.info(f"Processing PPT(X) file: {file_path}")
-            # Extract all images from ppt/media
-            with zipfile.ZipFile(file_path, 'r') as z:
-                names = z.namelist()
-                preview_lines = [f"PPT(X) file: {len(names)} items"]
-                preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
-                image_files = [name for name in names if name.startswith('ppt/media/') and name.lower().endswith(('.jpg', '.jpeg', '.png'))]
-                n_total = len(image_files)
-                # Dynamically determine number of preview images
-                if n_total <= 6:
-                    n_preview = n_total
-                elif n_total <= 20:
-                    n_preview = min(12, n_total)
-                elif n_total <= 50:
-                    n_preview = min(16, n_total)
-                else:
-                    n_preview = min(20, n_total)
-                # Select images at evenly distributed intervals
-                indices = [0]
-                if n_preview > 1 and n_total > 1:
-                    #import numpy as np
-                    remaining = np.linspace(1, n_total - 1, n_preview - 1)
-                    indices += [int(round(i)) for i in remaining]
-                indices = sorted(set(indices))
-                selected_images = [image_files[i] for i in indices if i < n_total]
-                thumbs = []
-                for name in selected_images:
-                    with z.open(name) as img_file:
-                        img_data = img_file.read()
-                        try:
-                            img = Image.open(io.BytesIO(img_data))
-                            thumbs.append(img)
-                        except Exception:
-                            continue
-                # Dynamically determine grid_cols and grid_rows
-                if thumbs:
-                    aspect_ratio = max_line_width_pixels / max(preview_box_height, 1)
-                    grid_rows = int(math.ceil(math.sqrt(len(thumbs) / aspect_ratio)))
-                    grid_cols = int(math.ceil(len(thumbs) / grid_rows))
-                    thumb_w = max_line_width_pixels // grid_cols
-                    thumb_h = preview_box_height // grid_rows
-                    grid_img = Image.new('RGB', (max_line_width_pixels, preview_box_height), (245, 245, 245))
-                    for idx, thumb in enumerate(thumbs):
-                        thumb.thumbnail((thumb_w, thumb_h))
-                        x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
-                        y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
-                        grid_img.paste(thumb, (x, y))
-                    image_thumb = grid_img
-        except Exception as e:
-            preview_lines = [f"PPTX error: {e}"]
-    elif ext.lower() == '.ai':
-        try:
-            pages = convert_from_path(str(file_path), first_page=1, last_page=1)
-            if pages:
-                image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
-            else:
-                preview_lines = ["AI file: PDF preview not available."]
-        except Exception as e:
-            preview_lines = [f"AI error: {e}"]
-    elif file_type_info['group'] == 'unknown':
-        logging.info(f"Unknown file type for {file_path.name}. Attempting to read as text or hex.")
-        # First try a lightweight HTML heuristic; if it looks like HTML, render to text/Markdown
-        if is_probably_html(file_path):
-            logging.info(f"File looks like HTML {file_path.name} - Rendering HTML to text for preview.")
-            rendered = render_html_to_text(file_path)
-            if rendered:
-                # Split into lines and wrap to the card's width
-                lines = []
-                for raw_line in rendered.splitlines():
-                    wrapped = textwrap.wrap(raw_line, width=max_line_length)
-                    if not wrapped:
-                        lines.append('')
+        elif file_type_info['group'] == 'text':
+            preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length) or []
+        elif ext.lower() == '.zip':
+            zip_file_list = get_zip_preview(file_path, max_files=max_preview_lines)
+            zip_file_preview_img = None
+            zip_file_preview_lines = None
+        elif ext.lower() == '.rar':
+            try:
+                logging.info(f"Processing RAR file: {file_path}")
+                import rarfile
+                with rarfile.RarFile(file_path) as rf:
+                    names = rf.namelist()
+                    preview_lines = [f"RAR file: {len(names)} items"]
+                    preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
+                    logging.info(f"Found {len(names)} items in RAR file: {file_path}")
+            except Exception as e:
+                preview_lines = [f"RAR error: {e}"]
+        elif ext.lower() == '.gz':
+            preview_lines, image_thumb, _ = get_gz_preview(
+                file_path, max_bytes=max_preview_lines * 16, preview_box=(max_line_width_pixels, preview_box_height))
+            image_thumb = image_thumb  # If image_thumb is None, preview_lines will be used
+        elif ext.lower() == '.bz2':
+            preview_lines = get_bz2_preview(file_path, max_bytes=max_preview_lines * 16)
+        elif ext.lower() == '.key':
+            logging.info(f"****** Processing Keynote file: {file_path}")
+            try:
+                logging.info(f"Processing Keynote file: {file_path}")
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    names = z.namelist()
+                    preview_lines = [f"Keynote file: {len(names)} items"]
+                    preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
+                    # Find up to 4 images (jpg/png)
+                    image_files = [name for name in names if name.lower().endswith(('.jpg', '.jpeg', '.png'))][:4]
+                    thumbs = []
+                    for name in image_files:
+                        with z.open(name) as img_file:
+                            img_data = img_file.read()
+                            try:
+                                img = Image.open(io.BytesIO(img_data))
+                                thumbs.append(img)
+                            except Exception:
+                                continue
+                    # Make a grid if images found
+                    if thumbs:
+                        grid_cols = 2
+                        grid_rows = 2
+                        thumb_w = max_line_width_pixels // grid_cols
+                        thumb_h = preview_box_height // grid_rows
+                        grid_img = Image.new('RGB', (max_line_width_pixels, preview_box_height), (245, 245, 245))
+                        for idx, thumb in enumerate(thumbs):
+                            thumb.thumbnail((thumb_w, thumb_h))
+                            x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                            y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                            grid_img.paste(thumb, (x, y))
+                        image_thumb = grid_img
+            except Exception as e:
+                preview_lines = [f"KEY error: {e}"]
+        elif ext.lower() == '.pptx' or ext.lower() == '.ppt':
+            try:
+                logging.info(f"Processing PPT(X) file: {file_path}")
+                # Extract all images from ppt/media
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    names = z.namelist()
+                    preview_lines = [f"PPT(X) file: {len(names)} items"]
+                    preview_lines += [f"  {name}" for name in names[:max_preview_lines]]
+                    image_files = [name for name in names if name.startswith('ppt/media/') and name.lower().endswith(('.jpg', '.jpeg', '.png'))]
+                    n_total = len(image_files)
+                    # Dynamically determine number of preview images
+                    if n_total <= 6:
+                        n_preview = n_total
+                    elif n_total <= 20:
+                        n_preview = min(12, n_total)
+                    elif n_total <= 50:
+                        n_preview = min(16, n_total)
                     else:
-                        lines.extend(wrapped)
-                preview_lines = lines[:max_preview_lines]
+                        n_preview = min(20, n_total)
+                    # Select images at evenly distributed intervals
+                    indices = [0]
+                    if n_preview > 1 and n_total > 1:
+                        #import numpy as np
+                        remaining = np.linspace(1, n_total - 1, n_preview - 1)
+                        indices += [int(round(i)) for i in remaining]
+                    indices = sorted(set(indices))
+                    selected_images = [image_files[i] for i in indices if i < n_total]
+                    thumbs = []
+                    for name in selected_images:
+                        with z.open(name) as img_file:
+                            img_data = img_file.read()
+                            try:
+                                img = Image.open(io.BytesIO(img_data))
+                                thumbs.append(img)
+                            except Exception:
+                                continue
+                    # Dynamically determine grid_cols and grid_rows
+                    if thumbs:
+                        aspect_ratio = max_line_width_pixels / max(preview_box_height, 1)
+                        grid_rows = int(math.ceil(math.sqrt(len(thumbs) / aspect_ratio)))
+                        grid_cols = int(math.ceil(len(thumbs) / grid_rows))
+                        thumb_w = max_line_width_pixels // grid_cols
+                        thumb_h = preview_box_height // grid_rows
+                        grid_img = Image.new('RGB', (max_line_width_pixels, preview_box_height), (245, 245, 245))
+                        for idx, thumb in enumerate(thumbs):
+                            thumb.thumbnail((thumb_w, thumb_h))
+                            x = (idx % grid_cols) * thumb_w + (thumb_w - thumb.width)//2
+                            y = (idx // grid_cols) * thumb_h + (thumb_h - thumb.height)//2
+                            grid_img.paste(thumb, (x, y))
+                        image_thumb = grid_img
+            except Exception as e:
+                preview_lines = [f"PPTX error: {e}"]
+        elif ext.lower() == '.ai':
+            try:
+                pages = convert_from_path(str(file_path), first_page=1, last_page=1)
+                if pages:
+                    image_thumb = process_pdf_or_ai_page(pages[0], max_line_width_pixels, preview_box_height)
+                else:
+                    preview_lines = ["AI file: PDF preview not available."]
+            except Exception as e:
+                preview_lines = [f"AI error: {e}"]
+        elif file_type_info['group'] == 'unknown':
+            logging.info(f"Unknown file type for {file_path.name}. Attempting to read as text or hex.")
+            # First try a lightweight HTML heuristic; if it looks like HTML, render to text/Markdown
+            if is_probably_html(file_path):
+                logging.info(f"File looks like HTML {file_path.name} - Rendering HTML to text for preview.")
+                rendered = render_html_to_text(file_path)
+                if rendered:
+                    # Split into lines and wrap to the card's width
+                    lines = []
+                    for raw_line in rendered.splitlines():
+                        wrapped = textwrap.wrap(raw_line, width=max_line_length)
+                        if not wrapped:
+                            lines.append('')
+                        else:
+                            lines.extend(wrapped)
+                    preview_lines = lines[:max_preview_lines]
+                else:
+                    # Fallback to plain text preview if rendering returned nothing
+                    preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length) or []
             else:
-                # Fallback to plain text preview if rendering returned nothing
-                preview_lines = preview_text_content(file_path, max_lines=max_preview_lines, max_line_length=max_line_length) or []
-        else:
-            preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
+                preview_lines = get_hex_preview(file_path, max_preview_lines * 16)
 
     # --- Draw card ---
     if cmyk_mode:
