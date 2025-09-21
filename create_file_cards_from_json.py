@@ -46,7 +46,8 @@ def build_file_cards_from_json(
     include_video_frames=False,
     metadata_text=None,
     cards_per_chunk=0,
-    pdf_name="assembled"
+    pdf_name="assembled",
+    ignore_unknown_files=True
 ):
     logging.info(f"Starting file card generation from JSON: {json_path}")
     is_stories = False
@@ -138,7 +139,8 @@ def build_file_cards_from_json(
                     border_inch_width=border_inch_width,
                     include_video_frames=include_video_frames,
                     metadata_text=metadata_text,
-                    title=human_readable_date
+                    title=human_readable_date,
+                    ignore_unknown_files=ignore_unknown_files
                 )
                 if isinstance(card, list):
                     for idx, img in enumerate(card):
@@ -229,7 +231,8 @@ def build_file_cards_from_json(
                         border_inch_width=border_inch_width,
                         include_video_frames=include_video_frames,
                         metadata_text=metadata_text,
-                        title=human_readable_date
+                        title=human_readable_date,
+                        ignore_unknown_files=ignore_unknown_files
                     )
                     short_path = short_hash(abs_file_path)
                     if cards_per_chunk and cards_per_chunk > 0:
@@ -310,7 +313,7 @@ if __name__ == "__main__":
     parser.add_argument('--exclude-file-path', default=False, action='store_true', help='Exclude the vertical file path from the card (default: shown)')  # <-- Add this back
     parser.add_argument('--pdf-name', help='Name of the output PDF file (default: assembled)')
     parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
-
+    parser.add_argument('--ignore-unknown-files', action='store_true', help='Ignore files with unknown types instead of generating cards for them')
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
 
@@ -355,7 +358,8 @@ if __name__ == "__main__":
         border_inch_width=args.border_inch_width,
         include_video_frames=args.include_video_frames,
         cards_per_chunk=args.cards_per_chunk,
-        pdf_name=pdf_name
+        pdf_name=pdf_name,
+        ignore_unknown_files=args.ignore_unknown_files
     )
 
     # Assemble cards into a PDF

@@ -48,6 +48,21 @@ import file_card_generator
 
 global_glob_pattern = ["*_card.*", "*_card_*.*", "* card.*", "* card_*.*"]
 
+def get_non_dot_card_files(directory: Path):
+    """
+    Return a set of card files recursively starting in 'directory' matching any of the glob_patterns,
+    excluding files whose name starts with '.' or '._'.
+    """
+    matched_files = set()
+    for pattern in global_glob_pattern:
+        for f in directory.rglob(pattern):
+            if f.is_file() and not (f.name.startswith(".") or f.name.startswith("._")):
+                try:
+                    matched_files.add(f.resolve())
+                except Exception:
+                    matched_files.add(f)
+    return matched_files
+
 def parse_page_size(size_name):
     # Returns (width, height) in pixels at 300dpi
     size_name = size_name.upper()
@@ -111,7 +126,8 @@ def _process_file_iterable(
     metadata_text=None,
     cards_per_chunk: int = 0,
     pdf_name=None,
-    delete_cards_after_pdf: bool = False
+    delete_cards_after_pdf: bool = False,
+    ignore_unknown_files: bool = True
 ):
     """
     Shared processing loop for an iterable of file paths. Handles card creation,
@@ -197,7 +213,8 @@ def _process_file_iterable(
                     metadata_text=metadata_text,
                     metadata=metadata,
                     title=title,
-                    video_mode="first_frame"
+                    video_mode="first_frame",
+                    ignore_unknown_files=ignore_unknown_files
                 )
                 # Grid card
                 card_grid = create_file_info_card(
@@ -213,7 +230,8 @@ def _process_file_iterable(
                     metadata_text=metadata_text,
                     metadata=metadata,
                     title=title,
-                    video_mode="grid"
+                    video_mode="grid",
+                    ignore_unknown_files=ignore_unknown_files
                 )
 
                 # Save both cards
@@ -255,7 +273,8 @@ def _process_file_iterable(
                     metadata_text=metadata_text,
                     metadata=metadata,
                     all_pdf_pages=args.all_pdf_pages,
-                    title=title
+                    title=title,
+                    ignore_unknown_files=ignore_unknown_files
                 )
                 if card is None:
                     logging.warning(f"No card generated for {file_path}. Skipping.")
@@ -364,7 +383,8 @@ def build_file_cards_from_list(
     metadata_text=None,
     cards_per_chunk=0,
     pdf_name=None,
-    delete_cards_after_pdf: bool = False
+    delete_cards_after_pdf: bool = False,
+    ignore_unknown_files: bool = True
 ):
     """
     Wrapper that prepares output directory and delegates to _process_file_iterable
@@ -445,7 +465,8 @@ def build_file_cards_from_list(
         metadata_text=metadata_text,
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
-        delete_cards_after_pdf=delete_cards_after_pdf
+        delete_cards_after_pdf=delete_cards_after_pdf,
+        ignore_unknown_files=ignore_unknown_files
     )
 
 
@@ -465,7 +486,8 @@ def build_file_cards_from_directory(
     metadata_text=None,
     cards_per_chunk=0,
     pdf_name=None,
-    delete_cards_after_pdf: bool = False
+    delete_cards_after_pdf: bool = False,
+    ignore_unknown_files: bool = True
 ):
     """
     Test the file card generation by creating cards for all files in a directory.
@@ -522,7 +544,8 @@ def build_file_cards_from_directory(
         metadata_text=metadata_text,
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
-        delete_cards_after_pdf=delete_cards_after_pdf
+        delete_cards_after_pdf=delete_cards_after_pdf,
+        ignore_unknown_files=ignore_unknown_files
     )
 
     try:
@@ -732,6 +755,7 @@ if __name__ == "__main__":
     parser.add_argument('--metadata-text', default=None, help='Custom metadata text to include on the card')
     parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
     parser.add_argument('--slack-data-root', help='Path to Slack export root (directory containing messages.json and files/). If provided, the script will treat input as Slack data and resolve relative filepaths accordingly.')
+    parser.add_argument('--ignore-unknown-files', default=True, action='store_true', help='Ignore files of unknown type instead of trying to create a card (default: ignore)')
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
     if args.exclude_exts is not None:
@@ -952,7 +976,8 @@ if __name__ == "__main__":
             metadata_text=args.metadata_text,
             cards_per_chunk=args.cards_per_chunk,
             pdf_name=pdf_name,
-            delete_cards_after_pdf=args.delete_cards_after_pdf
+            delete_cards_after_pdf=args.delete_cards_after_pdf,
+            ignore_unknown_files=args.ignore_unknown_files
         )
     else:
         build_file_cards_from_directory(
@@ -969,7 +994,8 @@ if __name__ == "__main__":
             metadata_text=args.metadata_text,
             cards_per_chunk=args.cards_per_chunk,  # <--- Pass chunk size
             pdf_name=pdf_name,
-            delete_cards_after_pdf=args.delete_cards_after_pdf
+            delete_cards_after_pdf=args.delete_cards_after_pdf,
+            ignore_unknown_files=args.ignore_unknown_files
         )
 
     # Report summary
@@ -1032,7 +1058,7 @@ if __name__ == "__main__":
                 delete_patterns = global_glob_pattern
                 deleted = 0
                 for pattern in delete_patterns:
-                    for card_file in output_dir_path.glob(pattern):
+                    for card_file in get_non_dot_card_files(output_dir_path):
                         # Skip the combined PDF if it ever matched (it shouldn't with these patterns)
                         if pdf_path and Path(card_file).resolve() == Path(pdf_path).resolve():
                             continue
