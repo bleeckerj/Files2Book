@@ -174,7 +174,7 @@ FILE_TYPE_GROUPS = {
     'pdf': {
         'extensions': {'.pdf'},
         'icon': "PDF",
-        'color': (69, 137, 119)  # HEX: 458977
+        'color': (241, 91, 182)  # HEX: F15BB5
     },
     'presentation': {
         'extensions': {'.ppt', '.pptx', '.odp', '.key'},
@@ -189,7 +189,7 @@ FILE_TYPE_GROUPS = {
     'archive': {
         'extensions': {'.zip', '.tar', '.gz', '.bz2', '.rar', '.7z'},
         'icon': "ZIP",
-        'color': (128, 128, 38)  # HEX: 808026
+        'color': (0, 187, 249)  # HEX: 80B1F9
     },
     'executable': {
         'extensions': {'.exe', '.bin', '.app', '.sh', '.bat', '.dll', '.so', '.dylib'},
@@ -219,7 +219,7 @@ FILE_TYPE_GROUPS = {
     'movie': {
         'extensions': {'.mp4', '.mkv', '.avi', '.mov', '.m4v', '.webm'},
         'icon': "MOVIE",
-        'color': (42, 219, 61)  # HEX: 2adb3d
+        'color': (254, 228, 64)  # HEX: 254 228 64
     },
     'image': {
         'extensions': {'.dng','.jpg', '.jpeg', '.png','.bmp', '.tif', '.tiff', '.webp'},
@@ -574,6 +574,19 @@ def get_pdf_preview(file_path, box_w, box_h, all_pages: bool = False, max_pages:
         if n_total == 0:
             logging.warning(f"No pages found in PDF: {file_path}")
             return None
+        
+        # If only one page, just return the single page image scaled to fit
+        if n_total == 1:
+            single_page_img = all_pages_img[0]
+            # Rotate if landscape and box is portrait
+            if box_h > box_w and single_page_img.width > single_page_img.height:
+                single_page_img = single_page_img.rotate(90, expand=True)
+            try:
+                thumb = ImageOps.contain(single_page_img, (box_w, box_h), Image.LANCZOS)
+            except Exception:
+                thumb = single_page_img.copy()
+                thumb.thumbnail((box_w, box_h))
+            return thumb
 
         # Build overview grid (choose up to max_pages evenly distributed pages)
         overview_cap = min(n_total, max_pages)
