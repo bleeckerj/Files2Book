@@ -1225,7 +1225,7 @@ def create_file_info_card(
     #logging.debug(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
     # Proportional paddings
     border_width = max(2, int(1 * scale))  # Using a more reasonable but still very visible border width
-    outer_padding = max(80, int(50 * scale))  # Padding between border and outer edges of content
+    outer_padding = max(150, int(80 * scale))  # Padding between border and outer edges of content
 
     # Create the full-sized background image that is the canvas for the preview
     # Use non-alpha modes so downstream PDF assembly doesn't hit alpha issues
