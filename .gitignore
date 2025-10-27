@@ -7,6 +7,16 @@ __pycache__/
 *.so
 *.pdf
 TEST_FOLDER*/
+extra-for-diary/
+autotrader_combined.json
+buildings-and-stuff_combined.json
+prepared_reels.json
+refactor_notes.txt
+run_file_cards_for_all.sh
+run_omata_developers.py
+refactor_notes.txt
+*.tex
+*.pdf
 *workspace*
 omata-*/
 id-explorations*/

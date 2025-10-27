@@ -21,6 +21,7 @@ import bz2
 import gzip
 from bs4 import BeautifulSoup
 from qr_code_generator import create_qr_code
+from config_loader import get_font_path
 
 try:
     from fitparse import FitFile
@@ -1201,6 +1202,7 @@ def create_file_info_card(
     all_pdf_pages=False,
     _pdf_preview_img=None,
     ignore_unknown_files=True,
+    outer_padding_inches=0.5,  # New parameter: outer padding in inches at 300 DPI
 ):
 
     original_dt = None
@@ -1225,7 +1227,9 @@ def create_file_info_card(
     #logging.debug(f"Scaling card to {width}x{height} with scale factor {scale:.2f}")
     # Proportional paddings
     border_width = max(2, int(1 * scale))  # Using a more reasonable but still very visible border width
-    outer_padding = max(150, int(80 * scale))  # Padding between border and outer edges of content
+    # Convert outer_padding_inches to pixels at 300 DPI
+    outer_padding_px = int(outer_padding_inches * 300)
+    outer_padding = max(outer_padding_px, int(outer_padding_px * scale))  # Padding between border and outer edges of content
 
     # Create the full-sized background image that is the canvas for the preview
     # Use non-alpha modes so downstream PDF assembly doesn't hit alpha issues
@@ -1286,15 +1290,12 @@ def create_file_info_card(
     # Load fonts
     try:
         
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        font_path = os.path.join(script_dir, "FONTS", "3270NerdFontMono-Regular.ttf")
-        title_font = ImageFont.truetype(font_path, title_font_size)
+        font_path = get_font_path()
+        title_font = ImageFont.truetype(str(font_path), title_font_size)
         
-        #title_font = ImageFont.truetype("./FONTS/3270/3270NerdFontMono-Regular.ttf", title_font_size)
-
-        info_font = ImageFont.truetype(font_path, info_font_size)
-        preview_font = ImageFont.truetype(font_path, preview_font_size)
-        fit_font = ImageFont.truetype(font_path, fit_font_size)
+        info_font = ImageFont.truetype(str(font_path), info_font_size)
+        preview_font = ImageFont.truetype(str(font_path), preview_font_size)
+        fit_font = ImageFont.truetype(str(font_path), fit_font_size)
     except Exception as e:
         logging.error(f"Error loading custom font: {e}")
         logging.error("Could not load custom font, falling back to default font")
@@ -1554,9 +1555,11 @@ def create_file_info_card(
             line_spacing=custom_line_spacing_px,
             align="center",
             v_align="top",
-            fill=bg_fill,
-            stroke_fill=bg_outline,
-            stroke_width=1
+            fill=text_fill,
+            background_fill=bg_fill,
+            background_radius=int(3 * scale),
+            background_outline=bg_outline,
+            background_outline_width=1,
         )
         metadata_height = measure["used_size"][1] + (meta_pad * 2)
     else:
@@ -1640,6 +1643,7 @@ def create_file_info_card(
                     frames.append(frame.copy())
                 # Determine grid size based on number of frames
                 n_total = len(frames)
+                              
                 best_score = -1
                 best_grid = None
                 best_indices = None
@@ -1753,7 +1757,8 @@ def create_file_info_card(
                             metadata=page_metadata,
                             video_mode=video_mode,
                             all_pdf_pages=False,  # prevent nested all-pages recursion
-                            _pdf_preview_img=preview_img
+                            _pdf_preview_img=preview_img,
+                            outer_padding_inches=outer_padding_inches
                         )
                         cards.append(card_img)
                     return cards
@@ -2781,6 +2786,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-video-frames", type=int, default=9, help="Minimum number of video frames to include should it come to that")
     parser.add_argument("--all-pdf-pages", action="store_true", help="If set, generate an overview plus one card per PDF page")
     parser.add_argument("--exclude-file-path", action="store_true", help="If set, do not include file path in metadata display")
+    parser.add_argument("--outer-padding-inches", type=float, default=0.5, help="Outer padding/margin in inches at 300 DPI (default: 0.5)")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -2800,7 +2806,8 @@ if __name__ == "__main__":
                     include_video_frames=args.include_video_frames,
                     max_video_frames=args.max_video_frames,
                     video_mode="first_frame",
-                    exclude_file_path=args.exclude_file_path
+                    exclude_file_path=args.exclude_file_path,
+                    outer_padding_inches=args.outer_padding_inches
                 )
                 out_path_first = out_dir / f"{Path(fp).stem}_firstframe.tiff"
                 save_card_as_tiff(card_first, str(out_path_first), cmyk_mode=args.cmyk)
@@ -2813,7 +2820,8 @@ if __name__ == "__main__":
                     include_video_frames=args.include_video_frames,
                     max_video_frames=args.max_video_frames,
                     video_mode="grid",
-                    exclude_file_path=args.exclude_file_path
+                    exclude_file_path=args.exclude_file_path,
+                    outer_padding_inches=args.outer_padding_inches
                 )
                 out_path_grid = out_dir / f"{Path(fp).stem}_grid.tiff"
                 save_card_as_tiff(card_grid, str(out_path_grid), cmyk_mode=args.cmyk)
@@ -2827,7 +2835,8 @@ if __name__ == "__main__":
                     include_video_frames=args.include_video_frames,
                     max_video_frames=args.max_video_frames,
                     all_pdf_pages=args.all_pdf_pages,
-                    exclude_file_path=args.exclude_file_path
+                    exclude_file_path=args.exclude_file_path,
+                    outer_padding_inches=args.outer_padding_inches
                 )
                 #out_path = out_dir / f"{Path(fp).stem}.tiff"
                 #save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)

@@ -81,16 +81,16 @@ python create_file_cards.py \
   --cards-per-chunk 500 \
   --input-dir "/SlackExporterForOmata/"
   ```
-  Where `/SlackExporterForOmata` is the root directory by which the elements in `file-list` are relatively specified.
+  Where `/SlackExporterOutput` is the root directory by which the elements in `file-list` are relatively specified.
 
   e.g. here is one element in the `downloaded_files.json`
 
   ```
     {
-    "filepath": "omata-app/files/1487105611/Calibartion_Screens_based_on_Dir__2A",
+    "filepath": "channel/files/1487105611/A_File_Name",
     "raw_ts": "1487105611",
     "actual_ts": "1487105611.000000",
-    "permalink": "https://omata.slack.com/docs/T08B657GW/F04AB5GC60J",
+    "permalink": "https://your.slack.com/docs/T08B657GW/F04AB5GC60J",
     "permalink_public": null
     }
 ```
@@ -99,14 +99,14 @@ Here's another command that just reads from a directory:
 
 ```
 python create_file_cards.py \
-  --input-dir "/Volumes/Crucial X10/MidjourneyImages/images/autotrader_1089358474426712224/images/" \
+  --input-dir "/Volumes/RabbitOne/images/autotrader_1089358474426712224/images/" \
   --border-color "161 216 26" \
   --border-inch-width 0 \
-  --output-dir "/Volumes/Crucial X10/MidjourneyImages/autotrader_output" \
+  --output-dir "/Volumes/RabbitOne/images/autotrader_1089358474426712224/images_output" \
   --max-depth 3 \
   --cmyk-mode \
   --page-size DIGEST \
-  --pdf-output-name "autotrader_output.pdf" \
+  --pdf-output-name "your_output.pdf" \
   --cards-per-chunk 500 \
   --delete-cards-after-pdf
 ```
@@ -120,30 +120,30 @@ All of the card files will be deleted (presumably to save disk space as they are
 ## Supported Page Sizing
 
 ### Various standard book sizes (standard units - inches)
-'A5': (5.83, 8.27)                  
-'A5_FULLBLEED': (6.08, 8.52),
-'A4': (8.27, 11.69),
-'A3': (11.69, 16.54),
-'A2': (16.54, 23.39),
-'A1': (23.39, 33.11),
-'A0': (33.11, 46.81),
-'TRADE_LARGE': (7, 9),
-'LETTER': (8.5, 11),
-'LEGAL': (8.5, 14),
-'TABLOID': (11, 17),
-'DIGEST': (5.5, 8.5),
-'DIGEST_FULLBLEED': (5.75, 8.75),
-'POCKETBOOK': (4.25, 6.87),
-'POCKETBOOK_FULLBLEED': (4.5, 7.12),
+- 'A5': (5.83, 8.27)                  
+- 'A5_FULLBLEED': (6.08, 8.52),
+- 'A4': (8.27, 11.69),
+- 'A3': (11.69, 16.54),
+- 'A2': (16.54, 23.39),
+- 'A1': (23.39, 33.11),
+- 'A0': (33.11, 46.81),
+- 'TRADE_LARGE': (7, 9),
+- 'LETTER': (8.5, 11),
+- 'LEGAL': (8.5, 14),
+- 'TABLOID': (11, 17),
+- 'DIGEST': (5.5, 8.5),
+- 'DIGEST_FULLBLEED': (5.75, 8.75),
+- 'POCKETBOOK': (4.25, 6.87),
+- 'POCKETBOOK_FULLBLEED': (4.5, 7.12),
 
 ### Playing card sizes (in inches, rounded to 2 decimals)
-'POKER': (2.48, 3.46),        # 63x88mm
-'BRIDGE': (2.24, 3.46),       # 57x88mm
-'MINI': (1.73, 2.68),         # 44x68mm
-'LARGE_TAROT': (2.76, 4.72),  # 70x120mm
-'SMALL_TAROT': (2.76, 4.25),  # 70x108mm
-'LARGE_SQUARE': (2.76, 2.76), # 70x70mm
-'SMALL_SQUARE': (2.48, 2.48), # 63x63mm
+- 'POKER': (2.48, 3.46),        # 63x88mm
+- 'BRIDGE': (2.24, 3.46),       # 57x88mm
+- 'MINI': (1.73, 2.68),         # 44x68mm
+- 'LARGE_TAROT': (2.76, 4.72),  # 70x120mm
+- 'SMALL_TAROT': (2.76, 4.25),  # 70x108mm
+- 'LARGE_SQUARE': (2.76, 2.76), # 70x70mm
+- 'SMALL_SQUARE': (2.48, 2.48), # 63x63mm
 
 ## Requirements
 
@@ -160,6 +160,20 @@ Note: You'll also need `poppler` installed for PDF processing, as the library pd
 - Mac: `brew install poppler`
 
 As I've only run this on macOS, I cannot say how to install Poppler on other platforms, but cf: https://poppler.freedesktop.org/ but Homebrew should support Ubuntu, for example - I'll probably try that.
+
+### Environment Variables
+
+For GPS data file support (`.fit` and `.gpx` files), you'll need a Mapbox access token. Create a `.env` file in the project root:
+
+```bash
+MAPBOX_ACCESS_TOKEN=your_mapbox_token_here
+```
+
+You can obtain a Mapbox token from https://account.mapbox.com/access-tokens/
+
+### Configuration
+
+Font paths and other settings can be customized in `config.json`. See the default configuration file for available options.
 
 
 ## Some related utilities
