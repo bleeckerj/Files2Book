@@ -1,3 +1,4 @@
+# <img src="https://imagedelivery.net/gaLGizR3kCgx5yRLtiRIOw/c20f188f-f3e2-4e47-419e-0fb0482bb800/w=600" alt="Files2Book Banner" width="600"/>
 # Files2Book
 
 This is a collection of utilities that were cobbled together in order to support a project where I wanted to archive all of the Slack channels for https://omata.com into a series of books, one book per channel.
