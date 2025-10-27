@@ -120,6 +120,7 @@ All of the card files will be deleted (presumably to save disk space as they are
 ## Supported Page Sizing
 
 ### Various standard book sizes (standard units - inches)
+```
 - 'A5': (5.83, 8.27)                  
 - 'A5_FULLBLEED': (6.08, 8.52),
 - 'A4': (8.27, 11.69),
@@ -135,16 +136,18 @@ All of the card files will be deleted (presumably to save disk space as they are
 - 'DIGEST_FULLBLEED': (5.75, 8.75),
 - 'POCKETBOOK': (4.25, 6.87),
 - 'POCKETBOOK_FULLBLEED': (4.5, 7.12),
+```
 
 ### Playing card sizes (in inches, rounded to 2 decimals)
-- 'POKER': (2.48, 3.46),        # 63x88mm
-- 'BRIDGE': (2.24, 3.46),       # 57x88mm
-- 'MINI': (1.73, 2.68),         # 44x68mm
-- 'LARGE_TAROT': (2.76, 4.72),  # 70x120mm
-- 'SMALL_TAROT': (2.76, 4.25),  # 70x108mm
-- 'LARGE_SQUARE': (2.76, 2.76), # 70x70mm
-- 'SMALL_SQUARE': (2.48, 2.48), # 63x63mm
-
+```
+- 'POKER': (2.48, 3.46),        (63x88mm)
+- 'BRIDGE': (2.24, 3.46),       (57x88mm)
+- 'MINI': (1.73, 2.68),         (44x68mm)
+- 'LARGE_TAROT': (2.76, 4.72),  (70x120mm)
+- 'SMALL_TAROT': (2.76, 4.25),  (70x108mm)
+- 'LARGE_SQUARE': (2.76, 2.76), (70x70mm)
+- 'SMALL_SQUARE': (2.48, 2.48), (63x63mm)
+```
 ## Requirements
 
 Obvs, create a Python virtual environment to save any headaches down the road.
@@ -256,10 +259,15 @@ You can set different CMYK background colors for both regular pages and flipbook
 
 Example CMYK values:
 - `0,0,0,0`: White
+
 - `0,0,0,100`: Black
+
 - `100,0,0,0`: Cyan
+
 - `0,100,0,0`: Magenta
+
 - `0,0,100,0`: Yellow
+
 - `22,0,93,0`: Omata acid green (default for flipbook blank pages)
 
 Note: When using CMYK mode, the output files will be larger due to the TIFF format.
