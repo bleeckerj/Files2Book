@@ -1,4 +1,5 @@
 import sys
+from turtle import width
 print(sys.executable)
 import os
 import time
@@ -572,16 +573,16 @@ def _compose_comfy_metadata_text(
                 lines.append(f"{key}: {value}")
 
     workflow_obj = (payload or {}).get("workflow")
-    if workflow_obj:
-        try:
-            workflow_json = json.dumps(workflow_obj, indent=2)
-        except TypeError:
-            workflow_json = str(workflow_obj)
-        if len(workflow_json) > 2000:
-            workflow_json = workflow_json[:2000].rstrip() + "…"
-        lines.append("")
-        lines.append("Workflow JSON (truncated)")
-        lines.append(workflow_json)
+    # if workflow_obj:
+    #     try:
+    #         workflow_json = json.dumps(workflow_obj, indent=2)
+    #     except TypeError:
+    #         workflow_json = str(workflow_obj)
+    #     if len(workflow_json) > 2000:
+    #         workflow_json = workflow_json[:2000].rstrip() + "…"
+    #     lines.append("")
+    #     lines.append("Workflow JSON (truncated)")
+    #     lines.append(workflow_json)
 
     return "\n".join(lines).strip()
 
@@ -610,8 +611,8 @@ def _build_comfy_metadata_card(
     scale = min(width / base_width, height / base_height)
     outer_padding_px = int(outer_padding_inches * 300)
     outer_padding = max(outer_padding_px, int(outer_padding_px * scale))
-    header_height = int(70 * scale)
-    body_padding = int(20 * scale)
+    header_height = int(20 * scale)
+    body_padding = int(100 * scale)
 
     background_rgb = (250, 250, 250)
     if cmyk_mode:
@@ -626,9 +627,11 @@ def _build_comfy_metadata_card(
     draw.rectangle([outer_padding, outer_padding, width - outer_padding, outer_padding + header_height], fill=header_color)
 
     try:
+        title_font_size = int(18 * scale)
+        info_font_size = int(12 * scale)
         font_path = get_font_path()
-        title_font = ImageFont.truetype(str(font_path), int(28 * scale))
-        body_font = ImageFont.truetype(str(font_path), int(18 * scale))
+        title_font = ImageFont.truetype(str(font_path), title_font_size)
+        body_font = ImageFont.truetype(str(font_path), info_font_size)
     except Exception:
         title_font = ImageFont.load_default()
         body_font = ImageFont.load_default()
@@ -637,10 +640,17 @@ def _build_comfy_metadata_card(
     header_text = f"{header_title} — Comfy Workflow"
     draw.text((width // 2, outer_padding + header_height // 2), header_text, fill="white", font=title_font, anchor="mm")
 
-    text_box_left = outer_padding + body_padding
+    header_left = outer_padding
+    header_right = width - outer_padding
+
+    text_box_left = header_left
+    text_box_right = header_right - width // 5
+    # keep body padding only on top/bottom if you still want vertical spacing
     text_box_top = outer_padding + header_height + body_padding
-    text_box_right = width - outer_padding - body_padding
     text_box_bottom = height - outer_padding - body_padding
+
+    print("header right", width - outer_padding, "text box right", text_box_right)
+
 
     if cmyk_mode:
         bg_fill = rgb_to_cmyk(255, 255, 255)
@@ -656,7 +666,7 @@ def _build_comfy_metadata_card(
         text_content,
         body_font,
         box=(text_box_left, text_box_top, text_box_right, text_box_bottom),
-        padding=int(12 * scale),
+        padding=int(8 * scale),
         line_spacing=int(6 * scale),
         align="left",
         v_align="top",
@@ -1651,7 +1661,7 @@ def create_file_info_card(
     all_pdf_pages=False,
     _pdf_preview_img=None,
     ignore_unknown_files=True,
-    outer_padding_inches=0.5,  # New parameter: outer padding in inches at 300 DPI
+    outer_padding_inches=0.25,  # New parameter: outer padding in inches at 300 DPI
     comfy_metadata_pages=False,
 ):
 
