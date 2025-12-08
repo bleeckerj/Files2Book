@@ -60,6 +60,21 @@ pip install Pillow requests gpxpy fitparse polyline pdf2image opencv-python pyth
 npm install
 ```
 
+## ComfyUI Workflow Metadata Setup
+
+`file_card_generator.py` can now enrich PNG/JPEG/WebP/video cards with the embedded ComfyUI workflow metadata. To enable this, install the shared helpers from the ComfyREST repo:
+
+1. Install the workflow extractor dependency (it currently publishes itself as `comfyui-workflow-tools`, so we pin the name explicitly):
+   ```bash
+   python3 -m pip install 'git+https://github.com/bleeckerj/comfyui-workflow-extractor.git#egg=comfyui-workflow'
+   ```
+2. Install ComfyREST in editable mode so `comfyrest` is importable inside Files2Book:
+   ```bash
+   python3 -m pip install -e '/Users/julian/Code/ComfyREST[metadata]' --no-deps
+   ```
+
+After those steps, rerunning any Files2Book script will automatically detect ComfyUI outputs and include workflow summaries on the generated cards. (If you keep ComfyREST in a different folder, adjust the second path accordingly.)
+
 ## Mapbox Access Token
 
 To use Mapbox map thumbnails, you **must** set your Mapbox access token as an environment variable:

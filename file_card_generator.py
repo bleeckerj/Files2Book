@@ -21,7 +21,9 @@ import bz2
 import gzip
 from bs4 import BeautifulSoup
 from qr_code_generator import create_qr_code
-from config_loader import get_font_path
+from util.config_loader import get_font_path
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+from numbers import Number
 
 try:
     from fitparse import FitFile
@@ -47,6 +49,14 @@ import logging
 import traceback
 import random
 from pillow_textbox import draw_text_box
+
+try:
+    from comfyrest import extract_workflow_from_file as comfy_extract_workflow_from_file
+    COMFY_REST_AVAILABLE = True
+except ImportError:
+    
+    comfy_extract_workflow_from_file = None
+    COMFY_REST_AVAILABLE = False
 
 Image.MAX_IMAGE_PIXELS = 500_000_000  # or any large number
 #Image.MAX_IMAGE_PIXELS = None  # disables the limit (use with caution)
@@ -240,6 +250,445 @@ FILE_TYPE_GROUPS = {
 }
 
 SPECIAL_METADATA_DIRECT_VALUE_KEYS = {"name", "filename", "filepath", "created"}
+
+COMFY_IMAGE_WORKFLOW_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp'}
+COMFY_VIDEO_WORKFLOW_EXTENSIONS = set(FILE_TYPE_GROUPS['movie']['extensions'])
+
+
+def _is_comfy_candidate_extension(ext: str) -> bool:
+    if not COMFY_REST_AVAILABLE or not comfy_extract_workflow_from_file:
+        return False
+    if not ext:
+        return False
+    return (ext in COMFY_IMAGE_WORKFLOW_EXTENSIONS) or (ext in COMFY_VIDEO_WORKFLOW_EXTENSIONS)
+
+
+def _safe_extract_comfy_payload(media_path: Path) -> Optional[Dict[str, Any]]:
+    if not COMFY_REST_AVAILABLE or not comfy_extract_workflow_from_file:
+        return None
+    try:
+        result = comfy_extract_workflow_from_file(str(media_path))
+    except Exception:
+        logging.debug("ComfyREST metadata extraction failed for %s", media_path, exc_info=True)
+        return None
+    normalized = _normalize_comfy_result(result)
+    if not normalized:
+        logging.debug("No ComfyUI workflow metadata found in %s", media_path)
+    return normalized
+
+
+def _normalize_comfy_result(result: Any) -> Optional[Dict[str, Any]]:
+    if result is None:
+        return None
+
+    workflow = None
+    metadata = None
+    source = None
+
+    if isinstance(result, dict):
+        workflow = result.get("workflow")
+        metadata = result.get("metadata") or result.get("meta") or result.get("image_metadata")
+        source = result.get("source")
+        if workflow is None and _looks_like_workflow_dict(result):
+            workflow = result
+    else:
+        workflow = getattr(result, "workflow", None)
+        metadata = getattr(result, "raw_metadata", None) or getattr(result, "metadata", None)
+        source = getattr(result, "extraction_method", None)
+
+    if workflow is None or not _looks_like_workflow_dict(workflow):
+        return None
+
+    if metadata is not None and not isinstance(metadata, dict):
+        metadata = None
+
+    payload = {"workflow": workflow}
+    if metadata:
+        payload["metadata"] = metadata
+    if source:
+        payload["source"] = source
+    return payload
+
+
+def _looks_like_workflow_dict(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if "nodes" in value:
+        return True
+    return any(isinstance(v, dict) and ("inputs" in v or "class_type" in v or "type" in v) for v in value.values())
+
+
+def _summarize_comfy_workflow(workflow: Any, *, default_title: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if not _looks_like_workflow_dict(workflow):
+        return None
+
+    nodes = _extract_comfy_nodes(workflow)
+    node_count = len(nodes)
+
+    node_types: List[str] = []
+    checkpoints: List[str] = []
+    loras: List[str] = []
+    samplers: List[str] = []
+    clip_models: List[str] = []
+    positive_prompts: List[str] = []
+    negative_prompts: List[str] = []
+
+    for node in nodes:
+        node_type = str(node.get("type") or node.get("class_type") or node.get("node_type") or "").strip()
+        node_label = str(node.get("label") or node.get("title") or node.get("name") or "").strip()
+        node_type_lower = node_type.lower()
+        node_label_lower = node_label.lower()
+
+        if node_type:
+            node_types.append(node_type)
+
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict):
+            inputs = {}
+
+        ckpt_candidate = _first_string_value(inputs, ("ckpt_name", "ckpt", "model", "filename"))
+        if ckpt_candidate and ("checkpoint" in node_type_lower or "ckpt" in node_type_lower or "checkpoint" in node_label_lower):
+            checkpoints.append(ckpt_candidate)
+
+        lora_candidate = _first_string_value(inputs, ("lora", "lora_name", "model", "name"))
+        if lora_candidate and ("lora" in node_type_lower or "lora" in node_label_lower):
+            loras.append(lora_candidate)
+
+        sampler_candidate = _first_string_value(inputs, ("sampler_name", "sampler"))
+        if sampler_candidate and "sampler" in node_type_lower:
+            samplers.append(sampler_candidate)
+
+        clip_candidate = _first_string_value(inputs, ("clip", "clip_name", "model"))
+        if clip_candidate and "clip" in node_type_lower:
+            clip_models.append(clip_candidate)
+
+        for key, value in inputs.items():
+            if not isinstance(value, str):
+                continue
+            lowered = key.lower()
+            if not any(token in lowered for token in ("prompt", "text", "string")):
+                continue
+            text_value = value.strip()
+            if not text_value:
+                continue
+            is_negative = "neg" in lowered or "negative" in lowered or "negative" in node_type_lower or "negative" in node_label_lower
+            if is_negative:
+                negative_prompts.append(text_value)
+            else:
+                positive_prompts.append(text_value)
+
+    summary = {
+        "title": _extract_workflow_title(workflow) or default_title,
+        "node_count": node_count,
+        "node_types": _unique_preserve(node_types),
+        "checkpoints": _unique_preserve(checkpoints),
+        "loras": _unique_preserve(loras),
+        "samplers": _unique_preserve(samplers),
+        "clip_models": _unique_preserve(clip_models),
+        "positive_prompts": _unique_preserve(positive_prompts),
+        "negative_prompts": _unique_preserve(negative_prompts),
+    }
+    return summary
+
+
+def _extract_workflow_title(workflow: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(workflow, dict):
+        return None
+    for key in ("workflow_name", "name", "title"):
+        value = workflow.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _extract_comfy_nodes(workflow: Any) -> List[Dict[str, Any]]:
+    if isinstance(workflow, dict):
+        if isinstance(workflow.get("nodes"), list):
+            return [node for node in workflow["nodes"] if isinstance(node, dict)]
+        return [node for node in workflow.values() if isinstance(node, dict)]
+    if isinstance(workflow, list):
+        return [node for node in workflow if isinstance(node, dict)]
+    return []
+
+
+def _first_string_value(inputs: Dict[str, Any], keys: Iterable[str]) -> Optional[str]:
+    for key in keys:
+        value = inputs.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _unique_preserve(items: Iterable[str]) -> List[str]:
+    seen = set()
+    ordered: List[str] = []
+    for item in items:
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered
+
+
+def _join_and_truncate(values: Iterable[str], limit: int = 200) -> str:
+    text = ", ".join(v for v in values if v)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit].rstrip(', ')}…"
+
+
+def _truncate_text(value: str, limit: int = 220) -> str:
+    if len(value) <= limit:
+        return value
+    return value[:limit - 1].rstrip() + "…"
+
+
+def _build_comfy_metadata_fields(summary: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    if not summary:
+        return {}
+    fields: Dict[str, str] = {}
+    if summary.get("node_count"):
+        fields["Comfy Nodes"] = str(summary["node_count"])
+    if summary.get("node_types"):
+        fields["Comfy Node Types"] = _join_and_truncate(summary["node_types"], 140)
+    if summary.get("checkpoints"):
+        fields["Comfy Checkpoints"] = _join_and_truncate(summary["checkpoints"], 160)
+    if summary.get("loras"):
+        fields["Comfy LoRAs"] = _join_and_truncate(summary["loras"], 160)
+    if summary.get("samplers"):
+        fields["Comfy Samplers"] = _join_and_truncate(summary["samplers"], 120)
+    if summary.get("clip_models"):
+        fields["Comfy CLIP Models"] = _join_and_truncate(summary["clip_models"], 120)
+    if summary.get("positive_prompts"):
+        fields["Comfy Prompt"] = _truncate_text(summary["positive_prompts"][0])
+    if summary.get("negative_prompts"):
+        fields["Comfy Negative Prompt"] = _truncate_text(summary["negative_prompts"][0])
+    return fields
+
+
+def _format_comfy_media_metadata(meta: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    if not isinstance(meta, dict):
+        return {}
+    fields: Dict[str, str] = {}
+
+    width = meta.get("width")
+    height = meta.get("height")
+    if _is_number_like(width) and _is_number_like(height):
+        width_int = int(float(width))
+        height_int = int(float(height))
+        fields["Comfy Dimensions"] = f"{width_int}×{height_int}"
+
+    duration = meta.get("duration") or meta.get("video_duration")
+    if _is_number_like(duration):
+        fields["Comfy Duration"] = f"{float(duration):.2f}s"
+
+    fps = meta.get("fps")
+    if _is_number_like(fps):
+        fields["Comfy FPS"] = f"{float(fps):.2f}"
+
+    codec = meta.get("codec")
+    if codec:
+        fields["Comfy Codec"] = str(codec)
+
+    format_name = meta.get("format") or meta.get("format_name")
+    if format_name:
+        fields["Comfy Format"] = str(format_name)
+
+    file_hash = meta.get("file_hash")
+    if file_hash:
+        fields["Comfy Hash"] = str(file_hash)
+
+    return fields
+
+
+def _compose_comfy_metadata_text(
+    summary: Optional[Dict[str, Any]],
+    media_fields: Dict[str, str],
+    payload: Optional[Dict[str, Any]],
+) -> str:
+    """Build a readable multi-section text block for a Comfy metadata page."""
+    lines: List[str] = []
+    if summary:
+        lines.append("Workflow Overview")
+        lines.append("")
+        if summary.get("node_count") is not None:
+            lines.append(f"Total Nodes: {summary['node_count']}")
+        node_types = summary.get("node_types") or []
+        if node_types:
+            lines.append("Node Types:")
+            lines.extend(f"  • {nt}" for nt in node_types)
+        checkpoints = summary.get("checkpoints") or []
+        if checkpoints:
+            lines.append("")
+            lines.append("Checkpoints:")
+            lines.extend(f"  • {ckpt}" for ckpt in checkpoints)
+        loras = summary.get("loras") or []
+        if loras:
+            lines.append("")
+            lines.append("LoRAs:")
+            lines.extend(f"  • {lora}" for lora in loras)
+        samplers = summary.get("samplers") or []
+        if samplers:
+            lines.append("")
+            lines.append("Samplers:")
+            lines.extend(f"  • {sampler}" for sampler in samplers)
+        clip_models = summary.get("clip_models") or []
+        if clip_models:
+            lines.append("")
+            lines.append("CLIP Models:")
+            lines.extend(f"  • {clip}" for clip in clip_models)
+        pos_prompts = summary.get("positive_prompts") or []
+        if pos_prompts:
+            lines.append("")
+            lines.append("Positive Prompts:")
+            for prompt in pos_prompts:
+                lines.append(f"  — {prompt}")
+        neg_prompts = summary.get("negative_prompts") or []
+        if neg_prompts:
+            lines.append("")
+            lines.append("Negative Prompts:")
+            for prompt in neg_prompts:
+                lines.append(f"  — {prompt}")
+
+    if media_fields:
+        lines.append("")
+        lines.append("Media Metadata")
+        for key, value in media_fields.items():
+            lines.append(f"{key}: {value}")
+
+    meta_block = (payload or {}).get("metadata")
+    if isinstance(meta_block, dict) and meta_block:
+        lines.append("")
+        lines.append("Embedded Metadata")
+        for key in sorted(meta_block):
+            value = meta_block[key]
+            if isinstance(value, (dict, list)):
+                try:
+                    serialized = json.dumps(value, indent=2)
+                except Exception:
+                    serialized = str(value)
+                lines.append(f"{key}: {serialized}")
+            else:
+                lines.append(f"{key}: {value}")
+
+    workflow_obj = (payload or {}).get("workflow")
+    if workflow_obj:
+        try:
+            workflow_json = json.dumps(workflow_obj, indent=2)
+        except TypeError:
+            workflow_json = str(workflow_obj)
+        if len(workflow_json) > 2000:
+            workflow_json = workflow_json[:2000].rstrip() + "…"
+        lines.append("")
+        lines.append("Workflow JSON (truncated)")
+        lines.append(workflow_json)
+
+    return "\n".join(lines).strip()
+
+
+def _build_comfy_metadata_card(
+    file_path: Path,
+    *,
+    width: int,
+    height: int,
+    cmyk_mode: bool,
+    border_color: Tuple[int, int, int],
+    border_inch_width: float,
+    file_type_info: Dict[str, Any],
+    comfy_summary: Optional[Dict[str, Any]],
+    comfy_media_fields: Dict[str, str],
+    comfy_payload: Optional[Dict[str, Any]],
+    title: Optional[str],
+    outer_padding_inches: float,
+) -> Optional[Image.Image]:
+    """Create a dedicated metadata card for Comfy workflows."""
+    text_content = _compose_comfy_metadata_text(comfy_summary, comfy_media_fields, comfy_payload)
+    if not text_content:
+        return None
+
+    base_width, base_height = 800, 1000
+    scale = min(width / base_width, height / base_height)
+    outer_padding_px = int(outer_padding_inches * 300)
+    outer_padding = max(outer_padding_px, int(outer_padding_px * scale))
+    header_height = int(70 * scale)
+    body_padding = int(20 * scale)
+
+    background_rgb = (250, 250, 250)
+    if cmyk_mode:
+        background_color = rgb_to_cmyk(*background_rgb)
+        img = Image.new("CMYK", (width, height), background_color)
+    else:
+        img = Image.new("RGB", (width, height), background_rgb)
+    draw = ImageDraw.Draw(img)
+
+    # Header
+    header_color = file_type_info.get("color", (0, 0, 0))
+    draw.rectangle([outer_padding, outer_padding, width - outer_padding, outer_padding + header_height], fill=header_color)
+
+    try:
+        font_path = get_font_path()
+        title_font = ImageFont.truetype(str(font_path), int(28 * scale))
+        body_font = ImageFont.truetype(str(font_path), int(18 * scale))
+    except Exception:
+        title_font = ImageFont.load_default()
+        body_font = ImageFont.load_default()
+
+    header_title = title or file_path.stem
+    header_text = f"{header_title} — Comfy Workflow"
+    draw.text((width // 2, outer_padding + header_height // 2), header_text, fill="white", font=title_font, anchor="mm")
+
+    text_box_left = outer_padding + body_padding
+    text_box_top = outer_padding + header_height + body_padding
+    text_box_right = width - outer_padding - body_padding
+    text_box_bottom = height - outer_padding - body_padding
+
+    if cmyk_mode:
+        bg_fill = rgb_to_cmyk(255, 255, 255)
+        outline = rgb_to_cmyk(200, 200, 200)
+        text_fill = (0, 0, 0, 255)
+    else:
+        bg_fill = (255, 255, 255)
+        outline = (200, 200, 200)
+        text_fill = (0, 0, 0)
+
+    draw_text_box(
+        draw,
+        text_content,
+        body_font,
+        box=(text_box_left, text_box_top, text_box_right, text_box_bottom),
+        padding=int(12 * scale),
+        line_spacing=int(6 * scale),
+        align="left",
+        v_align="top",
+        fill=text_fill,
+        background_fill=bg_fill,
+        background_outline=outline,
+        background_outline_width=1,
+        background_radius=int(8 * scale),
+    )
+
+    # Border
+    dpi = 300
+    min_border_px = int(border_inch_width * dpi)
+    border_width = max(1, min_border_px)
+    if cmyk_mode:
+        outline_color = rgb_to_cmyk(*border_color)
+    else:
+        outline_color = border_color
+    draw.rectangle([0, 0, width, height], outline=outline_color, width=border_width)
+
+    return img
+
+def _is_number_like(value: Any) -> bool:
+    if isinstance(value, Number):
+        return True
+    if isinstance(value, str):
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+    return False
 
 def scale_image_by_percent(image, percent):
     """Scale a PIL image by a given percentage (e.g., percent=0.95 for 95%)."""
@@ -1203,6 +1652,7 @@ def create_file_info_card(
     _pdf_preview_img=None,
     ignore_unknown_files=True,
     outer_padding_inches=0.5,  # New parameter: outer padding in inches at 300 DPI
+    comfy_metadata_pages=False,
 ):
 
     original_dt = None
@@ -1313,6 +1763,27 @@ def create_file_info_card(
         return None
     ext = file_path.suffix.lower()
 
+    comfy_payload = None
+    comfy_summary_fields: Dict[str, str] = {}
+    comfy_media_fields: Dict[str, str] = {}
+    comfy_title_override: Optional[str] = None
+    comfy_source_label: Optional[str] = None
+    comfy_summary_data: Optional[Dict[str, Any]] = None
+
+    if _is_comfy_candidate_extension(ext):
+        comfy_payload = _safe_extract_comfy_payload(file_path)
+        if comfy_payload:
+            comfy_summary = _summarize_comfy_workflow(
+                comfy_payload.get("workflow"),
+                default_title=(title or file_path.stem.replace("_", " "))
+            )
+            if comfy_summary:
+                comfy_summary_data = comfy_summary
+                comfy_summary_fields = _build_comfy_metadata_fields(comfy_summary)
+                comfy_title_override = comfy_summary.get("title")
+            comfy_media_fields = _format_comfy_media_metadata(comfy_payload.get("metadata"))
+            if comfy_payload.get("source"):
+                comfy_source_label = str(comfy_payload["source"])
 
     try:
         size = os.path.getsize(file_path)
@@ -1508,6 +1979,23 @@ def create_file_info_card(
     ## END OF NO METADATA
     ##
     ##
+    
+    if comfy_title_override and not title and "_title" not in file_info:
+        file_info["_title"] = comfy_title_override
+    if comfy_summary_fields:
+        for key, value in comfy_summary_fields.items():
+            if value is None:
+                continue
+            if key not in file_info:
+                file_info[key] = value
+    if comfy_media_fields:
+        for key, value in comfy_media_fields.items():
+            if value is None:
+                continue
+            if key not in file_info:
+                file_info[key] = value
+    if comfy_source_label:
+        file_info.setdefault("Comfy Metadata Source", comfy_source_label)
     
     # --- Custom metadata_text support (multiline, wrapped) ---
     # If metadata_text is provided, use it instead of the default metadata lines.
@@ -2554,6 +3042,27 @@ def create_file_info_card(
         draw.rectangle([0, 0, width, height], outline=rgb_to_cmyk(*border_color), width=color_border_width)
     else:
         draw.rectangle([0, 0, width, height], outline=border_color, width=color_border_width)
+    extra_cards: List[Image.Image] = []
+    if comfy_metadata_pages and comfy_payload:
+        comfy_meta_card = _build_comfy_metadata_card(
+            file_path=file_path,
+            width=width,
+            height=height,
+            cmyk_mode=cmyk_mode,
+            border_color=border_color,
+            border_inch_width=border_inch_width,
+            file_type_info=file_type_info,
+            comfy_summary=comfy_summary_data,
+            comfy_media_fields=comfy_media_fields,
+            comfy_payload=comfy_payload,
+            title=comfy_title_override or title,
+            outer_padding_inches=outer_padding_inches,
+        )
+        if comfy_meta_card is not None:
+            extra_cards.append(comfy_meta_card)
+
+    if extra_cards:
+        return [img] + extra_cards
     return img
 
 def determine_file_type(file_path):
@@ -2779,6 +3288,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate debug file cards for given files")
     parser.add_argument("files", nargs="+", help="One or more input files to generate cards for")
     parser.add_argument("--output-dir", default="./cards_out", help="Directory to write generated TIFFs into")
+    parser.add_argument("--output", help="Optional direct output file or directory path for debug runs")
     parser.add_argument("--width", type=int, default=800, help="Card width in pixels")
     parser.add_argument("--height", type=int, default=1000, help="Card height in pixels")
     parser.add_argument("--cmyk", action="store_true", help="Save cards in CMYK mode")
@@ -2787,10 +3297,50 @@ if __name__ == "__main__":
     parser.add_argument("--all-pdf-pages", action="store_true", help="If set, generate an overview plus one card per PDF page")
     parser.add_argument("--exclude-file-path", action="store_true", help="If set, do not include file path in metadata display")
     parser.add_argument("--outer-padding-inches", type=float, default=0.5, help="Outer padding/margin in inches at 300 DPI (default: 0.5)")
+    parser.add_argument("--comfy-metadata-pages", action="store_true", help="Also render a ComfyUI metadata page when available")
     args = parser.parse_args()
 
-    out_dir = Path(args.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    output_override = None
+    output_override_dir: Optional[Path] = None
+    output_override_file: Optional[Path] = None
+    if args.output:
+        output_override = Path(args.output).expanduser()
+        if output_override.exists() and output_override.is_dir():
+            logging.info(f"--output points to an existing directory; writing cards inside {output_override}")
+            output_override_dir = output_override
+        else:
+            if not output_override.suffix:
+                output_override = output_override.with_suffix(".tiff")
+            output_override.parent.mkdir(parents=True, exist_ok=True)
+            output_override_file = output_override
+    if output_override_file and len(args.files) != 1:
+        parser.error("--output file path can only be used when a single input file is provided.")
+    if output_override_dir:
+        output_override_dir.mkdir(parents=True, exist_ok=True)
+
+    out_dir = None
+    if not output_override_file and not output_override_dir:
+        out_dir = Path(args.output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    def _card_sequence(card_obj):
+        if card_obj is None:
+            return []
+        if isinstance(card_obj, list):
+            return card_obj
+        return [card_obj]
+
+    def _save_image(card_img, destination: Path):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        suffix = destination.suffix.lower()
+        if suffix in (".tif", ".tiff"):
+            save_card_as_tiff(card_img, str(destination), cmyk_mode=args.cmyk)
+        else:
+            img_to_save = card_img
+            if img_to_save.mode == "CMYK" and suffix in (".png", ".jpg", ".jpeg"):
+                img_to_save = img_to_save.convert("RGB")
+            img_to_save.save(destination)
+            logging.info(f"Saved card to {destination}")
 
     for fp in args.files:
         try:
@@ -2807,10 +3357,9 @@ if __name__ == "__main__":
                     max_video_frames=args.max_video_frames,
                     video_mode="first_frame",
                     exclude_file_path=args.exclude_file_path,
-                    outer_padding_inches=args.outer_padding_inches
+                    outer_padding_inches=args.outer_padding_inches,
+                    comfy_metadata_pages=args.comfy_metadata_pages,
                 )
-                out_path_first = out_dir / f"{Path(fp).stem}_firstframe.tiff"
-                save_card_as_tiff(card_first, str(out_path_first), cmyk_mode=args.cmyk)
                 # Grid card
                 card_grid = create_file_info_card(
                     fp,
@@ -2821,11 +3370,40 @@ if __name__ == "__main__":
                     max_video_frames=args.max_video_frames,
                     video_mode="grid",
                     exclude_file_path=args.exclude_file_path,
-                    outer_padding_inches=args.outer_padding_inches
+                    outer_padding_inches=args.outer_padding_inches,
+                    comfy_metadata_pages=args.comfy_metadata_pages,
                 )
-                out_path_grid = out_dir / f"{Path(fp).stem}_grid.tiff"
-                save_card_as_tiff(card_grid, str(out_path_grid), cmyk_mode=args.cmyk)
-                print(f"Saved first frame and grid cards for {fp} to {out_dir}")
+                def save_variant(cards, tag):
+                    sequence = _card_sequence(cards)
+                    if not sequence:
+                        return
+                    if output_override_file:
+                        base_suffix = output_override_file.suffix or ".tiff"
+                        base_stem = output_override_file.stem
+                        label_prefix = base_stem if tag is None else f"{base_stem}_{tag}"
+                        for idx, card_img in enumerate(sequence, start=1):
+                            name = label_prefix if idx == 1 else f"{label_prefix}_{idx}"
+                            dest = output_override_file.with_name(f"{name}{base_suffix}")
+                            _save_image(card_img, dest)
+                    elif output_override_dir:
+                        target_stem = f"{Path(fp).stem}_{tag}" if tag else Path(fp).stem
+                        for idx, card_img in enumerate(sequence, start=1):
+                            filename = f"{target_stem}.tiff" if len(sequence) == 1 else f"{target_stem}_{idx:02d}.tiff"
+                            dest = output_override_dir / filename
+                            save_card_as_tiff(card_img, str(dest), cmyk_mode=args.cmyk)
+                            logging.info(f"Saved card to {dest}")
+                    else:
+                        target_stem = f"{Path(fp).stem}_{tag}" if tag else Path(fp).stem
+                        for idx, card_img in enumerate(sequence, start=1):
+                            filename = f"{target_stem}.tiff" if len(sequence) == 1 else f"{target_stem}_{idx:02d}.tiff"
+                            dest = out_dir / filename
+                            save_card_as_tiff(card_img, str(dest), cmyk_mode=args.cmyk)
+                            logging.info(f"Saved card to {dest}")
+
+                save_variant(card_first, "firstframe")
+                save_variant(card_grid, "grid")
+                destination_desc = output_override_file or output_override_dir or out_dir
+                print(f"Saved first frame and grid cards for {fp} to {destination_desc}")
             else:
                 card = create_file_info_card(
                     fp,
@@ -2836,23 +3414,36 @@ if __name__ == "__main__":
                     max_video_frames=args.max_video_frames,
                     all_pdf_pages=args.all_pdf_pages,
                     exclude_file_path=args.exclude_file_path,
-                    outer_padding_inches=args.outer_padding_inches
+                    outer_padding_inches=args.outer_padding_inches,
+                    comfy_metadata_pages=args.comfy_metadata_pages,
                 )
                 #out_path = out_dir / f"{Path(fp).stem}.tiff"
                 #save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)
                 #print(f"Saved card for {fp} to {out_dir}")
-                if card is None:
+                sequence = _card_sequence(card)
+                if not sequence:
                    logging.warning(f"No card generated for {fp}")
-                elif isinstance(card, list):
-                    for i, cimg in enumerate(card, start=1):
-                        suffix = f"_{i:02d}"
-                        out_path = out_dir / f"{Path(fp).stem}{suffix}.tiff"
-                        save_card_as_tiff(cimg, str(out_path), cmyk_mode=args.cmyk)
-                    print(f"Saved {len(card)} cards for {fp} to {out_dir}")
                 else:
-                    out_path = out_dir / f"{Path(fp).stem}.tiff"
-                    save_card_as_tiff(card, str(out_path), cmyk_mode=args.cmyk)
-                    print(f"Saved card for {fp} to {out_dir}")
+                    if output_override_file:
+                        base_suffix = output_override_file.suffix or ".tiff"
+                        base_stem = output_override_file.stem
+                        for idx, cimg in enumerate(sequence, start=1):
+                            name = base_stem if idx == 1 else f"{base_stem}_{idx}"
+                            dest = output_override_file.with_name(f"{name}{base_suffix}")
+                            _save_image(cimg, dest)
+                        print(f"Saved {len(sequence)} card(s) for {fp} to {output_override_file.parent}")
+                    else:
+                        target_dir = output_override_dir or out_dir
+                        if len(sequence) == 1:
+                            dest = target_dir / f"{Path(fp).stem}.tiff"
+                            save_card_as_tiff(sequence[0], str(dest), cmyk_mode=args.cmyk)
+                            print(f"Saved card for {fp} to {target_dir}")
+                        else:
+                            for i, cimg in enumerate(sequence, start=1):
+                                suffix = f"_{i:02d}"
+                                dest = target_dir / f"{Path(fp).stem}{suffix}.tiff"
+                                save_card_as_tiff(cimg, str(dest), cmyk_mode=args.cmyk)
+                            print(f"Saved {len(sequence)} cards for {fp} to {target_dir}")
         
         
         

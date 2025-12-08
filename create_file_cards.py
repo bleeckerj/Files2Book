@@ -127,7 +127,8 @@ def _process_file_iterable(
     cards_per_chunk: int = 0,
     pdf_name=None,
     delete_cards_after_pdf: bool = False,
-    ignore_unknown_files: bool = True
+    ignore_unknown_files: bool = True,
+    comfy_metadata_pages: bool = False,
 ):
     """
     Shared processing loop for an iterable of file paths. Handles card creation,
@@ -214,7 +215,8 @@ def _process_file_iterable(
                     metadata=metadata,
                     title=title,
                     video_mode="first_frame",
-                    ignore_unknown_files=ignore_unknown_files
+                    ignore_unknown_files=ignore_unknown_files,
+                    comfy_metadata_pages=comfy_metadata_pages,
                 )
                 # Grid card
                 card_grid = create_file_info_card(
@@ -231,7 +233,8 @@ def _process_file_iterable(
                     metadata=metadata,
                     title=title,
                     video_mode="grid",
-                    ignore_unknown_files=ignore_unknown_files
+                    ignore_unknown_files=ignore_unknown_files,
+                    comfy_metadata_pages=comfy_metadata_pages,
                 )
 
                 # Save both cards
@@ -274,7 +277,8 @@ def _process_file_iterable(
                     metadata=metadata,
                     all_pdf_pages=args.all_pdf_pages,
                     title=title,
-                    ignore_unknown_files=ignore_unknown_files
+                    ignore_unknown_files=ignore_unknown_files,
+                    comfy_metadata_pages=comfy_metadata_pages,
                 )
                 if card is None:
                     logging.warning(f"No card generated for {file_path}. Skipping.")
@@ -384,7 +388,8 @@ def build_file_cards_from_list(
     cards_per_chunk=0,
     pdf_name=None,
     delete_cards_after_pdf: bool = False,
-    ignore_unknown_files: bool = True
+    ignore_unknown_files: bool = True,
+    comfy_metadata_pages: bool = False,
 ):
     """
     Wrapper that prepares output directory and delegates to _process_file_iterable
@@ -466,7 +471,8 @@ def build_file_cards_from_list(
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
         delete_cards_after_pdf=delete_cards_after_pdf,
-        ignore_unknown_files=ignore_unknown_files
+        ignore_unknown_files=ignore_unknown_files,
+        comfy_metadata_pages=comfy_metadata_pages,
     )
 
 
@@ -487,7 +493,8 @@ def build_file_cards_from_directory(
     cards_per_chunk=0,
     pdf_name=None,
     delete_cards_after_pdf: bool = False,
-    ignore_unknown_files: bool = True
+    ignore_unknown_files: bool = True,
+    comfy_metadata_pages: bool = False,
 ):
     """
     Test the file card generation by creating cards for all files in a directory.
@@ -545,7 +552,8 @@ def build_file_cards_from_directory(
         cards_per_chunk=cards_per_chunk,
         pdf_name=pdf_name,
         delete_cards_after_pdf=delete_cards_after_pdf,
-        ignore_unknown_files=ignore_unknown_files
+        ignore_unknown_files=ignore_unknown_files,
+        comfy_metadata_pages=comfy_metadata_pages,
     )
 
     try:
@@ -756,6 +764,7 @@ if __name__ == "__main__":
     parser.add_argument('--cards-per-chunk', type=int, default=0, help='If >0, split card images into chunked folders of this many cards and produce one PDF per chunk')
     parser.add_argument('--slack-data-root', help='Path to Slack export root (directory containing messages.json and files/). If provided, the script will treat input as Slack data and resolve relative filepaths accordingly.')
     parser.add_argument('--ignore-unknown-files', default=True, action='store_true', help='Ignore files of unknown type instead of trying to create a card (default: ignore)')
+    parser.add_argument('--comfy-metadata-pages', action='store_true', help='For ComfyUI media, create a second card summarizing workflow metadata')
     args = parser.parse_args()
     logging.info(f"Arguments: {args}")
     if args.exclude_exts is not None:
@@ -977,7 +986,8 @@ if __name__ == "__main__":
             cards_per_chunk=args.cards_per_chunk,
             pdf_name=pdf_name,
             delete_cards_after_pdf=args.delete_cards_after_pdf,
-            ignore_unknown_files=args.ignore_unknown_files
+            ignore_unknown_files=args.ignore_unknown_files,
+            comfy_metadata_pages=args.comfy_metadata_pages,
         )
     else:
         build_file_cards_from_directory(
@@ -995,7 +1005,8 @@ if __name__ == "__main__":
             cards_per_chunk=args.cards_per_chunk,  # <--- Pass chunk size
             pdf_name=pdf_name,
             delete_cards_after_pdf=args.delete_cards_after_pdf,
-            ignore_unknown_files=args.ignore_unknown_files
+            ignore_unknown_files=args.ignore_unknown_files,
+            comfy_metadata_pages=args.comfy_metadata_pages,
         )
 
     # Report summary
@@ -1069,4 +1080,3 @@ if __name__ == "__main__":
                         except Exception as e:
                             logging.error(f"Error deleting {card_file}: {e}")
                 logging.info(f"Card files cleanup complete. Deleted {deleted} files.")
-

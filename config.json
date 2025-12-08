@@ -1,0 +1,37 @@
+{
+  "fonts": {
+    "default_font": "FONTS/3270NerdFontMono-Regular.ttf",
+    "fallback_font": null,
+    "text_elements": {
+      "title": {
+        "font": "FONTS/3270NerdFontMono-Regular.ttf",
+        "base_size": 20,
+        "description": "Main title text at top of card"
+      },
+      "info": {
+        "font": "FONTS/3270NerdFontMono-Regular.ttf",
+        "base_size": 18,
+        "description": "Metadata information text"
+      },
+      "preview": {
+        "font": "FONTS/3270NerdFontMono-Regular.ttf",
+        "base_size": 12,
+        "description": "Content preview text"
+      },
+      "fit": {
+        "font": "FONTS/3270NerdFontMono-Regular.ttf",
+        "base_size": 15,
+        "description": "GPS/fitness data text"
+      }
+    }
+  },
+  "mapbox": {
+    "token_env_var": "MAPBOX_ACCESS_TOKEN"
+  },
+  "llm": {
+    "openai": {
+      "model": "gpt-4-nano",
+      "openai_api_key": "YOUR_OPENAI_API_KEY"
+    }
+  }
+}
