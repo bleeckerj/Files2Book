@@ -1,0 +1,342 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: '3270 Nerd Font';
+  font-weight: 400;
+  src: url('./assets/fonts/3270/3270NerdFont-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: '3270 Nerd Font';
+  font-weight: 600;
+  src: url('./assets/fonts/3270/3270NerdFont-SemiCondensed.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'ShareTech Mono Nerd Font';
+  font-weight: 400;
+  src: url('./assets/fonts/ShareTechMono/ShureTechMonoNerdFont-Regular.ttf')
+    format('truetype');
+}
+
+:root {
+  font-family: '3270 Nerd Font', 'ShareTech Mono Nerd Font', 'Space Grotesk', system-ui, sans-serif;
+  --color-bg: #f5d700;
+  --color-panel: #ffffff;
+  --color-panel-dark: #f0f1f3;
+  --color-outline: #080808;
+  --color-text: #050505;
+  --color-muted: #1b1b1f;
+  --color-accent: #ff2d55;
+  --color-accent-2: #00a2ff;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  overflow: hidden;
+  /* disable bounce in scroll */
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.neo-label {
+  color: var(--color-muted);
+}
+
+.neo-pill {
+  border: 3px solid var(--color-outline);
+  border-radius: 999px;
+  padding: 0.1rem 0.9rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.neo-title {
+  font-size: clamp(2.5rem, 4vw, 3rem);
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+}
+
+.neo-panel {
+  border: 1px solid var(--color-outline);
+  border-radius: 20px;
+  background-color: var(--color-panel);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.neo-shell {
+  border: 6px solid var(--color-outline);
+  border-radius: 32px;
+  padding: 1.5rem;
+  width: min(520px, 90vw);
+  min-height: 560px;
+  background-color: var(--color-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-sizing: border-box;
+}
+
+.neo-screen {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: var(--color-bg);
+}
+
+.neo-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.neo-status {
+  padding-inline: 0.8rem;
+  padding-block: 0.3rem;
+  border: 1px solid var(--color-outline);
+  text-transform: uppercase;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  letter-spacing: 0.3em;
+}
+
+.neo-dropzone {
+  border: 2px dotted var(--color-outline);
+  background-color: var(--color-panel-dark);
+  border-radius: 12px;
+  letter-spacing: 0.1em;
+}
+
+.neo-drop-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.2rem;
+  color: var(--color-text);
+  padding: 0rem 1rem !important;
+  text-align: center;
+}
+
+.neo-drop-subtitle {
+  font-size: 0.7rem;
+  letter-spacing: 0em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.neo-drop-path {
+  min-height: 1.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  /*max-width: 14rem;*/
+  text-align: center;
+  letter-spacing: 0.05em;
+  color: var(--color-muted);
+}
+
+.neo-detail-panel {
+  background-color: var(--color-panel);
+}
+
+.neo-progress {
+  width: 100%;
+  height: 6px;
+  border: 3px solid var(--color-outline);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.neo-progress-fill {
+  background: var(--color-accent);
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.neo-button {
+  background-color: var(--color-accent);
+  border: 4px solid var(--color-outline);
+  border-radius: 12px;
+  padding: 0.75rem 1.5rem;
+  color: white;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+}
+
+.neo-button:disabled {
+  opacity: 0.5;
+}
+
+.neo-field-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+  --neo-select-width: 11rem;
+}
+
+.neo-field {
+  border: 1px solid var(--color-outline);
+  border-radius: 2px;
+  padding: 0.65rem;
+  background-color: var(--color-panel-dark);
+  width: calc(var(--neo-select-width));
+}
+
+.neo-field-label {
+  font-size: 0.55rem;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.page-size-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.page-size-pill {
+  background: var(--color-panel);
+  border: 0.5px solid var(--color-outline);
+  font-size: 0.55rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.page-size-pill.selected {
+  background-color: var(--color-panel-dark);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.neo-select,
+.neo-input {
+  background-color: transparent;
+  border: none;
+  font-size: 0.85rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  width: 6rem;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  position: relative;
+  padding-right: 1rem;
+}
+
+.neo-select {
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23080808' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-size: 10px 6px;
+  background-position: right 0.6rem center;
+  background-repeat: no-repeat;
+}
+
+.neo-select-wrapper {
+  position: relative;
+}
+
+.neo-select-button {
+  background-color: var(--color-panel-dark);
+  border: none;
+  font: inherit;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.9rem;
+  width: 100%;
+  cursor: pointer;
+}
+
+.neo-select-menu {
+  position: absolute;
+  top: 126%;
+  left: 3%;
+  margin: 0;
+  font: inherit;
+
+  border: 1px solid var(--color-outline);
+  border-radius: 0 0 2px 2px;
+  border-top: none;
+  background-color: var(--color-panel-dark);
+  list-style: none;
+  padding: 0.25rem 0;
+  width: 200px;
+  z-index: 10;
+  max-height: 160px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.neo-select-option {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0.4rem 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-family: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.neo-select-option:hover {
+  background-color: var(--color-panel-dark);
+}
+
+.neo-select::after {
+  display: none;
+}
+
+.neo-select:focus {
+  outline: none;
+}
+
+.neo-footing {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.neo-line {
+  height: 4px;
+  width: 70px;
+  border-radius: 999px;
+  background-color: var(--color-outline);
+}

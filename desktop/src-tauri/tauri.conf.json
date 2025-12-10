@@ -1,0 +1,37 @@
+{
+  "$schema": "https://tauri.app/v1/schema.json",
+  "package": {
+    "productName": "File2Book Desktop",
+    "version": "0.1.0"
+  },
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:3000",
+    "distDir": "../src"
+  },
+  "tauri": {
+    "bundle": {
+      "identifier": "com.file2book.desktop",
+      "externalBin": []
+    },
+    "allowlist": {
+      "shell": {
+        "all": true
+      }
+    },
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "title": "File2Book Desktop",
+        "width": 1200,
+        "height": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "transparent": false,
+        "decorations": true
+      }
+    ]
+  }
+}

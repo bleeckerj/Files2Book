@@ -162,3 +162,5 @@ __pycache__/
 *_output.pdf
 output_combined.pdf
 output_flipbook.pdf
+desktop/src-tauri/tauri.dev.conf.json
+desktop/src-tauri/tauri.dev.conf.json
